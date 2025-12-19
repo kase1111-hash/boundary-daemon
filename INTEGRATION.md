@@ -120,6 +120,73 @@ class MemoryVault:
         return self._internal_retrieve(memory_id)
 ```
 
+### Direct Unix Socket Integration
+
+For production deployments, the Memory Vault can integrate directly via Unix socket:
+
+```python
+# memory_vault/boundary.py
+import socket
+import json
+import os
+
+SOCKET_PATH = os.path.expanduser("~/.agent-os/api/boundary.sock")
+
+def check_recall(classification: int) -> tuple[bool, str]:
+    """
+    Query the boundary-daemon for recall permission.
+    Returns (permitted: bool, reason: str)
+    """
+    request = {
+        "command": "check_recall",
+        "params": {"memory_class": classification}
+    }
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(json.dumps(request).encode('utf-8') + b'\n')
+            response_data = s.recv(4096).decode('utf-8')
+            response = json.loads(response_data)
+            permitted = response.get("permitted", False)
+            reason = response.get("reason", "No reason provided")
+            return permitted, reason
+    except FileNotFoundError:
+        return False, "Boundary daemon socket not found (offline/airgap mode?)"
+    except ConnectionRefusedError:
+        return False, "Boundary daemon not running"
+    except socket.timeout:
+        return False, "Boundary daemon timeout"
+    except Exception as e:
+        return False, f"Boundary daemon error: {str(e)}"
+```
+
+### Integration in Recall Flow
+
+The boundary check must occur **before** any human approval or cooldown:
+
+```python
+# In recall_memory()
+# 1. BOUNDARY CHECK FIRST - before any human approval or cooldown
+permitted, reason = check_recall(classification)
+if not permitted:
+    self._log_recall(c, memory_id, requester, False,
+                     justification + f" | boundary: {reason}")
+    raise PermissionError(f"Boundary check failed: {reason}")
+
+# 2. If permitted, proceed to human approval (level ≥3)
+if classification >= 3:
+    # ... human approval ceremony ...
+    pass
+
+# 3. Apply cooldown
+# ... cooldown logic ...
+
+# 4. Retrieve memory
+return secret_data
+```
+
 ### Memory Class Mapping
 
 | Memory Class | Minimum Mode | Description |
@@ -129,6 +196,43 @@ class MemoryVault:
 | 3 (SECRET) | TRUSTED | Offline/VPN only |
 | 4 (TOP_SECRET) | AIRGAP | Air-gapped only |
 | 5 (CROWN_JEWEL) | COLDROOM | Maximum security |
+
+### Boundary Policy Examples
+
+The daemon enforces policies based on current mode:
+
+| Vault Level | Boundary Requirement | Example Daemon Response |
+|-------------|---------------------|------------------------|
+| 0-2 | Usually permitted | `{"permitted": true}` |
+| 3 | Offline preferred | Deny if network detected |
+| 4 | AIRGAP or COLDROOM | Deny if any network/USB |
+| 5 | COLDROOM + physical presence | Strictest checks |
+
+### Testing the Integration
+
+```bash
+# 1. Start boundary-daemon in permissive mode
+boundaryctl set-mode open
+
+# 2. Recall low-level memory → succeeds
+memory-vault recall <id>
+
+# 3. Switch daemon to AIRGAP mode
+boundaryctl set-mode airgap
+
+# 4. Recall level 4 memory → denied with reason
+memory-vault recall <id>
+# → Error: Boundary check failed: Network interface active in AIRGAP mode
+```
+
+### Fail-Closed Behavior
+
+If the daemon is unavailable:
+- All recalls are safely **denied**
+- Reason is clearly logged
+- Enforces "fail-closed" security
+
+**This is intentional** - no daemon = assume unsafe environment.
 
 ## Agent-OS Tool Integration
 
