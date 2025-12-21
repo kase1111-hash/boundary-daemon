@@ -16,10 +16,10 @@ from datetime import datetime
 from typing import Optional
 
 # Import core components
-from state_monitor import StateMonitor, EnvironmentState, NetworkState
-from policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision, Operator, MemoryClass
-from tripwires import TripwireSystem, LockdownManager, TripwireViolation
-from event_logger import EventLogger, EventType
+from .state_monitor import StateMonitor, EnvironmentState, NetworkState
+from .policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision, Operator, MemoryClass
+from .tripwires import TripwireSystem, LockdownManager, TripwireViolation
+from .event_logger import EventLogger, EventType
 
 
 class BoundaryDaemon:

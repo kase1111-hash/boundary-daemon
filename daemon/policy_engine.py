@@ -9,7 +9,7 @@ from enum import Enum, IntEnum
 from typing import Optional, Dict, List, Tuple
 import threading
 
-from state_monitor import NetworkState, HardwareTrust, EnvironmentState
+from .state_monitor import NetworkState, HardwareTrust, EnvironmentState
 
 
 class BoundaryMode(IntEnum):

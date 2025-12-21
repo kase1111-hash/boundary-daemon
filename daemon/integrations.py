@@ -8,8 +8,8 @@ import getpass
 from typing import Optional, Callable
 from datetime import datetime, timedelta
 
-from policy_engine import MemoryClass, BoundaryMode
-from event_logger import EventLogger, EventType
+from .policy_engine import MemoryClass, BoundaryMode
+from .event_logger import EventLogger, EventType
 
 
 class RecallGate:

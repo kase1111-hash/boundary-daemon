@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""
+verify_signatures - Boundary Daemon Signature Verification Tool
+Verify cryptographic signatures on event logs.
+"""
+
+import sys
+import os
+import argparse
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from daemon.signed_event_logger import SignedEventLogger
+
+
+def cmd_verify_signatures(args):
+    """Verify cryptographic signatures"""
+    log_file = args.log_file
+    key_file = args.key_file
+
+    if not os.path.exists(log_file):
+        print(f"Error: Log file not found: {log_file}")
+        return 1
+
+    if not os.path.exists(key_file):
+        print(f"Error: Key file not found: {key_file}")
+        return 1
+
+    print(f"Verifying signatures for: {log_file}")
+    print(f"Using key: {key_file}\n")
+
+    try:
+        logger = SignedEventLogger(log_file, key_file)
+
+        # Verify signatures
+        is_valid, error = logger.verify_signatures()
+
+        if is_valid:
+            print("✓ All signatures are VALID")
+            print(f"  Total events verified: {logger.get_event_count()}")
+            return 0
+        else:
+            print(f"✗ Signature verification FAILED")
+            print(f"  Error: {error}")
+            return 1
+
+    except Exception as e:
+        print(f"Error during verification: {e}")
+        return 1
+
+
+def cmd_verify_full(args):
+    """Verify both hash chain and signatures"""
+    log_file = args.log_file
+    key_file = args.key_file
+
+    if not os.path.exists(log_file):
+        print(f"Error: Log file not found: {log_file}")
+        return 1
+
+    if not os.path.exists(key_file):
+        print(f"Error: Key file not found: {key_file}")
+        return 1
+
+    print(f"Performing full integrity verification for: {log_file}")
+    print(f"Using key: {key_file}\n")
+
+    try:
+        logger = SignedEventLogger(log_file, key_file)
+
+        # Full verification
+        is_valid, error = logger.verify_full_integrity()
+
+        if is_valid:
+            print("✓ Full integrity verification PASSED")
+            print(f"  ✓ Hash chain verified")
+            print(f"  ✓ All signatures verified")
+            print(f"  Total events: {logger.get_event_count()}")
+            return 0
+        else:
+            print(f"✗ Integrity verification FAILED")
+            print(f"  Error: {error}")
+            return 1
+
+    except Exception as e:
+        print(f"Error during verification: {e}")
+        return 1
+
+
+def cmd_export_public_key(args):
+    """Export public verification key"""
+    key_file = args.key_file
+    output_file = args.output
+
+    if not os.path.exists(key_file):
+        print(f"Error: Key file not found: {key_file}")
+        return 1
+
+    print(f"Exporting public key from: {key_file}")
+
+    try:
+        # Create a temporary logger just to access the key
+        import tempfile
+        temp_log = tempfile.mktemp()
+        logger = SignedEventLogger(temp_log, key_file)
+
+        # Export public key
+        success = logger.export_public_key(output_file)
+
+        # Cleanup temp log
+        if os.path.exists(temp_log):
+            os.unlink(temp_log)
+        sig_file = temp_log + '.sig'
+        if os.path.exists(sig_file):
+            os.unlink(sig_file)
+
+        if success:
+            print(f"✓ Public key exported to: {output_file}")
+            print(f"\nPublic key (hex): {logger.get_public_key_hex()}")
+            return 0
+        else:
+            print("✗ Failed to export public key")
+            return 1
+
+    except Exception as e:
+        print(f"Error exporting public key: {e}")
+        return 1
+
+
+def cmd_show_public_key(args):
+    """Display public verification key"""
+    key_file = args.key_file
+
+    if not os.path.exists(key_file):
+        print(f"Error: Key file not found: {key_file}")
+        return 1
+
+    try:
+        # Create a temporary logger just to access the key
+        import tempfile
+        temp_log = tempfile.mktemp()
+        logger = SignedEventLogger(temp_log, key_file)
+
+        # Cleanup temp log
+        if os.path.exists(temp_log):
+            os.unlink(temp_log)
+        sig_file = temp_log + '.sig'
+        if os.path.exists(sig_file):
+            os.unlink(sig_file)
+
+        print(f"Public verification key for: {key_file}\n")
+        print(f"Hex: {logger.get_public_key_hex()}\n")
+        print("This key can be used to verify event log signatures externally.")
+        return 0
+
+    except Exception as e:
+        print(f"Error reading public key: {e}")
+        return 1
+
+
+def main():
+    """Main CLI entry point"""
+    parser = argparse.ArgumentParser(
+        description='Boundary Daemon Signature Verification Tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  verify_signatures verify --log logs/boundary_chain.log --key config/signing.key
+  verify_signatures verify-full --log logs/boundary_chain.log --key config/signing.key
+  verify_signatures export-key --key config/signing.key --output public_key.txt
+  verify_signatures show-key --key config/signing.key
+"""
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # verify
+    parser_verify = subparsers.add_parser('verify',
+                                          help='Verify cryptographic signatures')
+    parser_verify.add_argument('--log', dest='log_file', type=str,
+                              default='./logs/boundary_chain.log',
+                              help='Path to log file')
+    parser_verify.add_argument('--key', dest='key_file', type=str,
+                              default='./config/signing.key',
+                              help='Path to signing key file')
+    parser_verify.set_defaults(func=cmd_verify_signatures)
+
+    # verify-full
+    parser_verify_full = subparsers.add_parser('verify-full',
+                                               help='Verify hash chain and signatures')
+    parser_verify_full.add_argument('--log', dest='log_file', type=str,
+                                   default='./logs/boundary_chain.log',
+                                   help='Path to log file')
+    parser_verify_full.add_argument('--key', dest='key_file', type=str,
+                                   default='./config/signing.key',
+                                   help='Path to signing key file')
+    parser_verify_full.set_defaults(func=cmd_verify_full)
+
+    # export-key
+    parser_export = subparsers.add_parser('export-key',
+                                          help='Export public verification key')
+    parser_export.add_argument('--key', dest='key_file', type=str,
+                              default='./config/signing.key',
+                              help='Path to signing key file')
+    parser_export.add_argument('--output', type=str,
+                              default='./public_key.txt',
+                              help='Output file for public key')
+    parser_export.set_defaults(func=cmd_export_public_key)
+
+    # show-key
+    parser_show = subparsers.add_parser('show-key',
+                                       help='Display public verification key')
+    parser_show.add_argument('--key', dest='key_file', type=str,
+                            default='./config/signing.key',
+                            help='Path to signing key file')
+    parser_show.set_defaults(func=cmd_show_public_key)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    # Execute command
+    try:
+        return args.func(args) or 0
+    except Exception as e:
+        print(f"\nError: {e}\n")
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
