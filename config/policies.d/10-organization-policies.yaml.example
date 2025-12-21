@@ -1,0 +1,72 @@
+# Organization-Specific Policies
+# Rename this file to .yaml to enable (remove .example extension)
+# Customize these policies for your organization's security requirements
+
+policies:
+  # Compliance: Require VPN for all operations
+  - name: "Require VPN for all network operations"
+    condition:
+      tool:
+        requires_network: true
+      environment:
+        vpn_active: false
+    action: DENY
+    priority: 5
+    enabled: true
+    metadata:
+      category: compliance
+      compliance_requirement: "CORP-NET-001"
+      description: "All network operations must use corporate VPN"
+
+  # Security: Block specific API endpoints
+  - name: "Block unauthorized API access"
+    condition:
+      mode: [RESTRICTED, TRUSTED, AIRGAP, COLDROOM]
+      environment:
+        processes:
+          matches: "(openai|anthropic|google\\.cloud)"
+    action: DENY
+    priority: 8
+    enabled: true
+    metadata:
+      category: security
+      description: "Block external AI API access in non-OPEN modes"
+
+  # Compliance: Restrict work hours for contractors
+  - name: "Contractor hours restriction"
+    condition:
+      time:
+        day_of_week: [monday, tuesday, wednesday, thursday, friday]
+        hour_range:
+          start: 8
+          end: 18
+    action: ALLOW
+    priority: 50
+    enabled: false  # Enable only for contractor accounts
+    metadata:
+      category: compliance
+      description: "Limit contractor access to normal business hours"
+
+  # Data Loss Prevention: Prevent CROWN_JEWEL access without strict controls
+  - name: "CROWN_JEWEL requires COLDROOM"
+    condition:
+      memory_class: [CROWN_JEWEL]
+      mode: [OPEN, RESTRICTED, TRUSTED, AIRGAP]
+    action: DENY
+    priority: 1
+    enabled: true
+    metadata:
+      category: dlp
+      description: "Crown jewel data only accessible in COLDROOM mode"
+
+  # Audit: Allow specific approved tools only
+  - name: "Whitelist approved tools"
+    condition:
+      tool:
+        name_pattern: "^(git|ssh|scp|rsync|curl|wget)$"
+    action: ALLOW
+    priority: 100
+    enabled: false  # Enable for strict tool whitelisting
+    metadata:
+      category: audit
+      description: "Only allow pre-approved tools"

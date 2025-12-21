@@ -1,0 +1,87 @@
+# Boundary Daemon - Example Custom Policies
+# This file contains example policy rules demonstrating the custom policy language.
+# Priority: Lower numbers = higher priority (evaluated first)
+
+policies:
+  # Security: Block external model access in high-security modes
+  - name: "Block external models in AIRGAP/COLDROOM"
+    condition:
+      mode: [AIRGAP, COLDROOM]
+      environment:
+        external_models: true
+    action: DENY
+    priority: 10
+    enabled: true
+    metadata:
+      category: security
+      description: "Prevent access to external AI models in air-gapped environments"
+
+  # Security: Require VPN for confidential data access
+  - name: "Require VPN for confidential memories"
+    condition:
+      memory_class: [CONFIDENTIAL, SECRET, TOP_SECRET]
+      environment:
+        vpn_active: false
+    action: DENY
+    priority: 20
+    enabled: true
+    metadata:
+      category: security
+      description: "Ensure VPN is active when accessing classified memories"
+
+  # Convenience: Allow common filesystem tools in development modes
+  - name: "Allow safe filesystem tools in OPEN/RESTRICTED"
+    condition:
+      mode: [OPEN, RESTRICTED]
+      tool:
+        requires_filesystem: true
+        name_pattern: "^(cat|ls|grep|find|head|tail)$"
+    action: ALLOW
+    priority: 30
+    enabled: true
+    metadata:
+      category: convenience
+      description: "Allow read-only filesystem tools in less restricted modes"
+
+  # Security: Block network tools in AIRGAP
+  - name: "Block network tools in AIRGAP"
+    condition:
+      mode: [AIRGAP, COLDROOM]
+      tool:
+        requires_network: true
+    action: DENY
+    priority: 15
+    enabled: true
+    metadata:
+      category: security
+      description: "Prevent network access in offline modes"
+
+  # Time-based: Restrict sensitive operations outside business hours
+  - name: "Limit SECRET access to business hours"
+    condition:
+      memory_class: [SECRET, TOP_SECRET]
+      time:
+        day_of_week: [monday, tuesday, wednesday, thursday, friday]
+        hour_range:
+          start: 9
+          end: 17
+    action: ALLOW
+    priority: 25
+    enabled: false  # Disabled by default - enable if needed
+    metadata:
+      category: compliance
+      description: "Only allow sensitive data access during business hours"
+
+  # Security: Block USB access in high-security modes
+  - name: "No USB in COLDROOM"
+    condition:
+      mode: [COLDROOM]
+      environment:
+        usb_devices:
+          any: true
+    action: DENY
+    priority: 5
+    enabled: true
+    metadata:
+      category: security
+      description: "Prevent USB device access in maximum security mode"
