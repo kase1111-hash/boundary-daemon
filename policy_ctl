@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""
+policy_ctl - Boundary Daemon Policy Control CLI
+Command-line interface for managing and testing custom policies.
+"""
+
+import sys
+import argparse
+import json
+import time
+from pathlib import Path
+
+from daemon.policy.custom_policy_engine import CustomPolicyEngine, PolicyAction
+from daemon.policy_engine import PolicyRequest, BoundaryMode, MemoryClass, PolicyDecision
+from daemon.state_monitor import EnvironmentState, NetworkState, HardwareTrust
+
+
+def cmd_validate(args):
+    """Validate policy files"""
+    if args.file:
+        # Validate single file
+        files = [args.file]
+    else:
+        # Validate all files in directory
+        import glob
+        pattern = str(Path(args.dir) / '*.yaml')
+        files = glob.glob(pattern)
+        files.extend(glob.glob(str(Path(args.dir) / '*.yml')))
+
+    if not files:
+        print("No policy files found.")
+        return 1
+
+    print(f"\nValidating {len(files)} policy file(s)...\n")
+
+    engine = CustomPolicyEngine('/tmp/dummy')  # Just for validation
+    all_valid = True
+
+    for filepath in files:
+        is_valid, error = engine.validate_policy_file(filepath)
+
+        status = "✓" if is_valid else "✗"
+        print(f"{status} {filepath}")
+
+        if error:
+            print(f"   Error: {error}")
+            all_valid = False
+
+    print()
+    return 0 if all_valid else 1
+
+
+def cmd_list(args):
+    """List loaded policies"""
+    engine = CustomPolicyEngine(args.dir)
+
+    print(f"\n{'='*70}")
+    print(f"LOADED POLICIES ({args.dir})")
+    print(f"{'='*70}\n")
+
+    if not engine.policies:
+        print("No policies loaded.")
+        return 0
+
+    for policy in engine.policies:
+        status = "✓" if policy.enabled else "✗"
+        print(f"{status} [{policy.priority:3d}] {policy.name}")
+        print(f"    Action: {policy.action.name}")
+
+        if args.verbose:
+            print(f"    Condition: {json.dumps(policy.condition, indent=6)}")
+            if policy.metadata:
+                print(f"    Metadata: {json.dumps(policy.metadata, indent=6)}")
+
+        print()
+
+    print(f"Total: {len(engine.policies)} policies\n")
+    return 0
+
+
+def cmd_test(args):
+    """Test a policy against a scenario"""
+    engine = CustomPolicyEngine(args.dir)
+
+    print(f"\n{'='*70}")
+    print(f"TESTING CUSTOM POLICIES")
+    print(f"{'='*70}\n")
+
+    # Create test scenario from arguments
+    mode = BoundaryMode[args.mode]
+    print(f"Boundary Mode: {mode.name}")
+
+    # Create environment state
+    env = EnvironmentState(
+        timestamp=str(time.time()),
+        network=NetworkState[args.network] if args.network else NetworkState.ONLINE,
+        hardware_trust=HardwareTrust.MEDIUM,
+        active_interfaces=['eth0'] if args.network == 'ONLINE' else [],
+        has_internet=args.network == 'ONLINE',
+        dns_available=args.network == 'ONLINE',
+        vpn_active=args.vpn,
+        usb_devices=set(),
+        block_devices=set(),
+        camera_available=False,
+        mic_available=False,
+        tpm_present=False,
+        external_model_endpoints=['http://external-api.example.com'] if args.external_models else [],
+        suspicious_processes=[],
+        shell_escapes_detected=0,
+        keyboard_active=True,
+        screen_unlocked=True,
+        last_activity=str(time.time())
+    )
+
+    print(f"Environment:")
+    print(f"  Network: {env.network.name}")
+    print(f"  VPN: {'Active' if env.vpn_active else 'Inactive'}")
+    print(f"  External Models: {'Detected' if env.external_model_endpoints else 'None'}")
+
+    # Create request based on type
+    if args.type == 'recall':
+        memory_class = MemoryClass[args.memory_class] if args.memory_class else MemoryClass.PUBLIC
+        request = PolicyRequest(
+            request_type='recall',
+            memory_class=memory_class,
+            tool_name=None,
+            requires_network=False,
+            requires_filesystem=False,
+            requires_usb=False
+        )
+        print(f"\nRequest Type: Memory Recall")
+        print(f"  Memory Class: {memory_class.name}")
+
+    elif args.type == 'tool':
+        request = PolicyRequest(
+            request_type='tool',
+            memory_class=None,
+            tool_name=args.tool_name,
+            requires_network=args.tool_network,
+            requires_filesystem=args.tool_filesystem,
+            requires_usb=False
+        )
+        print(f"\nRequest Type: Tool Execution")
+        print(f"  Tool: {args.tool_name}")
+        print(f"  Requires Network: {args.tool_network}")
+        print(f"  Requires Filesystem: {args.tool_filesystem}")
+
+    else:
+        print("Error: Invalid request type")
+        return 1
+
+    # Evaluate policies
+    print(f"\n{'-'*70}")
+    print("EVALUATION RESULT")
+    print(f"{'-'*70}\n")
+
+    decision = engine.evaluate(request, env, mode)
+
+    if decision:
+        print(f"Decision: {decision.name}")
+        print("Source: Custom Policy")
+    else:
+        print("Decision: (fall through to default policy)")
+        print("Source: No custom policy matched")
+
+    print()
+    return 0
+
+
+def cmd_reload(args):
+    """Reload policies from disk"""
+    engine = CustomPolicyEngine(args.dir)
+
+    print(f"\nReloading policies from {args.dir}...")
+    engine.reload_policies()
+
+    print(f"Loaded {len(engine.policies)} policies\n")
+    return 0
+
+
+def main():
+    """Main CLI entry point"""
+    parser = argparse.ArgumentParser(
+        description='Boundary Daemon Policy Control CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Validate all policy files
+  policy_ctl validate --dir config/policies.d
+
+  # Validate a single file
+  policy_ctl validate --file my-policy.yaml
+
+  # List loaded policies
+  policy_ctl list --dir config/policies.d
+
+  # List with details
+  policy_ctl list --dir config/policies.d --verbose
+
+  # Test a recall request
+  policy_ctl test --mode RESTRICTED --type recall --memory-class CONFIDENTIAL --vpn
+
+  # Test a tool request
+  policy_ctl test --mode AIRGAP --type tool --tool-name wget --tool-network
+"""
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # validate command
+    parser_validate = subparsers.add_parser('validate', help='Validate policy files')
+    parser_validate.add_argument('--file', type=str, help='Single file to validate')
+    parser_validate.add_argument('--dir', type=str, default='./config/policies.d',
+                                help='Directory containing policy files')
+    parser_validate.set_defaults(func=cmd_validate)
+
+    # list command
+    parser_list = subparsers.add_parser('list', help='List loaded policies')
+    parser_list.add_argument('--dir', type=str, default='./config/policies.d',
+                            help='Directory containing policy files')
+    parser_list.add_argument('--verbose', '-v', action='store_true',
+                            help='Show detailed policy information')
+    parser_list.set_defaults(func=cmd_list)
+
+    # test command
+    parser_test = subparsers.add_parser('test', help='Test policies against a scenario')
+    parser_test.add_argument('--dir', type=str, default='./config/policies.d',
+                            help='Directory containing policy files')
+    parser_test.add_argument('--mode', type=str, required=True,
+                            choices=['OPEN', 'RESTRICTED', 'TRUSTED', 'AIRGAP', 'COLDROOM'],
+                            help='Boundary mode')
+    parser_test.add_argument('--type', type=str, required=True,
+                            choices=['recall', 'tool'],
+                            help='Request type')
+
+    # Recall-specific options
+    parser_test.add_argument('--memory-class', type=str,
+                            choices=['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'SECRET', 'TOP_SECRET', 'CROWN_JEWEL'],
+                            help='Memory classification (for recall requests)')
+
+    # Tool-specific options
+    parser_test.add_argument('--tool-name', type=str, help='Tool name (for tool requests)')
+    parser_test.add_argument('--tool-network', action='store_true',
+                            help='Tool requires network')
+    parser_test.add_argument('--tool-filesystem', action='store_true',
+                            help='Tool requires filesystem')
+
+    # Environment options
+    parser_test.add_argument('--network', type=str, default='ONLINE',
+                            choices=['ONLINE', 'OFFLINE'],
+                            help='Network state')
+    parser_test.add_argument('--vpn', action='store_true', help='VPN active')
+    parser_test.add_argument('--external-models', action='store_true',
+                            help='External AI models detected')
+    parser_test.set_defaults(func=cmd_test)
+
+    # reload command
+    parser_reload = subparsers.add_parser('reload', help='Reload policies from disk')
+    parser_reload.add_argument('--dir', type=str, default='./config/policies.d',
+                              help='Directory containing policy files')
+    parser_reload.set_defaults(func=cmd_reload)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    # Execute command
+    try:
+        return args.func(args) or 0
+    except Exception as e:
+        print(f"\nError: {e}\n")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
