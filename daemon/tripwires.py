@@ -9,8 +9,8 @@ from enum import Enum
 from typing import List, Optional, Callable
 import threading
 
-from state_monitor import EnvironmentState, NetworkState
-from policy_engine import BoundaryMode
+from .state_monitor import EnvironmentState, NetworkState
+from .policy_engine import BoundaryMode
 
 
 class ViolationType(Enum):
