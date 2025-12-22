@@ -91,6 +91,21 @@ except ImportError:
     EnhancedCeremonyManager = None
     BiometricCeremonyConfig = None
 
+# Import security module (Plan 7: Code Vulnerability Advisor)
+try:
+    from .security import (
+        CodeVulnerabilityAdvisor, SecurityAdvisory,
+        AdvisorySeverity, AdvisoryStatus, ScanResult
+    )
+    SECURITY_ADVISOR_AVAILABLE = True
+except ImportError:
+    SECURITY_ADVISOR_AVAILABLE = False
+    CodeVulnerabilityAdvisor = None
+    SecurityAdvisory = None
+    AdvisorySeverity = None
+    AdvisoryStatus = None
+    ScanResult = None
+
 __all__ = [
     'StateMonitor', 'EnvironmentState', 'NetworkState', 'HardwareTrust',
     'PolicyEngine', 'BoundaryMode', 'PolicyRequest', 'PolicyDecision', 'Operator', 'MemoryClass',
@@ -117,5 +132,9 @@ __all__ = [
     # Biometric Authentication (Plan 6)
     'BiometricVerifier', 'BiometricType', 'BiometricResult',
     'EnhancedCeremonyManager', 'BiometricCeremonyConfig',
-    'BIOMETRIC_AVAILABLE'
+    'BIOMETRIC_AVAILABLE',
+    # Security Advisor (Plan 7)
+    'CodeVulnerabilityAdvisor', 'SecurityAdvisory',
+    'AdvisorySeverity', 'AdvisoryStatus', 'ScanResult',
+    'SECURITY_ADVISOR_AVAILABLE'
 ]

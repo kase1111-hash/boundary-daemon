@@ -74,6 +74,15 @@ except ImportError:
     EnhancedCeremonyManager = None
     BiometricCeremonyConfig = None
 
+# Import security module (Plan 7: Code Vulnerability Advisor)
+try:
+    from .security import CodeVulnerabilityAdvisor, AdvisoryStatus
+    SECURITY_ADVISOR_AVAILABLE = True
+except ImportError:
+    SECURITY_ADVISOR_AVAILABLE = False
+    CodeVulnerabilityAdvisor = None
+    AdvisoryStatus = None
+
 
 class BoundaryDaemon:
     """
@@ -251,6 +260,32 @@ class BoundaryDaemon:
                 print("Biometric authentication: not enabled (set BOUNDARY_BIOMETRIC_DIR to enable)")
         else:
             print("Biometric authentication module not loaded")
+
+        # Initialize code vulnerability advisor (Plan 7: LLM-Powered Security)
+        self.security_advisor = None
+        self.security_advisor_enabled = False
+        if SECURITY_ADVISOR_AVAILABLE and CodeVulnerabilityAdvisor:
+            # Security advisor can be enabled via environment variable
+            security_dir = os.environ.get('BOUNDARY_SECURITY_DIR', None)
+            if security_dir:
+                try:
+                    # Get optional model from environment
+                    security_model = os.environ.get('BOUNDARY_SECURITY_MODEL', None)
+                    self.security_advisor = CodeVulnerabilityAdvisor(
+                        model=security_model,
+                        storage_dir=security_dir
+                    )
+                    self.security_advisor_enabled = True
+                    stats = self.security_advisor.get_summary_stats()
+                    print(f"Security advisor available (model: {self.security_advisor.model})")
+                    print(f"  Ollama: {'Available' if self.security_advisor.is_available() else 'Not available'}")
+                    print(f"  Stored advisories: {stats['total']}")
+                except Exception as e:
+                    print(f"Warning: Security advisor failed to initialize: {e}")
+            else:
+                print("Security advisor: not enabled (set BOUNDARY_SECURITY_DIR to enable)")
+        else:
+            print("Security advisor module not loaded")
 
         # Daemon state
         self._running = False
@@ -794,6 +829,22 @@ class BoundaryDaemon:
             except Exception as e:
                 status['biometric'] = {'error': str(e)}
 
+        # Add security advisor information if enabled (Plan 7)
+        status['security_advisor_enabled'] = self.security_advisor_enabled
+        if self.security_advisor and self.security_advisor_enabled:
+            try:
+                stats = self.security_advisor.get_summary_stats()
+                status['security_advisor'] = {
+                    'model': self.security_advisor.model,
+                    'ollama_available': self.security_advisor.is_available(),
+                    'storage_dir': str(self.security_advisor.storage_dir),
+                    'total_advisories': stats['total'],
+                    'by_severity': stats['by_severity'],
+                    'by_status': stats['by_status']
+                }
+            except Exception as e:
+                status['security_advisor'] = {'error': str(e)}
+
         return status
 
     def verify_log_integrity(self) -> tuple[bool, str]:
@@ -1002,6 +1053,186 @@ class BoundaryDaemon:
             return (True, f"Template {template_id} deleted")
         else:
             return (False, f"Template {template_id} not found")
+
+    def scan_code(self, path: str, recursive: bool = True) -> tuple[bool, str, list]:
+        """
+        Scan code for vulnerabilities using the security advisor (Plan 7).
+
+        Args:
+            path: Path to file or directory to scan
+            recursive: If True and path is directory, scan recursively
+
+        Returns:
+            (success, message, advisories)
+        """
+        if not self.security_advisor or not self.security_advisor_enabled:
+            return (False, "Security advisor not enabled", [])
+
+        if not self.security_advisor.is_available():
+            return (False, "Ollama not available for security scanning", [])
+
+        try:
+            import os
+            if os.path.isfile(path):
+                # Scan single file
+                result = self.security_advisor.scan_file(path)
+                advisories = result.advisories if result else []
+                msg = f"Scanned {path}: {len(advisories)} advisory(ies) found"
+            elif os.path.isdir(path):
+                # Scan directory/repository
+                result = self.security_advisor.scan_repository(path)
+                advisories = result.advisories if result else []
+                msg = f"Scanned repository {path}: {len(advisories)} advisory(ies) found"
+            else:
+                return (False, f"Path not found: {path}", [])
+
+            # Log the scan
+            self.event_logger.log_event(
+                EventType.POLICY_DECISION,  # Using existing event type for security scans
+                f"Security scan completed: {msg}",
+                metadata={
+                    'path': path,
+                    'advisory_count': len(advisories),
+                    'action': 'security_scan'
+                }
+            )
+
+            # Convert advisories to dicts for serialization
+            advisory_dicts = [
+                {
+                    'id': a.id,
+                    'file_path': a.file_path,
+                    'line_start': a.line_start,
+                    'line_end': a.line_end,
+                    'severity': a.severity.value if hasattr(a.severity, 'value') else str(a.severity),
+                    'title': a.title,
+                    'description': a.description,
+                    'recommendation': a.recommendation,
+                    'status': a.status.value if hasattr(a.status, 'value') else str(a.status),
+                    'created_at': a.created_at
+                }
+                for a in advisories
+            ]
+
+            return (True, msg, advisory_dicts)
+
+        except Exception as e:
+            return (False, f"Scan error: {e}", [])
+
+    def get_security_advisories(self, status_filter: str = None) -> list:
+        """
+        Get stored security advisories (Plan 7).
+
+        Args:
+            status_filter: Optional status to filter by ('open', 'reviewed', 'dismissed', 'fixed')
+
+        Returns:
+            List of advisory dictionaries
+        """
+        if not self.security_advisor or not self.security_advisor_enabled:
+            return []
+
+        try:
+            advisories = self.security_advisor.load_advisories()
+
+            # Filter by status if specified
+            if status_filter and AdvisoryStatus:
+                try:
+                    target_status = AdvisoryStatus(status_filter)
+                    advisories = [a for a in advisories if a.status == target_status]
+                except ValueError:
+                    pass  # Invalid status, return all
+
+            # Convert to dicts
+            return [
+                {
+                    'id': a.id,
+                    'file_path': a.file_path,
+                    'line_start': a.line_start,
+                    'line_end': a.line_end,
+                    'severity': a.severity.value if hasattr(a.severity, 'value') else str(a.severity),
+                    'title': a.title,
+                    'description': a.description,
+                    'recommendation': a.recommendation,
+                    'status': a.status.value if hasattr(a.status, 'value') else str(a.status),
+                    'created_at': a.created_at
+                }
+                for a in advisories
+            ]
+        except Exception as e:
+            print(f"Error loading advisories: {e}")
+            return []
+
+    def update_security_advisory(self, advisory_id: str, new_status: str,
+                                  note: str = None) -> tuple[bool, str]:
+        """
+        Update the status of a security advisory (Plan 7).
+
+        Args:
+            advisory_id: ID of the advisory to update
+            new_status: New status ('reviewed', 'dismissed', 'fixed')
+            note: Optional note about the update
+
+        Returns:
+            (success, message)
+        """
+        if not self.security_advisor or not self.security_advisor_enabled:
+            return (False, "Security advisor not enabled")
+
+        try:
+            # Validate status
+            if not AdvisoryStatus:
+                return (False, "AdvisoryStatus not available")
+
+            try:
+                status = AdvisoryStatus(new_status)
+            except ValueError:
+                valid_statuses = [s.value for s in AdvisoryStatus]
+                return (False, f"Invalid status '{new_status}'. Valid: {valid_statuses}")
+
+            # Update the advisory
+            success = self.security_advisor.update_advisory_status(advisory_id, status, note)
+
+            if success:
+                self.event_logger.log_event(
+                    EventType.POLICY_DECISION,
+                    f"Security advisory {advisory_id} updated to {new_status}",
+                    metadata={
+                        'advisory_id': advisory_id,
+                        'new_status': new_status,
+                        'note': note,
+                        'action': 'advisory_update'
+                    }
+                )
+                return (True, f"Advisory {advisory_id} updated to {new_status}")
+            else:
+                return (False, f"Advisory {advisory_id} not found")
+
+        except Exception as e:
+            return (False, f"Update error: {e}")
+
+    def get_security_summary(self) -> dict:
+        """
+        Get a summary of security advisor status (Plan 7).
+
+        Returns:
+            Dictionary with security summary statistics
+        """
+        if not self.security_advisor or not self.security_advisor_enabled:
+            return {'enabled': False, 'error': 'Security advisor not enabled'}
+
+        try:
+            stats = self.security_advisor.get_summary_stats()
+            return {
+                'enabled': True,
+                'model': self.security_advisor.model,
+                'ollama_available': self.security_advisor.is_available(),
+                'total_advisories': stats['total'],
+                'by_severity': stats['by_severity'],
+                'by_status': stats['by_status']
+            }
+        except Exception as e:
+            return {'enabled': True, 'error': str(e)}
 
 
 def main():

@@ -1,6 +1,6 @@
 # Boundary Daemon - Complete Technical Specification
 
-**Version:** 2.1
+**Version:** 2.2
 **Status:** Active Development
 **Last Updated:** 2025-12-22
 
@@ -258,6 +258,19 @@ The Boundary Daemon (codenamed "Agent Smith") is the mandatory trust enforcement
 - **Graceful Fallback**: Falls back to keyboard when hardware unavailable
 - **Environment-Based Config**: Enable via BOUNDARY_BIOMETRIC_DIR environment variable
 - **Daemon Integration**: BoundaryDaemon provides enroll_biometric(), perform_override_ceremony(), list_biometric_templates(), delete_biometric_template()
+
+#### 17. Code Vulnerability Advisor (`daemon/security/`) ✅ NEW
+- **LLM-Powered Scanning**: Uses local Ollama models for privacy-preserving code analysis
+- **File Scanning**: Scan individual files for security vulnerabilities
+- **Repository Scanning**: Scan entire directories/repositories recursively
+- **Advisory Storage**: Persistent JSON storage for scan results
+- **Severity Classification**: CRITICAL, HIGH, MEDIUM, LOW, INFO levels
+- **Status Tracking**: OPEN, REVIEWED, DISMISSED, FIXED status workflow
+- **Plain Language Output**: Human-readable advisories with explanations and recommendations
+- **Model Flexibility**: Configurable LLM model via BOUNDARY_SECURITY_MODEL env var
+- **Ollama Integration**: Auto-detects Ollama availability
+- **Environment-Based Config**: Enable via BOUNDARY_SECURITY_DIR environment variable
+- **Daemon Integration**: BoundaryDaemon provides scan_code(), get_security_advisories(), update_security_advisory(), get_security_summary()
 
 ### ⚠️ Partially Implemented / Limited
 
@@ -1078,11 +1091,11 @@ liveness_required = true
 
 ---
 
-### Plan 7: LLM-Powered Code Vulnerability Advisor (Priority: HIGH - Enhancement)
+### Plan 7: LLM-Powered Code Vulnerability Advisor (Priority: HIGH - Enhancement) ✅ IMPLEMENTED
 
 **Goal**: Deliver a privacy-first, advisory-only security intelligence layer that uses trusted, local-first LLM security models to scan code for potential vulnerabilities.
 
-**Duration**: 6-8 weeks
+**Status**: ✅ **IMPLEMENTED** - `daemon/security/code_advisor.py`
 
 **Dependencies**:
 - Ollama or local inference runtime
@@ -2283,6 +2296,7 @@ class ViolationType(Enum):
 | 1.9 | 2025-12-22 | **MAJOR**: Integrated Plan 4 (Distributed Deployment). ClusterManager now integrated with BoundaryDaemon. Supports multiple sync policies (MOST_RESTRICTIVE, LEAST_RESTRICTIVE, MAJORITY, LEADER). Enable via BOUNDARY_CLUSTER_DIR environment variable. FileCoordinator for dev, EtcdCoordinator for production. Node heartbeat, health monitoring, and violation reporting across cluster. |
 | 2.0 | 2025-12-22 | **MAJOR**: Integrated Plan 5 (Custom Policy Language). CustomPolicyEngine now integrated with BoundaryDaemon. Supports YAML policy files with conditions (mode, environment, memory class, tool, time). Enable via BOUNDARY_POLICY_DIR environment variable. Priority-based policy matching with fallback to default policy. Hot reload support via reload_custom_policies(). |
 | 2.1 | 2025-12-22 | **MAJOR**: Integrated Plan 6 (Biometric Authentication). BiometricVerifier and EnhancedCeremonyManager now integrated with BoundaryDaemon. Fingerprint and facial recognition with liveness detection. Enable via BOUNDARY_BIOMETRIC_DIR environment variable. Template management, cooldown on failures, graceful fallback to keyboard. Full ceremony with biometric + keyboard + cooldown. |
+| 2.2 | 2025-12-22 | **MAJOR**: Integrated Plan 7 (LLM-Powered Code Vulnerability Advisor). CodeVulnerabilityAdvisor now integrated with BoundaryDaemon. Privacy-first code scanning using local Ollama LLMs. Enable via BOUNDARY_SECURITY_DIR and BOUNDARY_SECURITY_MODEL environment variables. Daemon provides scan_code(), get_security_advisories(), update_security_advisory(), get_security_summary() methods. Advisory storage with severity classification and status tracking workflow. |
 
 ---
 
