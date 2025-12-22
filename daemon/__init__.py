@@ -31,6 +31,23 @@ except ImportError:
     ContainerConfig = None
     ExternalWatchdog = None
 
+# Import hardware module (Plan 2: TPM Integration)
+try:
+    from .hardware import (
+        TPMManager, TPMError, TPMNotAvailableError,
+        TPMSealingError, TPMUnsealingError, TPMAttestationError, SealedSecret
+    )
+    TPM_AVAILABLE = True
+except ImportError:
+    TPM_AVAILABLE = False
+    TPMManager = None
+    TPMError = None
+    TPMNotAvailableError = None
+    TPMSealingError = None
+    TPMUnsealingError = None
+    TPMAttestationError = None
+    SealedSecret = None
+
 __all__ = [
     'StateMonitor', 'EnvironmentState', 'NetworkState', 'HardwareTrust',
     'PolicyEngine', 'BoundaryMode', 'PolicyRequest', 'PolicyDecision', 'Operator', 'MemoryClass',
@@ -41,5 +58,9 @@ __all__ = [
     'NetworkEnforcer', 'FirewallBackend', 'NetworkEnforcementError',
     'USBEnforcer', 'USBEnforcementError', 'USBDeviceClass',
     'ProcessEnforcer', 'ProcessEnforcementError', 'ContainerRuntime', 'IsolationLevel', 'ContainerConfig', 'ExternalWatchdog',
-    'ENFORCEMENT_AVAILABLE'
+    'ENFORCEMENT_AVAILABLE',
+    # Hardware (Plan 2: TPM)
+    'TPMManager', 'TPMError', 'TPMNotAvailableError',
+    'TPMSealingError', 'TPMUnsealingError', 'TPMAttestationError', 'SealedSecret',
+    'TPM_AVAILABLE'
 ]

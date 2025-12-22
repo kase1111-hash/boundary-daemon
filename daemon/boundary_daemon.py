@@ -31,6 +31,14 @@ except ImportError:
     USBEnforcer = None
     ProcessEnforcer = None
 
+# Import hardware module (Plan 2: TPM Integration)
+try:
+    from .hardware import TPMManager
+    TPM_MODULE_AVAILABLE = True
+except ImportError:
+    TPM_MODULE_AVAILABLE = False
+    TPMManager = None
+
 
 class BoundaryDaemon:
     """
@@ -102,6 +110,20 @@ class BoundaryDaemon:
                 print("Process enforcement: not available (requires root)")
         else:
             print("Process enforcement module not loaded")
+
+        # Initialize TPM manager (Plan 2: TPM Integration)
+        self.tpm_manager = None
+        if TPM_MODULE_AVAILABLE and TPMManager:
+            self.tpm_manager = TPMManager(
+                daemon=self,
+                event_logger=self.event_logger
+            )
+            if self.tpm_manager.is_available:
+                print(f"TPM integration available (backend: {self.tpm_manager.backend.value})")
+            else:
+                print("TPM integration: not available (no TPM hardware or tools)")
+        else:
+            print("TPM integration module not loaded")
 
         # Daemon state
         self._running = False
@@ -209,6 +231,15 @@ class BoundaryDaemon:
                             f"Process enforcement failed, triggering lockdown: {e}",
                             metadata={'error': str(e)}
                         )
+
+            # Bind mode transition to TPM (Plan 2: TPM Integration)
+            if self.tpm_manager and self.tpm_manager.is_available:
+                try:
+                    attestation = self.tpm_manager.bind_mode_to_tpm(new_mode, reason)
+                    print(f"TPM attestation recorded: mode {new_mode.name} bound to PCR {attestation.pcr_index}")
+                except Exception as e:
+                    print(f"TPM attestation warning: {e}")
+                    # TPM attestation failure is non-critical, continue operation
 
         self.policy_engine.register_transition_callback(on_mode_transition)
 
@@ -343,6 +374,14 @@ class BoundaryDaemon:
                 print("Process enforcement cleaned up")
             except Exception as e:
                 print(f"Warning: Failed to cleanup process enforcement: {e}")
+
+        # Cleanup TPM resources (Plan 2)
+        if self.tpm_manager:
+            try:
+                self.tpm_manager.cleanup()
+                print("TPM resources cleaned up")
+            except Exception as e:
+                print(f"Warning: Failed to cleanup TPM resources: {e}")
 
         # Log daemon shutdown
         self.event_logger.log_event(
