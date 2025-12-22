@@ -216,9 +216,16 @@ class StateMonitor:
         # Test for internet connectivity
         try:
             # Try to resolve a common domain
-            socket.getaddrinfo('google.com', 80, timeout=2)
-            dns_available = True
-            has_internet = True
+            # Note: socket.getaddrinfo doesn't accept timeout parameter
+            # Use setdefaulttimeout temporarily for DNS lookup timeout
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(2.0)
+            try:
+                socket.getaddrinfo('google.com', 80)
+                dns_available = True
+                has_internet = True
+            finally:
+                socket.setdefaulttimeout(old_timeout)
         except (socket.gaierror, socket.timeout, OSError):
             pass
 
