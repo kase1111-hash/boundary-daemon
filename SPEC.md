@@ -1,8 +1,8 @@
 # Boundary Daemon - Complete Technical Specification
 
-**Version:** 1.2
+**Version:** 1.3
 **Status:** Active Development
-**Last Updated:** 2025-12-21
+**Last Updated:** 2025-12-22
 
 ---
 
@@ -1459,6 +1459,92 @@ log_correlation = true
 
 ---
 
+#### Plan 9 Extension: Prometheus Metrics Export
+
+**Goal**: Extend OpenTelemetry integration with native Prometheus metrics export via a secure `/metrics` HTTP endpoint.
+
+**Duration**: 2-3 weeks (builds on Plan 9 core)
+
+**Dependencies**:
+- `opentelemetry-exporter-prometheus`
+- `prometheus_client`
+- External Prometheus server for scraping
+
+**Key Metrics**:
+
+| Metric Name | Type | Description | Labels |
+|-------------|------|-------------|--------|
+| `boundary_mode_duration_seconds` | Histogram | Time in each mode | `mode=airgap` |
+| `boundary_violations_total` | Counter | Cumulative violations | `type=network_in_airgap` |
+| `boundary_ceremony_duration_seconds` | Histogram | Override ceremony latency | `method=biometric` |
+| `boundary_watchdog_alerts_total` | Counter | Log anomalies detected | `severity=high` |
+| `boundary_code_scan_findings_total` | Counter | Vulnerability advisories | `confidence=high` |
+
+**Architecture**:
+```
+OpenTelemetry SDK (MeterProvider)
+        │
+        ├─► Metrics (violations_total, mode_duration, etc.)
+        │
+        ▼
+PrometheusMetricReader (opentelemetry-exporter-prometheus)
+        │ (Pull: /metrics endpoint via prometheus_client HTTP server)
+        └─► Scraped by Prometheus (scrape_interval: 15s)
+```
+
+**Implementation**:
+```python
+# Enhanced: daemon/telemetry/otel_setup.py
+
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from prometheus_client import start_http_server
+
+def init_prometheus_metrics(daemon, port: int = 9464):
+    if not daemon.policy.check_prometheus_export():
+        return None
+
+    # Start secure HTTP server (localhost only)
+    start_http_server(port=port, addr='127.0.0.1')
+
+    # Prometheus reader for OTel metrics (pull model)
+    reader = PrometheusMetricReader(
+        prefix='boundary_',
+        disable_target_info=True  # Security: No target_info exposing env
+    )
+
+    # Add to existing MeterProvider
+    meter_provider = metrics.get_meter_provider()
+    if isinstance(meter_provider, MeterProvider):
+        meter_provider.add_metric_reader(reader)
+
+    return reader
+```
+
+**Configuration** (in `boundary.conf`):
+```ini
+[prometheus]
+enabled = true
+port = 9464
+bind_addr = "127.0.0.1"
+auth_token = "boundary_secure_token"
+namespace = "boundary_"
+```
+
+**Security Controls**:
+- Endpoint bound to `127.0.0.1` (localhost only)
+- Auth token validation via middleware
+- Rate limiting: 10 requests/min
+- Disabled in AIRGAP/COLDROOM modes
+- No PII in metrics (redacted via Policy Engine)
+
+**Benefits**:
+- Pull-based observability (no outbound traffic)
+- PromQL querying for security analytics
+- Grafana dashboards for visualization
+- Alertmanager integration for violations
+
+---
+
 ## PII Detection & Redaction Pipeline
 
 ### Purpose
@@ -2018,6 +2104,8 @@ opentelemetry-api                       # OpenTelemetry core API
 opentelemetry-sdk                       # OpenTelemetry SDK implementation
 opentelemetry-exporter-otlp-proto-grpc  # OTLP gRPC exporter for telemetry
 opentelemetry-instrumentation-logging   # Logging instrumentation for OTel
+opentelemetry-exporter-prometheus       # Prometheus metrics exporter
+prometheus_client                       # Prometheus client for /metrics endpoint
 ```
 
 ---
@@ -2091,6 +2179,7 @@ class ViolationType(Enum):
 | 1.0 | 2025-12-19 | Initial comprehensive specification |
 | 1.1 | 2025-12-21 | Added Plan 7 (LLM-Powered Code Vulnerability Advisor), expanded Plan 6 (Biometric Authentication) with detailed implementation, added PII Detection & Redaction Pipeline, added Proactive Exposure Monitoring, added new event types |
 | 1.2 | 2025-12-21 | Added Plan 8 (Log Watchdog Agent) for real-time log monitoring and anomaly detection, added Plan 9 (OpenTelemetry Integration) for enterprise-grade observability, updated event types (WATCHDOG_ALERT, WATCHDOG_RECOMMEND, TELEMETRY_EXPORT), expanded dependencies for new features |
+| 1.3 | 2025-12-22 | Consolidated all feature documentation into single spec. Added Plan 9 Extension (Prometheus Metrics Export). Removed obsolete documents: Spec_1.1.md, Additional-Specs.md, Future-Features.md, Future-Feature-framework.md |
 
 ---
 
