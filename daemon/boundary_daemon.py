@@ -21,6 +21,14 @@ from .policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDeci
 from .tripwires import TripwireSystem, LockdownManager, TripwireViolation
 from .event_logger import EventLogger, EventType
 
+# Import signed event logger (Plan 3: Cryptographic Log Signing)
+try:
+    from .signed_event_logger import SignedEventLogger
+    SIGNED_LOGGING_AVAILABLE = True
+except ImportError:
+    SIGNED_LOGGING_AVAILABLE = False
+    SignedEventLogger = None
+
 # Import enforcement module (Plan 1: Kernel-Level Enforcement)
 try:
     from .enforcement import NetworkEnforcer, USBEnforcer, ProcessEnforcer
@@ -62,7 +70,23 @@ class BoundaryDaemon:
         # Initialize core components
         print("Initializing Boundary Daemon (Agent Smith)...")
 
-        self.event_logger = EventLogger(os.path.join(log_dir, 'boundary_chain.log'))
+        # Initialize event logger (Plan 3: Cryptographic Log Signing)
+        log_file = os.path.join(log_dir, 'boundary_chain.log')
+        self.signed_logging = False
+        if SIGNED_LOGGING_AVAILABLE and SignedEventLogger:
+            try:
+                signing_key_path = os.path.join(log_dir, 'signing.key')
+                self.event_logger = SignedEventLogger(log_file, signing_key_path)
+                self.signed_logging = True
+                print(f"Signed event logging enabled (key: {signing_key_path})")
+                print(f"Public verification key: {self.event_logger.get_public_key_hex()[:32]}...")
+            except Exception as e:
+                print(f"Warning: Signed logging failed, falling back to basic logging: {e}")
+                self.event_logger = EventLogger(log_file)
+        else:
+            self.event_logger = EventLogger(log_file)
+            print("Signed event logging: not available (pynacl not installed)")
+
         self.state_monitor = StateMonitor(poll_interval=1.0)
         self.policy_engine = PolicyEngine(initial_mode=initial_mode)
         self.tripwire_system = TripwireSystem()
@@ -566,14 +590,58 @@ class BoundaryDaemon:
         env_state = self.state_monitor.get_current_state()
         lockdown_info = self.lockdown_manager.get_lockdown_info()
 
-        return {
+        status = {
             'running': self._running,
             'boundary_state': boundary_state.to_dict(),
             'environment': env_state.to_dict() if env_state else None,
             'lockdown': lockdown_info,
             'event_count': self.event_logger.get_event_count(),
-            'tripwire_violations': self.tripwire_system.get_violation_count()
+            'tripwire_violations': self.tripwire_system.get_violation_count(),
+            'signed_logging': self.signed_logging
         }
+
+        # Add public key if signed logging is enabled
+        if self.signed_logging and hasattr(self.event_logger, 'get_public_key_hex'):
+            status['public_verification_key'] = self.event_logger.get_public_key_hex()
+
+        return status
+
+    def verify_log_integrity(self) -> tuple[bool, str]:
+        """
+        Verify the integrity of the event log.
+
+        Returns:
+            (is_valid, message)
+        """
+        if self.signed_logging and hasattr(self.event_logger, 'verify_full_integrity'):
+            valid, error = self.event_logger.verify_full_integrity()
+            if valid:
+                return (True, "Log integrity verified (hash chain + signatures)")
+            else:
+                return (False, error or "Integrity check failed")
+        else:
+            # Fall back to hash chain verification only
+            valid, error = self.event_logger.verify_chain()
+            if valid:
+                return (True, "Hash chain verified (signatures not available)")
+            else:
+                return (False, error or "Hash chain verification failed")
+
+    def export_public_key(self, output_path: str) -> bool:
+        """
+        Export the log signing public key for external verification.
+
+        Args:
+            output_path: Path to save the public key
+
+        Returns:
+            True if successful, False if signed logging not available
+        """
+        if self.signed_logging and hasattr(self.event_logger, 'export_public_key'):
+            return self.event_logger.export_public_key(output_path)
+        else:
+            print("Signed logging not available - no public key to export")
+            return False
 
     def request_mode_change(self, new_mode: BoundaryMode, operator: Operator, reason: str = "") -> tuple[bool, str]:
         """
