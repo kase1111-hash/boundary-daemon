@@ -10,13 +10,19 @@ from .boundary_daemon import BoundaryDaemon
 
 # Import enforcement module (Plan 1: Kernel-Level Enforcement)
 try:
-    from .enforcement import NetworkEnforcer, FirewallBackend, NetworkEnforcementError
+    from .enforcement import (
+        NetworkEnforcer, FirewallBackend, NetworkEnforcementError,
+        USBEnforcer, USBEnforcementError, USBDeviceClass
+    )
     ENFORCEMENT_AVAILABLE = True
 except ImportError:
     ENFORCEMENT_AVAILABLE = False
     NetworkEnforcer = None
     FirewallBackend = None
     NetworkEnforcementError = None
+    USBEnforcer = None
+    USBEnforcementError = None
+    USBDeviceClass = None
 
 __all__ = [
     'StateMonitor', 'EnvironmentState', 'NetworkState', 'HardwareTrust',
@@ -26,5 +32,6 @@ __all__ = [
     'BoundaryDaemon',
     # Enforcement (Plan 1)
     'NetworkEnforcer', 'FirewallBackend', 'NetworkEnforcementError',
+    'USBEnforcer', 'USBEnforcementError', 'USBDeviceClass',
     'ENFORCEMENT_AVAILABLE'
 ]

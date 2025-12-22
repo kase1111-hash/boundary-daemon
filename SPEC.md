@@ -1,6 +1,6 @@
 # Boundary Daemon - Complete Technical Specification
 
-**Version:** 1.4
+**Version:** 1.5
 **Status:** Active Development
 **Last Updated:** 2025-12-22
 
@@ -164,7 +164,7 @@ The Boundary Daemon (codenamed "Agent Smith") is the mandatory trust enforcement
 - **Signal Handling**: Graceful shutdown (SIGINT/SIGTERM)
 - **Public API**: check_recall_permission, check_tool_permission, get_status
 
-#### 9. Network Enforcer (`daemon/enforcement/network_enforcer.py`) ✅ NEW
+#### 9. Network Enforcer (`daemon/enforcement/network_enforcer.py`) ✅
 - **Network Enforcement**: iptables/nftables firewall rule management
 - **Mode-Based Rules**: Automatic rule application on mode transitions
 - **AIRGAP Enforcement**: Blocks all network except loopback
@@ -173,13 +173,24 @@ The Boundary Daemon (codenamed "Agent Smith") is the mandatory trust enforcement
 - **Fail-Closed**: Triggers lockdown on enforcement failure
 - **Cleanup**: Removes rules on daemon shutdown
 
+#### 10. USB Enforcer (`daemon/enforcement/usb_enforcer.py`) ✅ NEW
+- **USB Enforcement**: udev rules and sysfs device authorization
+- **Mode-Based Rules**: Automatic rule application on mode transitions
+- **TRUSTED/AIRGAP Mode**: Blocks USB mass storage, allows HID
+- **COLDROOM Mode**: Blocks all USB except essential HID (keyboard)
+- **LOCKDOWN Mode**: Blocks all new USB devices
+- **Device Ejection**: Can forcibly unmount and de-authorize USB storage
+- **Baseline Tracking**: Tracks devices present at daemon start
+- **Fail-Closed**: Triggers lockdown on enforcement failure
+- **Cleanup**: Removes udev rules on daemon shutdown
+
 ### ⚠️ Partially Implemented / Limited
 
 #### 1. Enforcement Mechanism
-- **Status**: Network enforcement implemented (Plan 1 Phase 1), USB/process enforcement pending
-- **What Works**: Network blocking via iptables/nftables, logging, policy decisions
-- **What's Missing**: USB prevention (Phase 2), process isolation (Phase 3)
-- **Impact**: Network-based exfiltration now blocked; USB/process attacks still possible
+- **Status**: Network + USB enforcement implemented (Plan 1 Phases 1-2), process enforcement pending
+- **What Works**: Network blocking via iptables/nftables, USB blocking via udev, logging, policy decisions
+- **What's Missing**: Process isolation (Phase 3)
+- **Impact**: Network and USB exfiltration now blocked; process-level attacks still possible
 
 #### 2. Human Presence Verification
 - **Status**: Basic keyboard input only
@@ -329,7 +340,7 @@ See [Unimplemented Features](#unimplemented-features) section below.
 **Components**:
 1. **SELinux/AppArmor Policy Generator** - Planned
 2. **iptables/nftables Rule Manager** - ✅ **IMPLEMENTED**
-3. **udev USB Rule Manager** - Planned
+3. **udev USB Rule Manager** - ✅ **IMPLEMENTED**
 4. **seccomp-bpf Filter Installer** - Planned
 
 **Implementation Steps**:
@@ -392,14 +403,14 @@ class NetworkEnforcer:
 
 ---
 
-#### Phase 2: USB Prevention (3-4 weeks)
+#### Phase 2: USB Prevention ✅ IMPLEMENTED
 ```python
 # New module: daemon/enforcement/usb_enforcer.py
 
 class USBEnforcer:
     """Prevents USB device mounting using udev rules"""
 
-    UDEV_RULE_PATH = '/etc/udev/rules.d/99-boundary-usb-block.rules'
+    UDEV_RULE_PATH = '/etc/udev/rules.d/99-boundary-usb.rules'
 
     def __init__(self, daemon):
         self.daemon = daemon
@@ -2190,6 +2201,7 @@ class ViolationType(Enum):
 | 1.2 | 2025-12-21 | Added Plan 8 (Log Watchdog Agent) for real-time log monitoring and anomaly detection, added Plan 9 (OpenTelemetry Integration) for enterprise-grade observability, updated event types (WATCHDOG_ALERT, WATCHDOG_RECOMMEND, TELEMETRY_EXPORT), expanded dependencies for new features |
 | 1.3 | 2025-12-22 | Consolidated all feature documentation into single spec. Added Plan 9 Extension (Prometheus Metrics Export). Removed obsolete documents: Spec_1.1.md, Additional-Specs.md, Future-Features.md, Future-Feature-framework.md |
 | 1.4 | 2025-12-22 | **MAJOR**: Implemented Plan 1 Phase 1 (Network Enforcement). Added `daemon/enforcement/network_enforcer.py` with iptables/nftables support. Network-based exfiltration now blocked in AIRGAP/COLDROOM/LOCKDOWN modes. Updated implementation status. |
+| 1.5 | 2025-12-22 | **MAJOR**: Implemented Plan 1 Phase 2 (USB Enforcement). Added `daemon/enforcement/usb_enforcer.py` with udev rules support. USB mass storage now blocked in TRUSTED+ modes, all USB blocked in COLDROOM. Device ejection and baseline tracking implemented. |
 
 ---
 
