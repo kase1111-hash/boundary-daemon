@@ -98,11 +98,13 @@ class TripwireSystem:
 
         with self._lock:
             # Initialize baselines on first check
+            first_check = False
             if self._baseline_usb_devices is None:
                 self._baseline_usb_devices = env_state.usb_devices.copy()
                 self._previous_mode = current_mode
                 self._previous_network_state = env_state.network
-                return None
+                first_check = True
+                # Don't return early - still check for obvious violations!
 
             # Check for network coming online in AIRGAP+ mode
             violation = self._check_network_in_airgap(current_mode, env_state)
@@ -216,7 +218,7 @@ class TripwireSystem:
         """Check for hardware trust degradation"""
         # In high-security modes, require high hardware trust
         if mode >= BoundaryMode.AIRGAP:
-            from state_monitor import HardwareTrust
+            from .state_monitor import HardwareTrust
             if env_state.hardware_trust == HardwareTrust.LOW:
                 return (
                     ViolationType.HARDWARE_TRUST_DEGRADED,
