@@ -83,6 +83,17 @@ except ImportError:
     CodeVulnerabilityAdvisor = None
     AdvisoryStatus = None
 
+# Import watchdog module (Plan 8: Log Watchdog Agent)
+try:
+    from .watchdog import LogWatchdog, WatchdogConfig, AlertSeverity as WatchdogSeverity, AlertStatus as WatchdogStatus
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    LogWatchdog = None
+    WatchdogConfig = None
+    WatchdogSeverity = None
+    WatchdogStatus = None
+
 
 class BoundaryDaemon:
     """
@@ -286,6 +297,42 @@ class BoundaryDaemon:
                 print("Security advisor: not enabled (set BOUNDARY_SECURITY_DIR to enable)")
         else:
             print("Security advisor module not loaded")
+
+        # Initialize log watchdog (Plan 8: Log Watchdog Agent)
+        self.log_watchdog = None
+        self.watchdog_enabled = False
+        if WATCHDOG_AVAILABLE and LogWatchdog:
+            # Watchdog can be enabled via environment variable
+            watchdog_dir = os.environ.get('BOUNDARY_WATCHDOG_DIR', None)
+            if watchdog_dir:
+                try:
+                    # Get optional config from environment
+                    watchdog_model = os.environ.get('BOUNDARY_WATCHDOG_MODEL', None)
+                    log_paths_str = os.environ.get('BOUNDARY_WATCHDOG_LOGS', '')
+                    log_paths = [p.strip() for p in log_paths_str.split(':') if p.strip()]
+
+                    # Default to daemon's own log
+                    if not log_paths:
+                        log_paths = [os.path.join(log_dir, 'boundary_chain.log')]
+
+                    self.log_watchdog = LogWatchdog(
+                        daemon=self,
+                        log_paths=log_paths,
+                        model=watchdog_model if watchdog_model else "llama3.1:8b-instruct-q6_K",
+                        storage_dir=watchdog_dir
+                    )
+                    self.watchdog_enabled = True
+                    stats = self.log_watchdog.get_summary_stats()
+                    print(f"Log watchdog available (model: {self.log_watchdog.model})")
+                    print(f"  Ollama: {'Available' if self.log_watchdog.is_available() else 'Not available'}")
+                    print(f"  Monitoring: {len(log_paths)} log file(s)")
+                    print(f"  Stored alerts: {stats['total']}")
+                except Exception as e:
+                    print(f"Warning: Log watchdog failed to initialize: {e}")
+            else:
+                print("Log watchdog: not enabled (set BOUNDARY_WATCHDOG_DIR to enable)")
+        else:
+            print("Log watchdog module not loaded")
 
         # Daemon state
         self._running = False
@@ -504,6 +551,14 @@ class BoundaryDaemon:
             except Exception as e:
                 print(f"Warning: Cluster coordination failed to start: {e}")
 
+        # Start log watchdog (Plan 8)
+        if self.log_watchdog and self.watchdog_enabled:
+            try:
+                self.log_watchdog.start()
+                print(f"Log watchdog started (monitoring {len(self.log_watchdog.log_paths)} file(s))")
+            except Exception as e:
+                print(f"Warning: Log watchdog failed to start: {e}")
+
         print("Boundary Daemon running. Press Ctrl+C to stop.")
         print("=" * 70)
 
@@ -560,6 +615,14 @@ class BoundaryDaemon:
                 print("Cluster coordination stopped")
             except Exception as e:
                 print(f"Warning: Failed to stop cluster coordination: {e}")
+
+        # Stop log watchdog (Plan 8)
+        if self.log_watchdog and self.watchdog_enabled:
+            try:
+                self.log_watchdog.stop()
+                print("Log watchdog stopped")
+            except Exception as e:
+                print(f"Warning: Failed to stop log watchdog: {e}")
 
         # Log daemon shutdown
         self.event_logger.log_event(
@@ -844,6 +907,23 @@ class BoundaryDaemon:
                 }
             except Exception as e:
                 status['security_advisor'] = {'error': str(e)}
+
+        # Add log watchdog information if enabled (Plan 8)
+        status['watchdog_enabled'] = self.watchdog_enabled
+        if self.log_watchdog and self.watchdog_enabled:
+            try:
+                stats = self.log_watchdog.get_summary_stats()
+                status['watchdog'] = {
+                    'model': self.log_watchdog.model,
+                    'ollama_available': self.log_watchdog.is_available(),
+                    'monitoring': stats['monitoring'],
+                    'log_paths': stats['log_paths'],
+                    'total_alerts': stats['total'],
+                    'by_severity': stats['by_severity'],
+                    'by_status': stats['by_status']
+                }
+            except Exception as e:
+                status['watchdog'] = {'error': str(e)}
 
         return status
 
@@ -1233,6 +1313,238 @@ class BoundaryDaemon:
             }
         except Exception as e:
             return {'enabled': True, 'error': str(e)}
+
+    # Log Watchdog API methods (Plan 8)
+
+    def start_watchdog(self) -> tuple[bool, str]:
+        """
+        Start the log watchdog monitoring (Plan 8).
+
+        Returns:
+            (success, message)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled")
+
+        try:
+            self.log_watchdog.start()
+            self.event_logger.log_event(
+                EventType.HEALTH_CHECK,
+                "Log watchdog started",
+                metadata={'action': 'watchdog_start', 'log_paths': self.log_watchdog.log_paths}
+            )
+            return (True, f"Watchdog started, monitoring {len(self.log_watchdog.log_paths)} file(s)")
+        except Exception as e:
+            return (False, f"Failed to start watchdog: {e}")
+
+    def stop_watchdog(self) -> tuple[bool, str]:
+        """
+        Stop the log watchdog monitoring (Plan 8).
+
+        Returns:
+            (success, message)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled")
+
+        try:
+            self.log_watchdog.stop()
+            self.event_logger.log_event(
+                EventType.HEALTH_CHECK,
+                "Log watchdog stopped",
+                metadata={'action': 'watchdog_stop'}
+            )
+            return (True, "Watchdog stopped")
+        except Exception as e:
+            return (False, f"Failed to stop watchdog: {e}")
+
+    def get_watchdog_alerts(self, severity: str = None, status: str = None,
+                            limit: int = 100) -> list:
+        """
+        Get watchdog alerts with optional filtering (Plan 8).
+
+        Args:
+            severity: Filter by severity ('low', 'medium', 'high', 'critical')
+            status: Filter by status ('new', 'acknowledged', 'resolved', 'dismissed')
+            limit: Maximum number of alerts to return
+
+        Returns:
+            List of alert dictionaries
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return []
+
+        try:
+            sev_filter = None
+            stat_filter = None
+
+            if severity and WatchdogSeverity:
+                try:
+                    sev_filter = WatchdogSeverity(severity)
+                except ValueError:
+                    pass
+
+            if status and WatchdogStatus:
+                try:
+                    stat_filter = WatchdogStatus(status)
+                except ValueError:
+                    pass
+
+            alerts = self.log_watchdog.get_alerts(
+                severity=sev_filter,
+                status=stat_filter,
+                limit=limit
+            )
+
+            return [a.to_dict() for a in alerts]
+
+        except Exception as e:
+            print(f"Error getting watchdog alerts: {e}")
+            return []
+
+    def acknowledge_watchdog_alert(self, alert_id: str) -> tuple[bool, str]:
+        """
+        Acknowledge a watchdog alert (Plan 8).
+
+        Args:
+            alert_id: ID of the alert to acknowledge
+
+        Returns:
+            (success, message)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled")
+
+        if self.log_watchdog.acknowledge_alert(alert_id):
+            self.event_logger.log_event(
+                EventType.HEALTH_CHECK,
+                f"Watchdog alert acknowledged: {alert_id}",
+                metadata={'alert_id': alert_id, 'action': 'acknowledge'}
+            )
+            return (True, f"Alert {alert_id} acknowledged")
+        else:
+            return (False, f"Alert {alert_id} not found")
+
+    def resolve_watchdog_alert(self, alert_id: str) -> tuple[bool, str]:
+        """
+        Mark a watchdog alert as resolved (Plan 8).
+
+        Args:
+            alert_id: ID of the alert to resolve
+
+        Returns:
+            (success, message)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled")
+
+        if self.log_watchdog.resolve_alert(alert_id):
+            self.event_logger.log_event(
+                EventType.HEALTH_CHECK,
+                f"Watchdog alert resolved: {alert_id}",
+                metadata={'alert_id': alert_id, 'action': 'resolve'}
+            )
+            return (True, f"Alert {alert_id} resolved")
+        else:
+            return (False, f"Alert {alert_id} not found")
+
+    def dismiss_watchdog_alert(self, alert_id: str) -> tuple[bool, str]:
+        """
+        Dismiss a watchdog alert (Plan 8).
+
+        Args:
+            alert_id: ID of the alert to dismiss
+
+        Returns:
+            (success, message)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled")
+
+        if self.log_watchdog.dismiss_alert(alert_id):
+            self.event_logger.log_event(
+                EventType.HEALTH_CHECK,
+                f"Watchdog alert dismissed: {alert_id}",
+                metadata={'alert_id': alert_id, 'action': 'dismiss'}
+            )
+            return (True, f"Alert {alert_id} dismissed")
+        else:
+            return (False, f"Alert {alert_id} not found")
+
+    def add_watchdog_log_path(self, path: str) -> tuple[bool, str]:
+        """
+        Add a log file to watchdog monitoring (Plan 8).
+
+        Args:
+            path: Path to log file
+
+        Returns:
+            (success, message)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled")
+
+        if not os.path.exists(path):
+            return (False, f"Log file not found: {path}")
+
+        self.log_watchdog.add_log_path(path)
+        self.event_logger.log_event(
+            EventType.HEALTH_CHECK,
+            f"Watchdog log path added: {path}",
+            metadata={'path': path, 'action': 'add_log_path'}
+        )
+        return (True, f"Added {path} to watchdog monitoring")
+
+    def get_watchdog_summary(self) -> dict:
+        """
+        Get a summary of log watchdog status (Plan 8).
+
+        Returns:
+            Dictionary with watchdog summary statistics
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return {'enabled': False, 'error': 'Log watchdog not enabled'}
+
+        try:
+            stats = self.log_watchdog.get_summary_stats()
+            return {
+                'enabled': True,
+                'model': self.log_watchdog.model,
+                'ollama_available': self.log_watchdog.is_available(),
+                'monitoring': stats['monitoring'],
+                'log_paths': stats['log_paths'],
+                'total_alerts': stats['total'],
+                'by_severity': stats['by_severity'],
+                'by_status': stats['by_status']
+            }
+        except Exception as e:
+            return {'enabled': True, 'error': str(e)}
+
+    def analyze_log_entry(self, entry: str, source: str = "manual") -> tuple[bool, str, dict]:
+        """
+        Manually analyze a log entry with the watchdog (Plan 8).
+
+        Args:
+            entry: Log entry text to analyze
+            source: Source identifier
+
+        Returns:
+            (success, message, alert_dict or None)
+        """
+        if not self.log_watchdog or not self.watchdog_enabled:
+            return (False, "Log watchdog not enabled", {})
+
+        if not self.log_watchdog.is_available():
+            return (False, "Ollama not available for analysis", {})
+
+        try:
+            alert = self.log_watchdog.analyze_log_entry(entry, source)
+            if alert:
+                return (True, f"Alert generated: {alert.severity.value}", alert.to_dict())
+            else:
+                return (True, "No issues detected", {})
+        except Exception as e:
+            return (False, f"Analysis error: {e}", {})
 
 
 def main():

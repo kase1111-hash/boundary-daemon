@@ -106,6 +106,21 @@ except ImportError:
     AdvisoryStatus = None
     ScanResult = None
 
+# Import watchdog module (Plan 8: Log Watchdog Agent)
+try:
+    from .watchdog import (
+        LogWatchdog, WatchdogAlert, WatchdogConfig,
+        AlertSeverity, AlertStatus
+    )
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    LogWatchdog = None
+    WatchdogAlert = None
+    WatchdogConfig = None
+    AlertSeverity = None
+    AlertStatus = None
+
 __all__ = [
     'StateMonitor', 'EnvironmentState', 'NetworkState', 'HardwareTrust',
     'PolicyEngine', 'BoundaryMode', 'PolicyRequest', 'PolicyDecision', 'Operator', 'MemoryClass',
@@ -136,5 +151,9 @@ __all__ = [
     # Security Advisor (Plan 7)
     'CodeVulnerabilityAdvisor', 'SecurityAdvisory',
     'AdvisorySeverity', 'AdvisoryStatus', 'ScanResult',
-    'SECURITY_ADVISOR_AVAILABLE'
+    'SECURITY_ADVISOR_AVAILABLE',
+    # Log Watchdog (Plan 8)
+    'LogWatchdog', 'WatchdogAlert', 'WatchdogConfig',
+    'AlertSeverity', 'AlertStatus',
+    'WATCHDOG_AVAILABLE'
 ]
