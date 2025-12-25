@@ -8,6 +8,7 @@ This module simulates attack scenarios across different network types:
 - WiFi Security: Evil Twin AP, deauth flood, handshake capture, rogue AP, weak encryption
 - Threat Intelligence: TOR exit nodes, C2 servers, botnets, blacklisted IPs, beaconing
 - File Integrity: Hash verification, config tampering, binary modification, permission changes
+- Traffic Anomaly: Port scanning, data exfiltration, unusual ports, covert channels
 - Cellular: IMSI catcher/Stingray attacks (2G downgrade, tower spoofing)
 - WiFi: Rogue AP, deauthentication attacks
 - Ethernet: USB/storage insertion attacks
@@ -43,6 +44,9 @@ from daemon.security.threat_intel import (
 )
 from daemon.security.file_integrity import (
     FileIntegrityMonitor, FileIntegrityConfig, FileIntegrityAlert, FileChange
+)
+from daemon.security.traffic_anomaly import (
+    TrafficAnomalyMonitor, TrafficAnomalyConfig, TrafficAnomalyAlert, TrafficAnomaly
 )
 
 
@@ -1121,6 +1125,153 @@ class FileIntegrityAttackSimulator:
         return self.monitor.scan_for_world_writable()
 
 
+class TrafficAnomalyAttackSimulator:
+    """Simulates traffic anomaly attack scenarios"""
+
+    def __init__(self, monitor: TrafficAnomalyMonitor):
+        self.monitor = monitor
+
+    def simulate_port_scan(self) -> List[TrafficAnomaly]:
+        """
+        Simulate vertical port scan attack (many ports on one host).
+        """
+        src_ip = "192.168.1.100"
+        dst_ip = "10.0.0.50"
+        ports = list(range(1, 100))  # Scan ports 1-99
+
+        return self.monitor.detect_port_scan(
+            src_ip=src_ip,
+            dst_ip=dst_ip,
+            ports=ports,
+            scan_type="connect"
+        )
+
+    def simulate_horizontal_scan(self) -> List[TrafficAnomaly]:
+        """
+        Simulate horizontal port scan (same port across many hosts).
+        """
+        src_ip = "192.168.1.100"
+        port = 22  # SSH port
+        targets = [f"10.0.0.{i}" for i in range(1, 20)]
+
+        return self.monitor.detect_horizontal_scan(
+            src_ip=src_ip,
+            port=port,
+            targets=targets
+        )
+
+    def simulate_syn_scan(self) -> List[TrafficAnomaly]:
+        """
+        Simulate SYN scan (stealth scan).
+        """
+        anomalies = []
+        src_ip = "192.168.1.100"
+        dst_ip = "10.0.0.50"
+
+        # Send SYN-only packets to many ports
+        for port in range(1, 30):
+            result = self.monitor.analyze_connection(
+                src_ip=src_ip,
+                src_port=40000 + port,
+                dst_ip=dst_ip,
+                dst_port=port,
+                protocol="tcp",
+                state="syn_sent",
+                flags="S"  # SYN only
+            )
+            anomalies.extend(result)
+
+        return anomalies
+
+    def simulate_data_exfiltration(self) -> List[TrafficAnomaly]:
+        """
+        Simulate data exfiltration (large outbound transfer).
+        """
+        return self.monitor.analyze_connection(
+            src_ip="192.168.1.100",
+            src_port=45000,
+            dst_ip="203.0.113.50",
+            dst_port=443,
+            protocol="tcp",
+            bytes_sent=100 * 1024 * 1024,  # 100 MB upload
+            bytes_recv=1024,
+            state="established"
+        )
+
+    def simulate_unusual_port(self) -> List[TrafficAnomaly]:
+        """
+        Simulate connection to suspicious/unusual port.
+        """
+        anomalies = []
+
+        # Connect to Metasploit default port
+        anomalies.extend(self.monitor.analyze_connection(
+            src_ip="192.168.1.100",
+            src_port=50000,
+            dst_ip="10.0.0.1",
+            dst_port=4444,  # Metasploit default
+            protocol="tcp"
+        ))
+
+        # Connect to common backdoor port
+        anomalies.extend(self.monitor.analyze_connection(
+            src_ip="192.168.1.100",
+            src_port=50001,
+            dst_ip="10.0.0.1",
+            dst_port=31337,  # Leet backdoor port
+            protocol="tcp"
+        ))
+
+        return anomalies
+
+    def simulate_dns_over_tcp(self) -> List[TrafficAnomaly]:
+        """
+        Simulate DNS over TCP (potential tunneling).
+        """
+        return self.monitor.analyze_connection(
+            src_ip="192.168.1.100",
+            src_port=45000,
+            dst_ip="8.8.8.8",
+            dst_port=53,
+            protocol="tcp",  # DNS over TCP is unusual
+            bytes_sent=5000
+        )
+
+    def simulate_icmp_tunnel(self) -> List[TrafficAnomaly]:
+        """
+        Simulate ICMP tunneling (large ICMP payload).
+        """
+        return self.monitor.analyze_connection(
+            src_ip="192.168.1.100",
+            src_port=0,
+            dst_ip="203.0.113.1",
+            dst_port=0,
+            protocol="icmp",
+            bytes_sent=10000  # Large ICMP payload
+        )
+
+    def simulate_beaconing(self) -> List[TrafficAnomaly]:
+        """
+        Simulate C2 beaconing behavior (regular interval connections).
+        """
+        anomalies = []
+        dst_ip = "203.0.113.100"
+
+        # Simulate regular connections with consistent intervals
+        # This builds up connection history for beaconing detection
+        for i in range(10):
+            result = self.monitor.analyze_connection(
+                src_ip="192.168.1.100",
+                src_port=40000 + i,
+                dst_ip=dst_ip,
+                dst_port=443,
+                protocol="tcp"
+            )
+            anomalies.extend(result)
+
+        return anomalies
+
+
 class TestARPAttacks(unittest.TestCase):
     """Test suite for ARP attack detection"""
 
@@ -1591,6 +1742,133 @@ class TestFileIntegrityAttacks(unittest.TestCase):
         self.assertFalse(invalid, "Invalid hash accepted")
 
 
+class TestTrafficAnomalyAttacks(unittest.TestCase):
+    """Test suite for traffic anomaly attack detection"""
+
+    def setUp(self):
+        self.config = TrafficAnomalyConfig(
+            port_scan_threshold=10,
+            horizontal_scan_threshold=5,
+            syn_only_threshold=20,
+            large_transfer_threshold=50 * 1024 * 1024,
+        )
+        self.monitor = TrafficAnomalyMonitor(config=self.config)
+        self.simulator = TrafficAnomalyAttackSimulator(self.monitor)
+
+    def test_vertical_port_scan_detection(self):
+        """Test detection of vertical port scan"""
+        anomalies = self.simulator.simulate_port_scan()
+
+        scan_detected = any(
+            anomaly.alert_type == TrafficAnomalyAlert.VERTICAL_PORT_SCAN
+            for anomaly in anomalies
+        )
+
+        if scan_detected:
+            results.add_pass("Vertical Port Scan", "Detected multi-port scan on single host")
+        else:
+            results.add_fail("Vertical Port Scan", "Failed to detect port scan")
+
+        self.assertTrue(scan_detected, f"Port scan not detected. Anomalies: {anomalies}")
+
+    def test_horizontal_scan_detection(self):
+        """Test detection of horizontal port scan"""
+        anomalies = self.simulator.simulate_horizontal_scan()
+
+        scan_detected = any(
+            anomaly.alert_type == TrafficAnomalyAlert.HORIZONTAL_PORT_SCAN
+            for anomaly in anomalies
+        )
+
+        if scan_detected:
+            results.add_pass("Horizontal Port Scan", "Detected single-port scan across hosts")
+        else:
+            results.add_fail("Horizontal Port Scan", "Failed to detect horizontal scan")
+
+        self.assertTrue(scan_detected, f"Horizontal scan not detected. Anomalies: {anomalies}")
+
+    def test_syn_scan_detection(self):
+        """Test detection of SYN scan (stealth scan)"""
+        anomalies = self.simulator.simulate_syn_scan()
+
+        syn_detected = any(
+            anomaly.alert_type in [TrafficAnomalyAlert.SYN_SCAN_DETECTED,
+                                   TrafficAnomalyAlert.VERTICAL_PORT_SCAN]
+            for anomaly in anomalies
+        )
+
+        if syn_detected:
+            results.add_pass("SYN Scan Detection", "Detected SYN-only scan pattern")
+        else:
+            results.add_fail("SYN Scan Detection", "Failed to detect SYN scan")
+
+        self.assertTrue(syn_detected, f"SYN scan not detected. Anomalies: {anomalies}")
+
+    def test_data_exfiltration_detection(self):
+        """Test detection of large data exfiltration"""
+        anomalies = self.simulator.simulate_data_exfiltration()
+
+        exfil_detected = any(
+            anomaly.alert_type == TrafficAnomalyAlert.LARGE_TRANSFER
+            for anomaly in anomalies
+        )
+
+        if exfil_detected:
+            results.add_pass("Data Exfiltration", "Detected large outbound transfer")
+        else:
+            results.add_fail("Data Exfiltration", "Failed to detect exfiltration")
+
+        self.assertTrue(exfil_detected, f"Exfiltration not detected. Anomalies: {anomalies}")
+
+    def test_unusual_port_detection(self):
+        """Test detection of connections to unusual ports"""
+        anomalies = self.simulator.simulate_unusual_port()
+
+        unusual_detected = any(
+            anomaly.alert_type == TrafficAnomalyAlert.UNUSUAL_PORT
+            for anomaly in anomalies
+        )
+
+        if unusual_detected:
+            results.add_pass("Unusual Port Detection", "Detected connection to suspicious port")
+        else:
+            results.add_fail("Unusual Port Detection", "Failed to detect unusual port")
+
+        self.assertTrue(unusual_detected, f"Unusual port not detected. Anomalies: {anomalies}")
+
+    def test_dns_over_tcp_detection(self):
+        """Test detection of DNS over TCP (potential tunneling)"""
+        anomalies = self.simulator.simulate_dns_over_tcp()
+
+        dns_tcp_detected = any(
+            anomaly.alert_type == TrafficAnomalyAlert.DNS_OVER_TCP
+            for anomaly in anomalies
+        )
+
+        if dns_tcp_detected:
+            results.add_pass("DNS over TCP Detection", "Detected potential DNS tunneling")
+        else:
+            results.add_fail("DNS over TCP Detection", "Failed to detect DNS over TCP")
+
+        self.assertTrue(dns_tcp_detected, f"DNS over TCP not detected. Anomalies: {anomalies}")
+
+    def test_icmp_tunnel_detection(self):
+        """Test detection of ICMP tunneling"""
+        anomalies = self.simulator.simulate_icmp_tunnel()
+
+        icmp_detected = any(
+            anomaly.alert_type == TrafficAnomalyAlert.ICMP_TUNNEL
+            for anomaly in anomalies
+        )
+
+        if icmp_detected:
+            results.add_pass("ICMP Tunnel Detection", "Detected large ICMP payload")
+        else:
+            results.add_fail("ICMP Tunnel Detection", "Failed to detect ICMP tunnel")
+
+        self.assertTrue(icmp_detected, f"ICMP tunnel not detected. Anomalies: {anomalies}")
+
+
 class TestCellularAttacks(unittest.TestCase):
     """Test suite for cellular/IMSI catcher attack detection"""
 
@@ -1977,6 +2255,16 @@ class TestMonitoringToggle(unittest.TestCase):
 
         results.add_pass("File Integrity Toggle", "File integrity monitoring can be toggled")
 
+    def test_traffic_anomaly_toggle(self):
+        """Test traffic anomaly monitoring toggle"""
+        self.monitor.set_monitor_traffic_anomaly(False)
+        self.assertFalse(self.monitor.monitoring_config.monitor_traffic_anomaly)
+
+        self.monitor.set_monitor_traffic_anomaly(True)
+        self.assertTrue(self.monitor.monitoring_config.monitor_traffic_anomaly)
+
+        results.add_pass("Traffic Anomaly Toggle", "Traffic anomaly monitoring can be toggled")
+
 
 def run_all_simulations():
     """Run all attack simulations and print summary"""
@@ -1996,6 +2284,7 @@ def run_all_simulations():
     suite.addTests(loader.loadTestsFromTestCase(TestWiFiSecurityAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestThreatIntelAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestFileIntegrityAttacks))
+    suite.addTests(loader.loadTestsFromTestCase(TestTrafficAnomalyAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestCellularAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestWiFiAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestEthernetAttacks))

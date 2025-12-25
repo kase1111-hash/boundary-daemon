@@ -84,6 +84,7 @@ class MonitoringConfig:
     monitor_wifi_security: bool = True  # WiFi security monitoring
     monitor_threat_intel: bool = True  # Threat intelligence monitoring
     monitor_file_integrity: bool = True  # File integrity monitoring
+    monitor_traffic_anomaly: bool = True  # Traffic anomaly monitoring
 
     def to_dict(self) -> Dict:
         return {
@@ -97,7 +98,8 @@ class MonitoringConfig:
             'monitor_arp_security': self.monitor_arp_security,
             'monitor_wifi_security': self.monitor_wifi_security,
             'monitor_threat_intel': self.monitor_threat_intel,
-            'monitor_file_integrity': self.monitor_file_integrity
+            'monitor_file_integrity': self.monitor_file_integrity,
+            'monitor_traffic_anomaly': self.monitor_traffic_anomaly
         }
 
 
@@ -140,6 +142,9 @@ class EnvironmentState:
     # File integrity details
     file_integrity_alerts: List[str]
 
+    # Traffic anomaly details
+    traffic_anomaly_alerts: List[str]
+
     # Hardware details
     usb_devices: Set[str]
     block_devices: Set[str]
@@ -169,6 +174,7 @@ class EnvironmentState:
         result['wifi_security_alerts'] = self.wifi_security_alerts
         result['threat_intel_alerts'] = self.threat_intel_alerts
         result['file_integrity_alerts'] = self.file_integrity_alerts
+        result['traffic_anomaly_alerts'] = self.traffic_anomaly_alerts
         result['usb_devices'] = list(self.usb_devices)
         result['block_devices'] = list(self.block_devices)
         return result
@@ -222,6 +228,9 @@ class StateMonitor:
 
         # File integrity monitor (lazy initialization)
         self._file_integrity_monitor = None
+
+        # Traffic anomaly monitor (lazy initialization)
+        self._traffic_anomaly_monitor = None
 
     def get_monitoring_config(self) -> MonitoringConfig:
         """Get the current monitoring configuration"""
@@ -325,6 +334,20 @@ class StateMonitor:
                 return None
         return self._file_integrity_monitor
 
+    def set_monitor_traffic_anomaly(self, enabled: bool):
+        """Enable or disable traffic anomaly monitoring"""
+        self.monitoring_config.monitor_traffic_anomaly = enabled
+
+    def _get_traffic_anomaly_monitor(self):
+        """Get or create traffic anomaly monitor (lazy initialization)"""
+        if self._traffic_anomaly_monitor is None:
+            try:
+                from daemon.security.traffic_anomaly import TrafficAnomalyMonitor
+                self._traffic_anomaly_monitor = TrafficAnomalyMonitor()
+            except ImportError:
+                return None
+        return self._traffic_anomaly_monitor
+
     def register_callback(self, callback: callable):
         """
         Register a callback to be notified of state changes.
@@ -402,6 +425,9 @@ class StateMonitor:
         # File integrity sensing
         file_integrity_alerts = self._check_file_integrity()
 
+        # Traffic anomaly sensing
+        traffic_anomaly_alerts = self._check_traffic_anomaly()
+
         # Hardware sensing
         hardware_info = self._check_hardware()
 
@@ -434,6 +460,7 @@ class StateMonitor:
             wifi_security_alerts=wifi_security_alerts,
             threat_intel_alerts=threat_intel_alerts,
             file_integrity_alerts=file_integrity_alerts,
+            traffic_anomaly_alerts=traffic_anomaly_alerts,
             usb_devices=hardware_info['usb_devices'],
             block_devices=hardware_info['block_devices'],
             camera_available=hardware_info['camera'],
@@ -767,6 +794,23 @@ class StateMonitor:
             return status.alerts
         except Exception as e:
             print(f"Error checking file integrity: {e}")
+            return []
+
+    def _check_traffic_anomaly(self) -> List[str]:
+        """Check for traffic anomaly alerts if monitoring is enabled"""
+        if not self.monitoring_config.monitor_traffic_anomaly:
+            return []
+
+        try:
+            traffic_monitor = self._get_traffic_anomaly_monitor()
+            if traffic_monitor is None:
+                return []
+
+            # Get current status alerts
+            status = traffic_monitor.get_status()
+            return status.alerts
+        except Exception as e:
+            print(f"Error checking traffic anomaly: {e}")
             return []
 
     def _detect_lora_devices(self) -> List[str]:
