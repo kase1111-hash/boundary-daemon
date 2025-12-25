@@ -82,6 +82,7 @@ class MonitoringConfig:
     monitor_dns_security: bool = True  # DNS security monitoring
     monitor_arp_security: bool = True  # ARP security monitoring
     monitor_wifi_security: bool = True  # WiFi security monitoring
+    monitor_threat_intel: bool = True  # Threat intelligence monitoring
 
     def to_dict(self) -> Dict:
         return {
@@ -93,7 +94,8 @@ class MonitoringConfig:
             'monitor_ant_plus': self.monitor_ant_plus,
             'monitor_dns_security': self.monitor_dns_security,
             'monitor_arp_security': self.monitor_arp_security,
-            'monitor_wifi_security': self.monitor_wifi_security
+            'monitor_wifi_security': self.monitor_wifi_security,
+            'monitor_threat_intel': self.monitor_threat_intel
         }
 
 
@@ -130,6 +132,9 @@ class EnvironmentState:
     # WiFi security details
     wifi_security_alerts: List[str]
 
+    # Threat intelligence details
+    threat_intel_alerts: List[str]
+
     # Hardware details
     usb_devices: Set[str]
     block_devices: Set[str]
@@ -157,6 +162,7 @@ class EnvironmentState:
         result['dns_security_alerts'] = self.dns_security_alerts
         result['arp_security_alerts'] = self.arp_security_alerts
         result['wifi_security_alerts'] = self.wifi_security_alerts
+        result['threat_intel_alerts'] = self.threat_intel_alerts
         result['usb_devices'] = list(self.usb_devices)
         result['block_devices'] = list(self.block_devices)
         return result
@@ -204,6 +210,9 @@ class StateMonitor:
 
         # WiFi security monitor (lazy initialization)
         self._wifi_security_monitor = None
+
+        # Threat intelligence monitor (lazy initialization)
+        self._threat_intel_monitor = None
 
     def get_monitoring_config(self) -> MonitoringConfig:
         """Get the current monitoring configuration"""
@@ -279,6 +288,20 @@ class StateMonitor:
                 return None
         return self._wifi_security_monitor
 
+    def set_monitor_threat_intel(self, enabled: bool):
+        """Enable or disable threat intelligence monitoring"""
+        self.monitoring_config.monitor_threat_intel = enabled
+
+    def _get_threat_intel_monitor(self):
+        """Get or create threat intelligence monitor (lazy initialization)"""
+        if self._threat_intel_monitor is None:
+            try:
+                from daemon.security.threat_intel import ThreatIntelMonitor
+                self._threat_intel_monitor = ThreatIntelMonitor()
+            except ImportError:
+                return None
+        return self._threat_intel_monitor
+
     def register_callback(self, callback: callable):
         """
         Register a callback to be notified of state changes.
@@ -350,6 +373,9 @@ class StateMonitor:
         # WiFi security sensing
         wifi_security_alerts = self._check_wifi_security()
 
+        # Threat intelligence sensing
+        threat_intel_alerts = self._check_threat_intel()
+
         # Hardware sensing
         hardware_info = self._check_hardware()
 
@@ -380,6 +406,7 @@ class StateMonitor:
             dns_security_alerts=dns_security_alerts,
             arp_security_alerts=arp_security_alerts,
             wifi_security_alerts=wifi_security_alerts,
+            threat_intel_alerts=threat_intel_alerts,
             usb_devices=hardware_info['usb_devices'],
             block_devices=hardware_info['block_devices'],
             camera_available=hardware_info['camera'],
@@ -679,6 +706,23 @@ class StateMonitor:
             return alert_messages
         except Exception as e:
             print(f"Error checking WiFi security: {e}")
+            return []
+
+    def _check_threat_intel(self) -> List[str]:
+        """Check for threat intelligence alerts if monitoring is enabled"""
+        if not self.monitoring_config.monitor_threat_intel:
+            return []
+
+        try:
+            threat_monitor = self._get_threat_intel_monitor()
+            if threat_monitor is None:
+                return []
+
+            # Get current status alerts
+            status = threat_monitor.get_status()
+            return status.alerts
+        except Exception as e:
+            print(f"Error checking threat intelligence: {e}")
             return []
 
     def _detect_lora_devices(self) -> List[str]:

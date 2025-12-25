@@ -6,6 +6,7 @@ This module simulates attack scenarios across different network types:
 - DNS: Tunneling, exfiltration, spoofing, rebinding, cache poisoning
 - ARP: Spoofing, gateway impersonation, duplicate MAC, flood, MITM
 - WiFi Security: Evil Twin AP, deauth flood, handshake capture, rogue AP, weak encryption
+- Threat Intelligence: TOR exit nodes, C2 servers, botnets, blacklisted IPs, beaconing
 - Cellular: IMSI catcher/Stingray attacks (2G downgrade, tower spoofing)
 - WiFi: Rogue AP, deauthentication attacks
 - Ethernet: USB/storage insertion attacks
@@ -35,6 +36,9 @@ from daemon.security.arp_security import (
 )
 from daemon.security.wifi_security import (
     WiFiSecurityMonitor, WiFiSecurityConfig, WiFiSecurityAlert
+)
+from daemon.security.threat_intel import (
+    ThreatIntelMonitor, ThreatIntelConfig, ThreatIntelAlert, ThreatCategory, ThreatSeverity
 )
 
 
@@ -906,6 +910,87 @@ class WiFiSecurityAttackSimulator:
         return alerts
 
 
+class ThreatIntelAttackSimulator:
+    """Simulates threat intelligence attack scenarios"""
+
+    def __init__(self, monitor: ThreatIntelMonitor):
+        self.monitor = monitor
+
+    def simulate_tor_exit_connection(self) -> Optional[Dict]:
+        """
+        Simulate connection to a TOR exit node.
+        """
+        # Use a known TOR exit node IP from the sample data
+        tor_ip = "185.220.101.1"
+        return self.monitor.check_ip(tor_ip)
+
+    def simulate_c2_connection(self) -> Optional[Dict]:
+        """
+        Simulate connection to a C2 server.
+        """
+        # Use a known C2 IP from the sample data
+        c2_ip = "198.51.100.50"
+        return self.monitor.check_ip(c2_ip)
+
+    def simulate_botnet_connection(self) -> Optional[Dict]:
+        """
+        Simulate connection to a botnet IP.
+        """
+        # Use a known botnet IP from the sample data
+        botnet_ip = "192.0.2.100"
+        return self.monitor.check_ip(botnet_ip)
+
+    def simulate_blacklisted_ip_connection(self) -> Optional[Dict]:
+        """
+        Simulate connection to a locally blacklisted IP.
+        """
+        # Add an IP to blacklist and check it
+        bad_ip = "203.0.113.55"
+        self.monitor.add_to_blacklist(bad_ip)
+        return self.monitor.check_ip(bad_ip)
+
+    def simulate_suspicious_port_connection(self) -> List[Dict]:
+        """
+        Simulate connection to suspicious ports.
+        """
+        alerts = []
+        # Connect to Metasploit default port
+        alerts.extend(self.monitor.analyze_connection(
+            src_ip="192.168.1.100",
+            dst_ip="10.0.0.1",  # Private IP won't trigger threat but port will
+            port=4444,  # Metasploit default
+            protocol="tcp"
+        ))
+        return alerts
+
+    def simulate_beaconing_behavior(self) -> List[Dict]:
+        """
+        Simulate rapid connections to same IP (beaconing).
+        """
+        alerts = []
+        beacon_ip = "8.8.8.8"  # Using public DNS as target
+
+        # Simulate many rapid connections
+        for _ in range(15):
+            result = self.monitor.analyze_connection(
+                src_ip="192.168.1.100",
+                dst_ip=beacon_ip,
+                port=443,
+                protocol="tcp"
+            )
+            alerts.extend(result)
+
+        return alerts
+
+    def simulate_malicious_range_connection(self) -> Optional[Dict]:
+        """
+        Simulate connection to a known malicious IP range.
+        """
+        # Use IP from TEST-NET-2 (known malicious range in our test data)
+        malicious_ip = "198.51.100.123"
+        return self.monitor.check_ip(malicious_ip)
+
+
 class TestARPAttacks(unittest.TestCase):
     """Test suite for ARP attack detection"""
 
@@ -1130,6 +1215,118 @@ class TestWiFiSecurityAttacks(unittest.TestCase):
             results.add_fail("Handshake Capture Detection", "Failed to detect handshake capture")
 
         self.assertTrue(handshake_detected, f"Handshake capture not detected. Alerts: {alerts}")
+
+
+class TestThreatIntelAttacks(unittest.TestCase):
+    """Test suite for threat intelligence detection"""
+
+    def setUp(self):
+        self.config = ThreatIntelConfig(
+            enable_ip_reputation=True,
+            enable_c2_detection=True,
+            enable_tor_detection=True,
+            enable_local_blacklist=True,
+        )
+        self.monitor = ThreatIntelMonitor(config=self.config)
+        self.simulator = ThreatIntelAttackSimulator(self.monitor)
+
+    def test_tor_exit_detection(self):
+        """Test detection of TOR exit node connection"""
+        threat = self.simulator.simulate_tor_exit_connection()
+
+        tor_detected = threat is not None and threat.is_tor_exit
+
+        if tor_detected:
+            results.add_pass("TOR Exit Node Detection", "Detected connection to TOR exit node")
+        else:
+            results.add_fail("TOR Exit Node Detection", "Failed to detect TOR exit node")
+
+        self.assertTrue(tor_detected, f"TOR exit not detected. Threat: {threat}")
+
+    def test_c2_server_detection(self):
+        """Test detection of C2 server connection"""
+        threat = self.simulator.simulate_c2_connection()
+
+        c2_detected = threat is not None and threat.is_c2
+
+        if c2_detected:
+            results.add_pass("C2 Server Detection", "Detected connection to C2 server")
+        else:
+            results.add_fail("C2 Server Detection", "Failed to detect C2 server")
+
+        self.assertTrue(c2_detected, f"C2 server not detected. Threat: {threat}")
+
+    def test_botnet_ip_detection(self):
+        """Test detection of botnet IP connection"""
+        threat = self.simulator.simulate_botnet_connection()
+
+        botnet_detected = threat is not None and threat.is_botnet
+
+        if botnet_detected:
+            results.add_pass("Botnet IP Detection", "Detected connection to botnet IP")
+        else:
+            results.add_fail("Botnet IP Detection", "Failed to detect botnet IP")
+
+        self.assertTrue(botnet_detected, f"Botnet IP not detected. Threat: {threat}")
+
+    def test_blacklisted_ip_detection(self):
+        """Test detection of locally blacklisted IP"""
+        threat = self.simulator.simulate_blacklisted_ip_connection()
+
+        blacklist_detected = threat is not None and ThreatCategory.MALWARE in threat.categories
+
+        if blacklist_detected:
+            results.add_pass("Blacklisted IP Detection", "Detected connection to blacklisted IP")
+        else:
+            results.add_fail("Blacklisted IP Detection", "Failed to detect blacklisted IP")
+
+        self.assertTrue(blacklist_detected, f"Blacklisted IP not detected. Threat: {threat}")
+
+    def test_suspicious_port_detection(self):
+        """Test detection of connections to suspicious ports"""
+        alerts = self.simulator.simulate_suspicious_port_connection()
+
+        suspicious_detected = any(
+            alert.get('type') == ThreatIntelAlert.SUSPICIOUS_CONNECTION.value
+            for alert in alerts
+        )
+
+        if suspicious_detected:
+            results.add_pass("Suspicious Port Detection", "Detected connection to suspicious port")
+        else:
+            results.add_fail("Suspicious Port Detection", "Failed to detect suspicious port")
+
+        self.assertTrue(suspicious_detected, f"Suspicious port not detected. Alerts: {alerts}")
+
+    def test_beaconing_detection(self):
+        """Test detection of beaconing behavior"""
+        alerts = self.simulator.simulate_beaconing_behavior()
+
+        beaconing_detected = any(
+            'beaconing' in alert.get('message', '').lower() or
+            alert.get('type') == ThreatIntelAlert.SUSPICIOUS_CONNECTION.value
+            for alert in alerts
+        )
+
+        if beaconing_detected:
+            results.add_pass("Beaconing Detection", "Detected rapid connection pattern")
+        else:
+            results.add_fail("Beaconing Detection", "Failed to detect beaconing")
+
+        self.assertTrue(beaconing_detected, f"Beaconing not detected. Alerts: {alerts}")
+
+    def test_malicious_range_detection(self):
+        """Test detection of connection to malicious IP range"""
+        threat = self.simulator.simulate_malicious_range_connection()
+
+        range_detected = threat is not None and threat.confidence_score > 0
+
+        if range_detected:
+            results.add_pass("Malicious Range Detection", "Detected connection to malicious IP range")
+        else:
+            results.add_fail("Malicious Range Detection", "Failed to detect malicious IP range")
+
+        self.assertTrue(range_detected, f"Malicious range not detected. Threat: {threat}")
 
 
 class TestCellularAttacks(unittest.TestCase):
@@ -1498,6 +1695,16 @@ class TestMonitoringToggle(unittest.TestCase):
 
         results.add_pass("WiFi Security Toggle", "WiFi security monitoring can be toggled")
 
+    def test_threat_intel_toggle(self):
+        """Test threat intelligence monitoring toggle"""
+        self.monitor.set_monitor_threat_intel(False)
+        self.assertFalse(self.monitor.monitoring_config.monitor_threat_intel)
+
+        self.monitor.set_monitor_threat_intel(True)
+        self.assertTrue(self.monitor.monitoring_config.monitor_threat_intel)
+
+        results.add_pass("Threat Intel Toggle", "Threat intelligence monitoring can be toggled")
+
 
 def run_all_simulations():
     """Run all attack simulations and print summary"""
@@ -1515,6 +1722,7 @@ def run_all_simulations():
     suite.addTests(loader.loadTestsFromTestCase(TestDNSAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestARPAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestWiFiSecurityAttacks))
+    suite.addTests(loader.loadTestsFromTestCase(TestThreatIntelAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestCellularAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestWiFiAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestEthernetAttacks))
