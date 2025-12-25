@@ -56,6 +56,13 @@ class ThreatCategory(Enum):
     NETWORK_SNIFFER = "network_sniffer"
     PERSISTENCE_MECHANISM = "persistence_mechanism"
     REMOTE_VIEW = "remote_view"  # Screen sharing / remote desktop
+    # Network monitoring categories
+    REMOTE_SHELL = "remote_shell"  # SSH, telnet, reverse shells
+    FILE_TRANSFER = "file_transfer"  # FTP, SMB, rsync
+    C2_CHANNEL = "c2_channel"  # Command & control
+    DATA_EXFIL = "data_exfiltration"  # Data exfiltration
+    REVERSE_SHELL = "reverse_shell"  # Reverse shell connections
+    TUNNELING = "tunneling"  # Network tunneling
 
 
 @dataclass
@@ -244,6 +251,84 @@ class ScreenSharingSignatures:
     ]
 
 
+class NetworkMonitoringSignatures:
+    """Signatures for network connection monitoring"""
+
+    # Ports to monitor for remote access
+    MONITORED_PORTS = {
+        # SSH
+        22: {'name': 'SSH', 'category': 'remote_shell', 'level': 'info'},
+        2222: {'name': 'SSH (alt)', 'category': 'remote_shell', 'level': 'medium'},
+        # FTP
+        21: {'name': 'FTP Control', 'category': 'file_transfer', 'level': 'medium'},
+        20: {'name': 'FTP Data', 'category': 'file_transfer', 'level': 'medium'},
+        990: {'name': 'FTPS', 'category': 'file_transfer', 'level': 'info'},
+        # Telnet (insecure)
+        23: {'name': 'Telnet', 'category': 'remote_shell', 'level': 'high'},
+        # Remote shells
+        4444: {'name': 'Metasploit default', 'category': 'reverse_shell', 'level': 'critical'},
+        5555: {'name': 'Common backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        6666: {'name': 'Common backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        6667: {'name': 'IRC (C2 channel)', 'category': 'c2', 'level': 'high'},
+        1337: {'name': 'Leet backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        31337: {'name': 'Elite backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        # File sharing
+        139: {'name': 'NetBIOS/SMB', 'category': 'file_transfer', 'level': 'medium'},
+        445: {'name': 'SMB', 'category': 'file_transfer', 'level': 'medium'},
+        873: {'name': 'rsync', 'category': 'file_transfer', 'level': 'info'},
+        # Remote admin
+        3389: {'name': 'RDP', 'category': 'remote_desktop', 'level': 'medium'},
+        5985: {'name': 'WinRM HTTP', 'category': 'remote_admin', 'level': 'high'},
+        5986: {'name': 'WinRM HTTPS', 'category': 'remote_admin', 'level': 'medium'},
+        # Database (potential data exfil)
+        3306: {'name': 'MySQL', 'category': 'database', 'level': 'info'},
+        5432: {'name': 'PostgreSQL', 'category': 'database', 'level': 'info'},
+        27017: {'name': 'MongoDB', 'category': 'database', 'level': 'info'},
+        6379: {'name': 'Redis', 'category': 'database', 'level': 'info'},
+        # Web (potential C2)
+        8080: {'name': 'HTTP Proxy', 'category': 'proxy', 'level': 'info'},
+        8443: {'name': 'HTTPS Alt', 'category': 'web', 'level': 'info'},
+        9001: {'name': 'Tor/Common C2', 'category': 'c2', 'level': 'high'},
+        9050: {'name': 'Tor SOCKS', 'category': 'anonymizer', 'level': 'high'},
+        9051: {'name': 'Tor Control', 'category': 'anonymizer', 'level': 'high'},
+    }
+
+    # Suspicious process names for network activity
+    SUSPICIOUS_NETWORK_PROCESSES = {
+        # Reverse shells
+        'nc', 'netcat', 'ncat', 'socat',
+        'cryptcat', 'powercat',
+        # Network recon
+        'nmap', 'masscan', 'zmap',
+        # Tunneling
+        'chisel', 'ligolo', 'ngrok', 'frp', 'frpc', 'frps',
+        'cloudflared', 'bore',
+        # Proxy tools
+        'proxychains', 'redsocks', 'torsocks',
+        # Data exfil
+        'rclone', 'restic', 'duplicity',
+        # Remote access
+        'meterpreter', 'beacon', 'cobaltstrike',
+        'empire', 'sliver',
+    }
+
+    # Known C2 framework indicators in process names
+    C2_INDICATORS = {
+        'meterpreter', 'beacon', 'cobaltstrike', 'cobalt',
+        'empire', 'sliver', 'mythic', 'havoc',
+        'bruteratel', 'nighthawk', 'poshc2',
+    }
+
+    # Suspicious outbound ports (data exfiltration risk)
+    EXFIL_RISK_PORTS = {
+        53: 'DNS (tunneling risk)',
+        443: 'HTTPS (encrypted exfil)',
+        80: 'HTTP (unencrypted exfil)',
+        8080: 'HTTP Proxy',
+        8443: 'HTTPS Alt',
+    }
+
+
 class AntivirusScanner:
     """
     Simple antivirus scanner focused on keylogger detection.
@@ -269,6 +354,7 @@ class AntivirusScanner:
         self._scan_running = False
         self.signatures = KeyloggerSignatures()
         self.screen_sharing_sigs = ScreenSharingSignatures()
+        self.network_sigs = NetworkMonitoringSignatures()
 
     def full_scan(self) -> ScanResult:
         """
@@ -295,6 +381,7 @@ class AntivirusScanner:
             input_result = self.scan_input_devices()
             persistence_result = self.scan_persistence_mechanisms()
             screen_result = self.scan_screen_sharing()
+            network_result = self.scan_network_connections()
 
             # Aggregate results
             result.threats_found.extend(process_result.threats_found)
@@ -302,13 +389,15 @@ class AntivirusScanner:
             result.threats_found.extend(input_result.threats_found)
             result.threats_found.extend(persistence_result.threats_found)
             result.threats_found.extend(screen_result.threats_found)
+            result.threats_found.extend(network_result.threats_found)
 
             result.items_scanned = (
                 process_result.items_scanned +
                 file_result.items_scanned +
                 input_result.items_scanned +
                 persistence_result.items_scanned +
-                screen_result.items_scanned
+                screen_result.items_scanned +
+                network_result.items_scanned
             )
 
             result.errors.extend(process_result.errors)
@@ -316,6 +405,7 @@ class AntivirusScanner:
             result.errors.extend(input_result.errors)
             result.errors.extend(persistence_result.errors)
             result.errors.extend(screen_result.errors)
+            result.errors.extend(network_result.errors)
 
         except Exception as e:
             logger.error(f"Full scan error: {e}")
@@ -1278,6 +1368,543 @@ class AntivirusScanner:
 
         return threats
 
+    # ==================== Network Connection Monitoring ====================
+
+    def scan_network_connections(self) -> ScanResult:
+        """
+        Monitor active network connections for suspicious activity.
+
+        Checks for:
+        - SSH connections (incoming and outgoing)
+        - FTP connections
+        - Telnet connections (insecure)
+        - Reverse shell indicators
+        - C2 channel indicators
+        - Suspicious tunneling
+        - Data exfiltration patterns
+
+        Returns:
+            ScanResult with network-related threats
+        """
+        start_time = datetime.utcnow().isoformat() + "Z"
+        result = ScanResult(scan_type="network_connections", start_time=start_time)
+
+        try:
+            # Check listening ports
+            listen_threats = self._check_listening_ports()
+            result.threats_found.extend(listen_threats)
+
+            # Check established connections
+            conn_threats = self._check_established_connections()
+            result.threats_found.extend(conn_threats)
+
+            # Check for suspicious network processes
+            proc_threats = self._check_network_processes()
+            result.threats_found.extend(proc_threats)
+
+            # Check for reverse shell indicators
+            shell_threats = self._check_reverse_shells()
+            result.threats_found.extend(shell_threats)
+
+            # Check for tunneling tools
+            tunnel_threats = self._check_tunneling()
+            result.threats_found.extend(tunnel_threats)
+
+            result.items_scanned = 5  # Number of check types
+
+        except Exception as e:
+            logger.error(f"Network scan error: {e}")
+            result.errors.append(str(e))
+        finally:
+            result.end_time = datetime.utcnow().isoformat() + "Z"
+
+        return result
+
+    def get_active_connections(self) -> Dict:
+        """
+        Get a summary of all active network connections.
+
+        Returns:
+            Dict with connection summaries by category
+        """
+        connections = {
+            'ssh': [],
+            'ftp': [],
+            'remote_desktop': [],
+            'suspicious': [],
+            'other': []
+        }
+
+        try:
+            result = subprocess.run(
+                ['ss', '-tunap'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n')[1:]:  # Skip header
+                    if not line.strip():
+                        continue
+
+                    parts = line.split()
+                    if len(parts) < 5:
+                        continue
+
+                    proto = parts[0]
+                    state = parts[1] if len(parts) > 1 else ''
+                    local = parts[4] if len(parts) > 4 else ''
+                    remote = parts[5] if len(parts) > 5 else ''
+                    process = parts[-1] if len(parts) > 6 else ''
+
+                    # Extract port from local address
+                    local_port = 0
+                    if ':' in local:
+                        try:
+                            local_port = int(local.rsplit(':', 1)[1])
+                        except ValueError:
+                            pass
+
+                    conn_info = {
+                        'protocol': proto,
+                        'state': state,
+                        'local': local,
+                        'remote': remote,
+                        'process': process
+                    }
+
+                    # Categorize
+                    if local_port == 22 or ':22' in remote:
+                        connections['ssh'].append(conn_info)
+                    elif local_port in [20, 21] or any(f':{p}' in remote for p in [20, 21]):
+                        connections['ftp'].append(conn_info)
+                    elif local_port in [3389, 5900, 5901]:
+                        connections['remote_desktop'].append(conn_info)
+                    elif local_port in [4444, 5555, 6666, 1337, 31337]:
+                        connections['suspicious'].append(conn_info)
+                    else:
+                        connections['other'].append(conn_info)
+
+        except Exception as e:
+            logger.debug(f"Error getting connections: {e}")
+
+        return connections
+
+    def _check_listening_ports(self) -> List[ThreatIndicator]:
+        """Check for suspicious listening ports"""
+        threats = []
+
+        try:
+            result = subprocess.run(
+                ['ss', '-tlnp'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                for port, info in self.network_sigs.MONITORED_PORTS.items():
+                    port_patterns = [f':{port} ', f':{port}\t', f':{port}\n']
+                    if any(p in output for p in port_patterns):
+                        level = getattr(ThreatLevel, info['level'].upper(), ThreatLevel.INFO)
+
+                        # Determine category
+                        cat_map = {
+                            'remote_shell': ThreatCategory.REMOTE_SHELL,
+                            'file_transfer': ThreatCategory.FILE_TRANSFER,
+                            'reverse_shell': ThreatCategory.REVERSE_SHELL,
+                            'c2': ThreatCategory.C2_CHANNEL,
+                            'database': ThreatCategory.DATA_EXFIL,
+                            'remote_desktop': ThreatCategory.REMOTE_VIEW,
+                            'remote_admin': ThreatCategory.REMOTE_SHELL,
+                            'anonymizer': ThreatCategory.TUNNELING,
+                            'proxy': ThreatCategory.TUNNELING,
+                            'web': ThreatCategory.SUSPICIOUS_PROCESS,
+                        }
+                        category = cat_map.get(info['category'], ThreatCategory.SUSPICIOUS_PROCESS)
+
+                        threats.append(ThreatIndicator(
+                            name=f"Listening: {info['name']} (port {port})",
+                            category=category,
+                            level=level,
+                            description=f"{info['name']} service is listening",
+                            location=f"Port {port}/tcp",
+                            evidence=f"Category: {info['category']}",
+                            remediation="Verify this service is authorized"
+                        ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking listening ports: {e}")
+
+        return threats
+
+    def _check_established_connections(self) -> List[ThreatIndicator]:
+        """Check for suspicious established connections"""
+        threats = []
+
+        try:
+            result = subprocess.run(
+                ['ss', '-tnp', 'state', 'established'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if not line.strip() or line.startswith('Recv-Q'):
+                        continue
+
+                    parts = line.split()
+                    if len(parts) < 5:
+                        continue
+
+                    local = parts[3] if len(parts) > 3 else ''
+                    remote = parts[4] if len(parts) > 4 else ''
+                    process = parts[-1] if 'users:' in line else ''
+
+                    # Check remote port
+                    remote_port = 0
+                    if ':' in remote:
+                        try:
+                            remote_port = int(remote.rsplit(':', 1)[1])
+                        except ValueError:
+                            pass
+
+                    # Check local port
+                    local_port = 0
+                    if ':' in local:
+                        try:
+                            local_port = int(local.rsplit(':', 1)[1])
+                        except ValueError:
+                            pass
+
+                    # Check for suspicious ports
+                    for port, info in self.network_sigs.MONITORED_PORTS.items():
+                        if port in [local_port, remote_port]:
+                            level = getattr(ThreatLevel, info['level'].upper(), ThreatLevel.INFO)
+
+                            # Skip SSH inbound unless high level
+                            if port == 22 and info['level'] == 'info':
+                                # Only report outbound SSH or if it's on a non-standard port
+                                if local_port == 22:
+                                    continue  # Normal incoming SSH
+
+                            cat_map = {
+                                'remote_shell': ThreatCategory.REMOTE_SHELL,
+                                'file_transfer': ThreatCategory.FILE_TRANSFER,
+                                'reverse_shell': ThreatCategory.REVERSE_SHELL,
+                                'c2': ThreatCategory.C2_CHANNEL,
+                            }
+                            category = cat_map.get(info['category'], ThreatCategory.SUSPICIOUS_PROCESS)
+
+                            direction = "outbound" if remote_port == port else "inbound"
+                            threats.append(ThreatIndicator(
+                                name=f"Active {info['name']} connection ({direction})",
+                                category=category,
+                                level=level,
+                                description=f"Established {info['name']} connection",
+                                location=f"{local} -> {remote}",
+                                evidence=process[:100] if process else f"Port {port}",
+                                remediation="Verify this connection is authorized"
+                            ))
+                            break
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking established connections: {e}")
+
+        return threats
+
+    def _check_network_processes(self) -> List[ThreatIndicator]:
+        """Check for suspicious network-related processes"""
+        threats = []
+
+        try:
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                cmdline = proc.get('cmdline', '').lower()
+                pid = proc.get('pid', 'unknown')
+
+                # Check for suspicious network processes
+                for sig in self.network_sigs.SUSPICIOUS_NETWORK_PROCESSES:
+                    if sig in name or f'/{sig}' in cmdline or f' {sig} ' in cmdline:
+                        # Determine threat level based on process type
+                        level = ThreatLevel.MEDIUM
+                        category = ThreatCategory.SUSPICIOUS_PROCESS
+
+                        if sig in ['nc', 'netcat', 'ncat', 'socat']:
+                            level = ThreatLevel.HIGH
+                            category = ThreatCategory.REVERSE_SHELL
+                        elif sig in self.network_sigs.C2_INDICATORS:
+                            level = ThreatLevel.CRITICAL
+                            category = ThreatCategory.C2_CHANNEL
+                        elif sig in ['chisel', 'ligolo', 'ngrok', 'frp', 'frpc', 'frps']:
+                            level = ThreatLevel.HIGH
+                            category = ThreatCategory.TUNNELING
+                        elif sig in ['nmap', 'masscan', 'zmap']:
+                            level = ThreatLevel.MEDIUM
+                            category = ThreatCategory.NETWORK_SNIFFER
+
+                        threats.append(ThreatIndicator(
+                            name=f"Suspicious network process: {sig}",
+                            category=category,
+                            level=level,
+                            description=f"Process '{name}' matches suspicious network tool",
+                            location=f"PID: {pid}",
+                            evidence=cmdline[:200] if cmdline else name,
+                            remediation="Investigate why this network tool is running"
+                        ))
+                        break
+
+        except Exception as e:
+            logger.debug(f"Error checking network processes: {e}")
+
+        return threats
+
+    def _check_reverse_shells(self) -> List[ThreatIndicator]:
+        """Check for reverse shell indicators"""
+        threats = []
+
+        try:
+            # Check for common reverse shell patterns in processes
+            result = subprocess.run(
+                ['ps', 'auxww'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode().lower()
+
+                # Common reverse shell patterns
+                shell_patterns = [
+                    ('bash -i', 'Bash interactive reverse shell'),
+                    ('bash -c.*>/dev/tcp', 'Bash /dev/tcp reverse shell'),
+                    ('sh -i', 'Shell interactive mode'),
+                    ('python.*socket.*connect', 'Python socket connection'),
+                    ('python.*pty.spawn', 'Python PTY spawn'),
+                    ('perl.*socket', 'Perl socket'),
+                    ('ruby.*socket', 'Ruby socket'),
+                    ('nc -e', 'Netcat with -e (execute)'),
+                    ('nc.*-c', 'Netcat with -c'),
+                    ('ncat.*--exec', 'Ncat with exec'),
+                    ('socat.*exec', 'Socat with exec'),
+                    ('mkfifo', 'Named pipe (potential shell)'),
+                    ('msfvenom', 'Metasploit payload generator'),
+                    ('meterpreter', 'Meterpreter session'),
+                ]
+
+                for pattern, description in shell_patterns:
+                    if pattern in output:
+                        threats.append(ThreatIndicator(
+                            name=f"Reverse shell indicator: {pattern}",
+                            category=ThreatCategory.REVERSE_SHELL,
+                            level=ThreatLevel.CRITICAL,
+                            description=description,
+                            location="Process list",
+                            evidence=f"Pattern '{pattern}' found in running processes",
+                            remediation="Immediately investigate and terminate suspicious processes"
+                        ))
+
+            # Check for processes with network connections and shell
+            result = subprocess.run(
+                ['ss', '-tnp'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode().lower()
+                shell_processes = ['bash', 'sh', 'zsh', 'fish', 'dash']
+
+                for shell in shell_processes:
+                    if f'"{shell}"' in output or f"({shell})" in output:
+                        # Shell with network connection is suspicious
+                        threats.append(ThreatIndicator(
+                            name=f"Shell with network connection: {shell}",
+                            category=ThreatCategory.REVERSE_SHELL,
+                            level=ThreatLevel.HIGH,
+                            description=f"Shell process has network connection",
+                            location="Network connections",
+                            evidence=f"Shell '{shell}' has active network socket",
+                            remediation="Verify this is not a reverse shell"
+                        ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking reverse shells: {e}")
+
+        return threats
+
+    def _check_tunneling(self) -> List[ThreatIndicator]:
+        """Check for network tunneling tools"""
+        threats = []
+
+        try:
+            # Check for SSH tunnels
+            result = subprocess.run(
+                ['ps', 'aux'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                # SSH tunnel patterns
+                tunnel_patterns = [
+                    ('ssh.*-L', 'SSH local port forward', ThreatLevel.INFO),
+                    ('ssh.*-R', 'SSH remote port forward', ThreatLevel.MEDIUM),
+                    ('ssh.*-D', 'SSH dynamic (SOCKS) tunnel', ThreatLevel.MEDIUM),
+                    ('ssh.*-w', 'SSH tunnel interface', ThreatLevel.HIGH),
+                    ('autossh', 'Persistent SSH tunnel', ThreatLevel.MEDIUM),
+                    ('sshuttle', 'SSH-based VPN', ThreatLevel.MEDIUM),
+                ]
+
+                for pattern, description, level in tunnel_patterns:
+                    # Use simple string matching
+                    pattern_parts = pattern.replace('.*', ' ').split()
+                    lines = output.split('\n')
+                    for line in lines:
+                        if all(p in line for p in pattern_parts):
+                            threats.append(ThreatIndicator(
+                                name=f"Tunnel: {description}",
+                                category=ThreatCategory.TUNNELING,
+                                level=level,
+                                description=description,
+                                location="Process list",
+                                evidence=line.strip()[:150],
+                                remediation="Verify this tunnel is authorized"
+                            ))
+                            break
+
+            # Check for VPN processes
+            vpn_processes = ['openvpn', 'wireguard', 'wg', 'wg-quick', 'tailscale']
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                if name in vpn_processes:
+                    threats.append(ThreatIndicator(
+                        name=f"VPN: {name}",
+                        category=ThreatCategory.TUNNELING,
+                        level=ThreatLevel.INFO,
+                        description=f"VPN software detected",
+                        location=f"PID: {proc.get('pid', 'unknown')}",
+                        evidence=proc.get('cmdline', name)[:100],
+                        remediation="Verify VPN usage is authorized"
+                    ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking tunneling: {e}")
+
+        return threats
+
+    def get_ssh_sessions(self) -> List[Dict]:
+        """Get active SSH sessions (both incoming and outgoing)"""
+        sessions = []
+
+        try:
+            # Check for SSH client connections (outgoing)
+            result = subprocess.run(
+                ['pgrep', '-a', 'ssh'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if line.strip() and 'sshd' not in line:
+                        parts = line.split(None, 1)
+                        if len(parts) >= 2:
+                            sessions.append({
+                                'type': 'outgoing',
+                                'pid': parts[0],
+                                'command': parts[1],
+                            })
+
+            # Check for sshd sessions (incoming)
+            result = subprocess.run(
+                ['who'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            sessions.append({
+                                'type': 'incoming',
+                                'user': parts[0],
+                                'terminal': parts[1],
+                                'time': ' '.join(parts[2:4]) if len(parts) > 3 else parts[2],
+                                'from': parts[4].strip('()') if len(parts) > 4 else 'local'
+                            })
+
+        except Exception as e:
+            logger.debug(f"Error getting SSH sessions: {e}")
+
+        return sessions
+
+    def get_ftp_connections(self) -> List[Dict]:
+        """Get active FTP connections"""
+        connections = []
+
+        try:
+            # Check for FTP connections on ports 20, 21
+            result = subprocess.run(
+                ['ss', '-tnp', 'sport', '=', ':21', 'or', 'sport', '=', ':20',
+                 'or', 'dport', '=', ':21', 'or', 'dport', '=', ':20'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n')[1:]:
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            connections.append({
+                                'state': parts[0],
+                                'local': parts[3],
+                                'remote': parts[4],
+                                'process': parts[-1] if 'users:' in line else ''
+                            })
+
+            # Also check for FTP client processes
+            ftp_clients = ['ftp', 'sftp', 'lftp', 'ncftp', 'curl', 'wget']
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                cmdline = proc.get('cmdline', '').lower()
+                if name in ftp_clients or any(f'{c} ftp' in cmdline for c in ftp_clients):
+                    if 'ftp' in cmdline or name in ['ftp', 'sftp', 'lftp', 'ncftp']:
+                        connections.append({
+                            'type': 'client',
+                            'process': name,
+                            'pid': proc.get('pid'),
+                            'command': proc.get('cmdline', '')[:100]
+                        })
+
+        except Exception as e:
+            logger.debug(f"Error getting FTP connections: {e}")
+
+        return connections
+
     def get_status(self) -> Dict:
         """Get scanner status"""
         return {
@@ -1285,7 +1912,9 @@ class AntivirusScanner:
             'signatures_loaded': len(self.signatures.SUSPICIOUS_PROCESS_NAMES),
             'file_patterns': len(self.signatures.SUSPICIOUS_FILE_PATTERNS),
             'monitored_dirs': len(self.signatures.SUSPICIOUS_DIRECTORIES),
-            'screen_sharing_sigs': len(self.screen_sharing_sigs.SCREEN_SHARING_PROCESSES)
+            'screen_sharing_sigs': len(self.screen_sharing_sigs.SCREEN_SHARING_PROCESSES),
+            'network_ports_monitored': len(self.network_sigs.MONITORED_PORTS),
+            'network_process_sigs': len(self.network_sigs.SUSPICIOUS_NETWORK_PROCESSES)
         }
 
 
@@ -1392,6 +2021,10 @@ if __name__ == '__main__':
     parser.add_argument('--input', action='store_true', help='Check input devices')
     parser.add_argument('--persistence', action='store_true', help='Check persistence mechanisms')
     parser.add_argument('--screen', action='store_true', help='Check for screen sharing/remote viewing')
+    parser.add_argument('--network', action='store_true', help='Check network connections (SSH, FTP, etc.)')
+    parser.add_argument('--ssh', action='store_true', help='Show SSH sessions only')
+    parser.add_argument('--ftp', action='store_true', help='Show FTP connections only')
+    parser.add_argument('--connections', action='store_true', help='Show all active connections summary')
     parser.add_argument('--json', action='store_true', help='Output as JSON')
     parser.add_argument('--paths', nargs='+', help='Specific paths to scan')
 
@@ -1421,6 +2054,70 @@ if __name__ == '__main__':
     elif args.screen:
         print("Checking for screen sharing/remote viewing...")
         result = scanner.scan_screen_sharing()
+    elif args.network:
+        print("Scanning network connections...")
+        result = scanner.scan_network_connections()
+    elif args.ssh:
+        print("Getting SSH sessions...")
+        sessions = scanner.get_ssh_sessions()
+        if args.json:
+            print(json_module.dumps(sessions, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("SSH SESSIONS")
+            print(f"{'='*60}")
+            if sessions:
+                for s in sessions:
+                    if s.get('type') == 'incoming':
+                        print(f"\n[INCOMING] User: {s.get('user')}")
+                        print(f"  Terminal: {s.get('terminal')}")
+                        print(f"  Time: {s.get('time')}")
+                        print(f"  From: {s.get('from')}")
+                    else:
+                        print(f"\n[OUTGOING] PID: {s.get('pid')}")
+                        print(f"  Command: {s.get('command')}")
+            else:
+                print("\nNo active SSH sessions")
+        result = None
+    elif args.ftp:
+        print("Getting FTP connections...")
+        connections = scanner.get_ftp_connections()
+        if args.json:
+            print(json_module.dumps(connections, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("FTP CONNECTIONS")
+            print(f"{'='*60}")
+            if connections:
+                for c in connections:
+                    if c.get('type') == 'client':
+                        print(f"\n[CLIENT] Process: {c.get('process')} (PID: {c.get('pid')})")
+                        print(f"  Command: {c.get('command')}")
+                    else:
+                        print(f"\n[CONNECTION] {c.get('local')} -> {c.get('remote')}")
+                        print(f"  State: {c.get('state')}")
+                        if c.get('process'):
+                            print(f"  Process: {c.get('process')}")
+            else:
+                print("\nNo active FTP connections")
+        result = None
+    elif args.connections:
+        print("Getting all active connections...")
+        connections = scanner.get_active_connections()
+        if args.json:
+            print(json_module.dumps(connections, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("ACTIVE CONNECTIONS SUMMARY")
+            print(f"{'='*60}")
+            for category, conns in connections.items():
+                if conns:
+                    print(f"\n{category.upper()} ({len(conns)} connections):")
+                    for c in conns[:5]:  # Show first 5
+                        print(f"  {c.get('local', 'N/A')} -> {c.get('remote', 'N/A')} [{c.get('state', 'N/A')}]")
+                    if len(conns) > 5:
+                        print(f"  ... and {len(conns) - 5} more")
+        result = None
     else:
         print("Running quick scan (default)...")
         result = scanner.quick_scan()
