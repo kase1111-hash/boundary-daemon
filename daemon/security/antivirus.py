@@ -22,12 +22,16 @@ Usage:
 import os
 import re
 import hashlib
+import hmac
 import logging
 import subprocess
 import threading
+import base64
+import json
+import time
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import List, Dict, Set, Optional, Tuple
+from typing import List, Dict, Set, Optional, Tuple, Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +59,14 @@ class ThreatCategory(Enum):
     SUSPICIOUS_FILE = "suspicious_file"
     NETWORK_SNIFFER = "network_sniffer"
     PERSISTENCE_MECHANISM = "persistence_mechanism"
+    REMOTE_VIEW = "remote_view"  # Screen sharing / remote desktop
+    # Network monitoring categories
+    REMOTE_SHELL = "remote_shell"  # SSH, telnet, reverse shells
+    FILE_TRANSFER = "file_transfer"  # FTP, SMB, rsync
+    C2_CHANNEL = "c2_channel"  # Command & control
+    DATA_EXFIL = "data_exfiltration"  # Data exfiltration
+    REVERSE_SHELL = "reverse_shell"  # Reverse shell connections
+    TUNNELING = "tunneling"  # Network tunneling
 
 
 @dataclass
@@ -179,6 +191,148 @@ class KeyloggerSignatures:
     ]
 
 
+class ScreenSharingSignatures:
+    """Signatures for detecting screen sharing and remote viewing"""
+
+    # Known screen sharing / remote desktop processes
+    SCREEN_SHARING_PROCESSES = {
+        # VNC servers
+        'x11vnc', 'tigervnc', 'tightvnc', 'realvnc', 'vncserver',
+        'Xvnc', 'x0vncserver', 'vino-server', 'krfb', 'vinagre',
+        # Remote desktop
+        'xrdp', 'xrdp-sesman', 'xfreerdp', 'rdesktop', 'remmina',
+        # Commercial remote access
+        'teamviewer', 'TeamViewer', 'teamviewerd',
+        'anydesk', 'AnyDesk', 'anydesk-service',
+        'rustdesk', 'RustDesk',
+        'nomachine', 'nxserver', 'nxnode',
+        'chrome-remote-desktop', 'chrome_remote_desktop',
+        # Screen recording/streaming
+        'obs', 'obs-studio', 'ffmpeg',  # Note: ffmpeg can be legitimate
+        'simplescreenrecorder', 'kazam', 'peek',
+        # Wayland screen sharing
+        'xdg-desktop-portal', 'pipewire', 'wireplumber',
+        # Other
+        'sshd',  # SSH with X forwarding
+        'spice-vdagent', 'spice-client',
+        'parsec', 'moonlight', 'sunshine',
+    }
+
+    # Network ports used by remote desktop/screen sharing
+    REMOTE_DESKTOP_PORTS = {
+        5900: 'VNC (display :0)',
+        5901: 'VNC (display :1)',
+        5902: 'VNC (display :2)',
+        5903: 'VNC (display :3)',
+        5800: 'VNC HTTP',
+        3389: 'RDP (Windows Remote Desktop)',
+        3350: 'xrdp',
+        4000: 'NoMachine',
+        5938: 'TeamViewer',
+        7070: 'AnyDesk',
+        21118: 'RustDesk',
+        6568: 'AnyDesk (alt)',
+        8080: 'VNC HTTP (alt)',
+        22: 'SSH (potential X forwarding)',
+    }
+
+    # X11 extensions used for screen capture
+    X11_CAPTURE_EXTENSIONS = [
+        'MIT-SHM',      # Shared memory - used by screen capture
+        'DAMAGE',       # Tracks screen changes - used by VNC
+        'XFIXES',       # Screen capture cursors
+        'Composite',    # Compositing - can be used for capture
+        'RECORD',       # Input recording extension
+    ]
+
+    # D-Bus interfaces for screen sharing (GNOME/KDE)
+    DBUS_SCREEN_SHARE_INTERFACES = [
+        'org.gnome.Mutter.ScreenCast',
+        'org.gnome.Mutter.RemoteDesktop',
+        'org.freedesktop.portal.ScreenCast',
+        'org.freedesktop.portal.RemoteDesktop',
+        'org.kde.KWin.ScreenCast',
+    ]
+
+
+class NetworkMonitoringSignatures:
+    """Signatures for network connection monitoring"""
+
+    # Ports to monitor for remote access
+    MONITORED_PORTS = {
+        # SSH
+        22: {'name': 'SSH', 'category': 'remote_shell', 'level': 'info'},
+        2222: {'name': 'SSH (alt)', 'category': 'remote_shell', 'level': 'medium'},
+        # FTP
+        21: {'name': 'FTP Control', 'category': 'file_transfer', 'level': 'medium'},
+        20: {'name': 'FTP Data', 'category': 'file_transfer', 'level': 'medium'},
+        990: {'name': 'FTPS', 'category': 'file_transfer', 'level': 'info'},
+        # Telnet (insecure)
+        23: {'name': 'Telnet', 'category': 'remote_shell', 'level': 'high'},
+        # Remote shells
+        4444: {'name': 'Metasploit default', 'category': 'reverse_shell', 'level': 'critical'},
+        5555: {'name': 'Common backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        6666: {'name': 'Common backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        6667: {'name': 'IRC (C2 channel)', 'category': 'c2', 'level': 'high'},
+        1337: {'name': 'Leet backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        31337: {'name': 'Elite backdoor', 'category': 'reverse_shell', 'level': 'critical'},
+        # File sharing
+        139: {'name': 'NetBIOS/SMB', 'category': 'file_transfer', 'level': 'medium'},
+        445: {'name': 'SMB', 'category': 'file_transfer', 'level': 'medium'},
+        873: {'name': 'rsync', 'category': 'file_transfer', 'level': 'info'},
+        # Remote admin
+        3389: {'name': 'RDP', 'category': 'remote_desktop', 'level': 'medium'},
+        5985: {'name': 'WinRM HTTP', 'category': 'remote_admin', 'level': 'high'},
+        5986: {'name': 'WinRM HTTPS', 'category': 'remote_admin', 'level': 'medium'},
+        # Database (potential data exfil)
+        3306: {'name': 'MySQL', 'category': 'database', 'level': 'info'},
+        5432: {'name': 'PostgreSQL', 'category': 'database', 'level': 'info'},
+        27017: {'name': 'MongoDB', 'category': 'database', 'level': 'info'},
+        6379: {'name': 'Redis', 'category': 'database', 'level': 'info'},
+        # Web (potential C2)
+        8080: {'name': 'HTTP Proxy', 'category': 'proxy', 'level': 'info'},
+        8443: {'name': 'HTTPS Alt', 'category': 'web', 'level': 'info'},
+        9001: {'name': 'Tor/Common C2', 'category': 'c2', 'level': 'high'},
+        9050: {'name': 'Tor SOCKS', 'category': 'anonymizer', 'level': 'high'},
+        9051: {'name': 'Tor Control', 'category': 'anonymizer', 'level': 'high'},
+    }
+
+    # Suspicious process names for network activity
+    SUSPICIOUS_NETWORK_PROCESSES = {
+        # Reverse shells
+        'nc', 'netcat', 'ncat', 'socat',
+        'cryptcat', 'powercat',
+        # Network recon
+        'nmap', 'masscan', 'zmap',
+        # Tunneling
+        'chisel', 'ligolo', 'ngrok', 'frp', 'frpc', 'frps',
+        'cloudflared', 'bore',
+        # Proxy tools
+        'proxychains', 'redsocks', 'torsocks',
+        # Data exfil
+        'rclone', 'restic', 'duplicity',
+        # Remote access
+        'meterpreter', 'beacon', 'cobaltstrike',
+        'empire', 'sliver',
+    }
+
+    # Known C2 framework indicators in process names
+    C2_INDICATORS = {
+        'meterpreter', 'beacon', 'cobaltstrike', 'cobalt',
+        'empire', 'sliver', 'mythic', 'havoc',
+        'bruteratel', 'nighthawk', 'poshc2',
+    }
+
+    # Suspicious outbound ports (data exfiltration risk)
+    EXFIL_RISK_PORTS = {
+        53: 'DNS (tunneling risk)',
+        443: 'HTTPS (encrypted exfil)',
+        80: 'HTTP (unencrypted exfil)',
+        8080: 'HTTP Proxy',
+        8443: 'HTTPS Alt',
+    }
+
+
 class AntivirusScanner:
     """
     Simple antivirus scanner focused on keylogger detection.
@@ -203,6 +357,8 @@ class AntivirusScanner:
         self._lock = threading.Lock()
         self._scan_running = False
         self.signatures = KeyloggerSignatures()
+        self.screen_sharing_sigs = ScreenSharingSignatures()
+        self.network_sigs = NetworkMonitoringSignatures()
 
     def full_scan(self) -> ScanResult:
         """
@@ -228,24 +384,32 @@ class AntivirusScanner:
             file_result = self.scan_filesystem()
             input_result = self.scan_input_devices()
             persistence_result = self.scan_persistence_mechanisms()
+            screen_result = self.scan_screen_sharing()
+            network_result = self.scan_network_connections()
 
             # Aggregate results
             result.threats_found.extend(process_result.threats_found)
             result.threats_found.extend(file_result.threats_found)
             result.threats_found.extend(input_result.threats_found)
             result.threats_found.extend(persistence_result.threats_found)
+            result.threats_found.extend(screen_result.threats_found)
+            result.threats_found.extend(network_result.threats_found)
 
             result.items_scanned = (
                 process_result.items_scanned +
                 file_result.items_scanned +
                 input_result.items_scanned +
-                persistence_result.items_scanned
+                persistence_result.items_scanned +
+                screen_result.items_scanned +
+                network_result.items_scanned
             )
 
             result.errors.extend(process_result.errors)
             result.errors.extend(file_result.errors)
             result.errors.extend(input_result.errors)
             result.errors.extend(persistence_result.errors)
+            result.errors.extend(screen_result.errors)
+            result.errors.extend(network_result.errors)
 
         except Exception as e:
             logger.error(f"Full scan error: {e}")
@@ -399,6 +563,66 @@ class AntivirusScanner:
             result.end_time = datetime.utcnow().isoformat() + "Z"
 
         return result
+
+    def scan_screen_sharing(self) -> ScanResult:
+        """
+        Detect active screen sharing and remote viewing.
+
+        Checks for:
+        - Running screen sharing processes (VNC, RDP, TeamViewer, etc.)
+        - Network connections on remote desktop ports
+        - X11 screen capture indicators
+        - Wayland/D-Bus screen sharing sessions
+        - SSH X11 forwarding
+
+        Returns:
+            ScanResult with screen sharing indicators
+        """
+        start_time = datetime.utcnow().isoformat() + "Z"
+        result = ScanResult(scan_type="screen_sharing", start_time=start_time)
+
+        try:
+            # Check for screen sharing processes
+            process_threats = self._check_screen_sharing_processes()
+            result.threats_found.extend(process_threats)
+
+            # Check network ports for remote desktop connections
+            port_threats = self._check_remote_desktop_ports()
+            result.threats_found.extend(port_threats)
+
+            # Check for X11 DAMAGE extension usage (VNC indicator)
+            x11_threats = self._check_x11_screen_capture()
+            result.threats_found.extend(x11_threats)
+
+            # Check for D-Bus screen sharing sessions
+            dbus_threats = self._check_dbus_screen_sharing()
+            result.threats_found.extend(dbus_threats)
+
+            # Check for SSH X11 forwarding
+            ssh_threats = self._check_ssh_x11_forwarding()
+            result.threats_found.extend(ssh_threats)
+
+            result.items_scanned = 5  # Number of check types
+
+        except Exception as e:
+            logger.error(f"Screen sharing scan error: {e}")
+            result.errors.append(str(e))
+        finally:
+            result.end_time = datetime.utcnow().isoformat() + "Z"
+
+        return result
+
+    def is_screen_being_shared(self) -> Tuple[bool, List[Dict]]:
+        """
+        Quick check if screen is currently being shared.
+
+        Returns:
+            Tuple of (is_shared: bool, details: List[Dict])
+        """
+        result = self.scan_screen_sharing()
+        is_shared = result.threat_count > 0
+        details = [t.to_dict() for t in result.threats_found]
+        return (is_shared, details)
 
     def quick_scan(self) -> ScanResult:
         """
@@ -827,13 +1051,874 @@ class AntivirusScanner:
 
         return threats
 
+    # ==================== Screen Sharing Detection ====================
+
+    def _check_screen_sharing_processes(self) -> List[ThreatIndicator]:
+        """Check for running screen sharing processes"""
+        threats = []
+
+        try:
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                cmdline = proc.get('cmdline', '').lower()
+                pid = proc.get('pid', 'unknown')
+
+                # Check against known screen sharing processes
+                for sig in self.screen_sharing_sigs.SCREEN_SHARING_PROCESSES:
+                    sig_lower = sig.lower()
+                    if sig_lower in name or sig_lower in cmdline:
+                        # Determine threat level based on process type
+                        level = ThreatLevel.INFO
+                        description = "Screen sharing software detected"
+
+                        # Higher concern for remote access tools
+                        if any(x in sig_lower for x in ['vnc', 'rdp', 'xrdp', 'teamviewer', 'anydesk', 'rustdesk']):
+                            level = ThreatLevel.MEDIUM
+                            description = "Remote desktop/viewing software active"
+
+                        threats.append(ThreatIndicator(
+                            name=f"Screen sharing: {sig}",
+                            category=ThreatCategory.REMOTE_VIEW,
+                            level=level,
+                            description=description,
+                            location=f"PID: {pid}",
+                            evidence=cmdline[:200] if cmdline else name,
+                            remediation="Verify this is an authorized screen sharing session"
+                        ))
+                        break
+
+        except Exception as e:
+            logger.debug(f"Error checking screen sharing processes: {e}")
+
+        return threats
+
+    def _check_remote_desktop_ports(self) -> List[ThreatIndicator]:
+        """Check for listening/connected remote desktop ports"""
+        threats = []
+
+        try:
+            # Use ss (socket statistics) to check listening ports
+            result = subprocess.run(
+                ['ss', '-tlnp'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                for port, service in self.screen_sharing_sigs.REMOTE_DESKTOP_PORTS.items():
+                    # Skip SSH as it's very common
+                    if port == 22:
+                        continue
+
+                    port_str = f":{port} "
+                    if port_str in output or f":{port}\t" in output:
+                        threats.append(ThreatIndicator(
+                            name=f"Remote desktop port open: {port}",
+                            category=ThreatCategory.REMOTE_VIEW,
+                            level=ThreatLevel.MEDIUM,
+                            description=f"{service} port is listening",
+                            location=f"Port {port}/tcp",
+                            evidence=f"Service: {service}",
+                            remediation="Verify this remote access service is authorized"
+                        ))
+
+            # Check for established connections on these ports
+            result = subprocess.run(
+                ['ss', '-tnp', 'state', 'established'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                for port, service in self.screen_sharing_sigs.REMOTE_DESKTOP_PORTS.items():
+                    if port == 22:
+                        continue
+
+                    if f":{port} " in output or f":{port}\t" in output:
+                        threats.append(ThreatIndicator(
+                            name=f"Active remote connection on port {port}",
+                            category=ThreatCategory.REMOTE_VIEW,
+                            level=ThreatLevel.HIGH,
+                            description=f"Active {service} connection detected",
+                            location=f"Port {port}/tcp",
+                            evidence=f"Established connection to {service}",
+                            remediation="Verify this is an authorized remote session"
+                        ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            # ss not available, try netstat
+            try:
+                result = subprocess.run(
+                    ['netstat', '-tlnp'],
+                    capture_output=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    output = result.stdout.decode()
+                    for port, service in self.screen_sharing_sigs.REMOTE_DESKTOP_PORTS.items():
+                        if port == 22:
+                            continue
+                        if f":{port} " in output:
+                            threats.append(ThreatIndicator(
+                                name=f"Remote desktop port open: {port}",
+                                category=ThreatCategory.REMOTE_VIEW,
+                                level=ThreatLevel.MEDIUM,
+                                description=f"{service} port is listening",
+                                location=f"Port {port}/tcp",
+                                evidence=f"Service: {service}",
+                                remediation="Verify this remote access service is authorized"
+                            ))
+            except Exception:
+                pass
+        except Exception as e:
+            logger.debug(f"Error checking remote desktop ports: {e}")
+
+        return threats
+
+    def _check_x11_screen_capture(self) -> List[ThreatIndicator]:
+        """Check for X11 screen capture indicators"""
+        threats = []
+
+        # Check if DISPLAY is set (X11 is in use)
+        display = os.environ.get('DISPLAY')
+        if not display:
+            return threats
+
+        try:
+            # Check for processes using DAMAGE extension (used by VNC)
+            # The DAMAGE extension is used to track screen changes
+            result = subprocess.run(
+                ['xdpyinfo', '-display', display],
+                capture_output=True,
+                timeout=5,
+                env={**os.environ, 'DISPLAY': display}
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                # Check if RECORD extension is active (can record input)
+                if 'RECORD' in output:
+                    # Check who is using it
+                    record_result = subprocess.run(
+                        ['xlsclients', '-l'],
+                        capture_output=True,
+                        timeout=5,
+                        env={**os.environ, 'DISPLAY': display}
+                    )
+
+                    if record_result.returncode == 0:
+                        clients = record_result.stdout.decode()
+                        # Look for VNC or screen capture clients
+                        for sig in ['vnc', 'x11vnc', 'vino', 'screencap', 'record']:
+                            if sig in clients.lower():
+                                threats.append(ThreatIndicator(
+                                    name=f"X11 screen capture client detected",
+                                    category=ThreatCategory.REMOTE_VIEW,
+                                    level=ThreatLevel.MEDIUM,
+                                    description="X11 client using screen capture capabilities",
+                                    location=f"DISPLAY={display}",
+                                    evidence=f"Client matching '{sig}' found",
+                                    remediation="Investigate the X11 client"
+                                ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            # xdpyinfo not available
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking X11 screen capture: {e}")
+
+        return threats
+
+    def _check_dbus_screen_sharing(self) -> List[ThreatIndicator]:
+        """Check for D-Bus screen sharing sessions (GNOME/KDE)"""
+        threats = []
+
+        try:
+            # Check for active portal screen cast sessions
+            result = subprocess.run(
+                ['busctl', 'tree', 'org.freedesktop.portal.Desktop'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                # Look for active ScreenCast sessions
+                if '/org/freedesktop/portal/desktop/session/' in output:
+                    threats.append(ThreatIndicator(
+                        name="Active portal screen sharing session",
+                        category=ThreatCategory.REMOTE_VIEW,
+                        level=ThreatLevel.MEDIUM,
+                        description="XDG Desktop Portal has active screen sharing session",
+                        location="org.freedesktop.portal.Desktop",
+                        evidence="Active session found in D-Bus",
+                        remediation="Check which application requested screen sharing"
+                    ))
+
+            # Check GNOME Mutter ScreenCast
+            result = subprocess.run(
+                ['busctl', 'introspect', 'org.gnome.Mutter.ScreenCast',
+                 '/org/gnome/Mutter/ScreenCast'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                # The service exists and is running
+                # Check for active sessions
+                session_result = subprocess.run(
+                    ['busctl', 'tree', 'org.gnome.Mutter.ScreenCast'],
+                    capture_output=True,
+                    timeout=5
+                )
+
+                if session_result.returncode == 0:
+                    session_output = session_result.stdout.decode()
+                    if '/org/gnome/Mutter/ScreenCast/Session/' in session_output:
+                        threats.append(ThreatIndicator(
+                            name="GNOME screen cast session active",
+                            category=ThreatCategory.REMOTE_VIEW,
+                            level=ThreatLevel.MEDIUM,
+                            description="GNOME Mutter has active screen cast session",
+                            location="org.gnome.Mutter.ScreenCast",
+                            evidence="Active session in Mutter ScreenCast",
+                            remediation="Check GNOME screen sharing settings"
+                        ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            # busctl not available
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking D-Bus screen sharing: {e}")
+
+        return threats
+
+    def _check_ssh_x11_forwarding(self) -> List[ThreatIndicator]:
+        """Check for SSH X11 forwarding"""
+        threats = []
+
+        try:
+            # Check for SSH connections with X11 forwarding
+            # This is indicated by DISPLAY being set to localhost:10.0 or similar
+            display = os.environ.get('DISPLAY', '')
+
+            if display.startswith('localhost:') or display.startswith(':10'):
+                # Likely X11 forwarding
+                threats.append(ThreatIndicator(
+                    name="SSH X11 forwarding detected",
+                    category=ThreatCategory.REMOTE_VIEW,
+                    level=ThreatLevel.INFO,
+                    description="Display suggests SSH X11 forwarding is active",
+                    location=f"DISPLAY={display}",
+                    evidence="Display variable indicates remote X11",
+                    remediation="Verify SSH X11 forwarding is authorized"
+                ))
+
+            # Check for sshd processes with X11 forwarding
+            result = subprocess.run(
+                ['pgrep', '-a', 'sshd'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+                # Check if any SSH session has X11 socket
+                for line in output.split('\n'):
+                    if 'sshd:' in line and '@' in line:
+                        # Active SSH session
+                        pid = line.split()[0]
+                        # Check if this session has X11 forwarding
+                        try:
+                            fd_path = f'/proc/{pid}/fd'
+                            if os.path.exists(fd_path):
+                                for fd in os.listdir(fd_path):
+                                    try:
+                                        link = os.readlink(f'{fd_path}/{fd}')
+                                        if 'X11-unix' in link or ':6010' in link:
+                                            threats.append(ThreatIndicator(
+                                                name="SSH session with X11 forwarding",
+                                                category=ThreatCategory.REMOTE_VIEW,
+                                                level=ThreatLevel.INFO,
+                                                description="SSH session has X11 forwarding enabled",
+                                                location=f"SSHD PID: {pid}",
+                                                evidence=line.strip()[:100],
+                                                remediation="Verify SSH X11 forwarding is authorized"
+                                            ))
+                                            break
+                                    except Exception:
+                                        pass
+                        except PermissionError:
+                            pass
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking SSH X11 forwarding: {e}")
+
+        return threats
+
+    # ==================== Network Connection Monitoring ====================
+
+    def scan_network_connections(self) -> ScanResult:
+        """
+        Monitor active network connections for suspicious activity.
+
+        Checks for:
+        - SSH connections (incoming and outgoing)
+        - FTP connections
+        - Telnet connections (insecure)
+        - Reverse shell indicators
+        - C2 channel indicators
+        - Suspicious tunneling
+        - Data exfiltration patterns
+
+        Returns:
+            ScanResult with network-related threats
+        """
+        start_time = datetime.utcnow().isoformat() + "Z"
+        result = ScanResult(scan_type="network_connections", start_time=start_time)
+
+        try:
+            # Check listening ports
+            listen_threats = self._check_listening_ports()
+            result.threats_found.extend(listen_threats)
+
+            # Check established connections
+            conn_threats = self._check_established_connections()
+            result.threats_found.extend(conn_threats)
+
+            # Check for suspicious network processes
+            proc_threats = self._check_network_processes()
+            result.threats_found.extend(proc_threats)
+
+            # Check for reverse shell indicators
+            shell_threats = self._check_reverse_shells()
+            result.threats_found.extend(shell_threats)
+
+            # Check for tunneling tools
+            tunnel_threats = self._check_tunneling()
+            result.threats_found.extend(tunnel_threats)
+
+            result.items_scanned = 5  # Number of check types
+
+        except Exception as e:
+            logger.error(f"Network scan error: {e}")
+            result.errors.append(str(e))
+        finally:
+            result.end_time = datetime.utcnow().isoformat() + "Z"
+
+        return result
+
+    def get_active_connections(self) -> Dict:
+        """
+        Get a summary of all active network connections.
+
+        Returns:
+            Dict with connection summaries by category
+        """
+        connections = {
+            'ssh': [],
+            'ftp': [],
+            'remote_desktop': [],
+            'suspicious': [],
+            'other': []
+        }
+
+        try:
+            result = subprocess.run(
+                ['ss', '-tunap'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n')[1:]:  # Skip header
+                    if not line.strip():
+                        continue
+
+                    parts = line.split()
+                    if len(parts) < 5:
+                        continue
+
+                    proto = parts[0]
+                    state = parts[1] if len(parts) > 1 else ''
+                    local = parts[4] if len(parts) > 4 else ''
+                    remote = parts[5] if len(parts) > 5 else ''
+                    process = parts[-1] if len(parts) > 6 else ''
+
+                    # Extract port from local address
+                    local_port = 0
+                    if ':' in local:
+                        try:
+                            local_port = int(local.rsplit(':', 1)[1])
+                        except ValueError:
+                            pass
+
+                    conn_info = {
+                        'protocol': proto,
+                        'state': state,
+                        'local': local,
+                        'remote': remote,
+                        'process': process
+                    }
+
+                    # Categorize
+                    if local_port == 22 or ':22' in remote:
+                        connections['ssh'].append(conn_info)
+                    elif local_port in [20, 21] or any(f':{p}' in remote for p in [20, 21]):
+                        connections['ftp'].append(conn_info)
+                    elif local_port in [3389, 5900, 5901]:
+                        connections['remote_desktop'].append(conn_info)
+                    elif local_port in [4444, 5555, 6666, 1337, 31337]:
+                        connections['suspicious'].append(conn_info)
+                    else:
+                        connections['other'].append(conn_info)
+
+        except Exception as e:
+            logger.debug(f"Error getting connections: {e}")
+
+        return connections
+
+    def _check_listening_ports(self) -> List[ThreatIndicator]:
+        """Check for suspicious listening ports"""
+        threats = []
+
+        try:
+            result = subprocess.run(
+                ['ss', '-tlnp'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                for port, info in self.network_sigs.MONITORED_PORTS.items():
+                    port_patterns = [f':{port} ', f':{port}\t', f':{port}\n']
+                    if any(p in output for p in port_patterns):
+                        level = getattr(ThreatLevel, info['level'].upper(), ThreatLevel.INFO)
+
+                        # Determine category
+                        cat_map = {
+                            'remote_shell': ThreatCategory.REMOTE_SHELL,
+                            'file_transfer': ThreatCategory.FILE_TRANSFER,
+                            'reverse_shell': ThreatCategory.REVERSE_SHELL,
+                            'c2': ThreatCategory.C2_CHANNEL,
+                            'database': ThreatCategory.DATA_EXFIL,
+                            'remote_desktop': ThreatCategory.REMOTE_VIEW,
+                            'remote_admin': ThreatCategory.REMOTE_SHELL,
+                            'anonymizer': ThreatCategory.TUNNELING,
+                            'proxy': ThreatCategory.TUNNELING,
+                            'web': ThreatCategory.SUSPICIOUS_PROCESS,
+                        }
+                        category = cat_map.get(info['category'], ThreatCategory.SUSPICIOUS_PROCESS)
+
+                        threats.append(ThreatIndicator(
+                            name=f"Listening: {info['name']} (port {port})",
+                            category=category,
+                            level=level,
+                            description=f"{info['name']} service is listening",
+                            location=f"Port {port}/tcp",
+                            evidence=f"Category: {info['category']}",
+                            remediation="Verify this service is authorized"
+                        ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking listening ports: {e}")
+
+        return threats
+
+    def _check_established_connections(self) -> List[ThreatIndicator]:
+        """Check for suspicious established connections"""
+        threats = []
+
+        try:
+            result = subprocess.run(
+                ['ss', '-tnp', 'state', 'established'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if not line.strip() or line.startswith('Recv-Q'):
+                        continue
+
+                    parts = line.split()
+                    if len(parts) < 5:
+                        continue
+
+                    local = parts[3] if len(parts) > 3 else ''
+                    remote = parts[4] if len(parts) > 4 else ''
+                    process = parts[-1] if 'users:' in line else ''
+
+                    # Check remote port
+                    remote_port = 0
+                    if ':' in remote:
+                        try:
+                            remote_port = int(remote.rsplit(':', 1)[1])
+                        except ValueError:
+                            pass
+
+                    # Check local port
+                    local_port = 0
+                    if ':' in local:
+                        try:
+                            local_port = int(local.rsplit(':', 1)[1])
+                        except ValueError:
+                            pass
+
+                    # Check for suspicious ports
+                    for port, info in self.network_sigs.MONITORED_PORTS.items():
+                        if port in [local_port, remote_port]:
+                            level = getattr(ThreatLevel, info['level'].upper(), ThreatLevel.INFO)
+
+                            # Skip SSH inbound unless high level
+                            if port == 22 and info['level'] == 'info':
+                                # Only report outbound SSH or if it's on a non-standard port
+                                if local_port == 22:
+                                    continue  # Normal incoming SSH
+
+                            cat_map = {
+                                'remote_shell': ThreatCategory.REMOTE_SHELL,
+                                'file_transfer': ThreatCategory.FILE_TRANSFER,
+                                'reverse_shell': ThreatCategory.REVERSE_SHELL,
+                                'c2': ThreatCategory.C2_CHANNEL,
+                            }
+                            category = cat_map.get(info['category'], ThreatCategory.SUSPICIOUS_PROCESS)
+
+                            direction = "outbound" if remote_port == port else "inbound"
+                            threats.append(ThreatIndicator(
+                                name=f"Active {info['name']} connection ({direction})",
+                                category=category,
+                                level=level,
+                                description=f"Established {info['name']} connection",
+                                location=f"{local} -> {remote}",
+                                evidence=process[:100] if process else f"Port {port}",
+                                remediation="Verify this connection is authorized"
+                            ))
+                            break
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking established connections: {e}")
+
+        return threats
+
+    def _check_network_processes(self) -> List[ThreatIndicator]:
+        """Check for suspicious network-related processes"""
+        threats = []
+
+        try:
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                cmdline = proc.get('cmdline', '').lower()
+                pid = proc.get('pid', 'unknown')
+
+                # Check for suspicious network processes
+                for sig in self.network_sigs.SUSPICIOUS_NETWORK_PROCESSES:
+                    if sig in name or f'/{sig}' in cmdline or f' {sig} ' in cmdline:
+                        # Determine threat level based on process type
+                        level = ThreatLevel.MEDIUM
+                        category = ThreatCategory.SUSPICIOUS_PROCESS
+
+                        if sig in ['nc', 'netcat', 'ncat', 'socat']:
+                            level = ThreatLevel.HIGH
+                            category = ThreatCategory.REVERSE_SHELL
+                        elif sig in self.network_sigs.C2_INDICATORS:
+                            level = ThreatLevel.CRITICAL
+                            category = ThreatCategory.C2_CHANNEL
+                        elif sig in ['chisel', 'ligolo', 'ngrok', 'frp', 'frpc', 'frps']:
+                            level = ThreatLevel.HIGH
+                            category = ThreatCategory.TUNNELING
+                        elif sig in ['nmap', 'masscan', 'zmap']:
+                            level = ThreatLevel.MEDIUM
+                            category = ThreatCategory.NETWORK_SNIFFER
+
+                        threats.append(ThreatIndicator(
+                            name=f"Suspicious network process: {sig}",
+                            category=category,
+                            level=level,
+                            description=f"Process '{name}' matches suspicious network tool",
+                            location=f"PID: {pid}",
+                            evidence=cmdline[:200] if cmdline else name,
+                            remediation="Investigate why this network tool is running"
+                        ))
+                        break
+
+        except Exception as e:
+            logger.debug(f"Error checking network processes: {e}")
+
+        return threats
+
+    def _check_reverse_shells(self) -> List[ThreatIndicator]:
+        """Check for reverse shell indicators"""
+        threats = []
+
+        try:
+            # Check for common reverse shell patterns in processes
+            result = subprocess.run(
+                ['ps', 'auxww'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode().lower()
+
+                # Common reverse shell patterns
+                shell_patterns = [
+                    ('bash -i', 'Bash interactive reverse shell'),
+                    ('bash -c.*>/dev/tcp', 'Bash /dev/tcp reverse shell'),
+                    ('sh -i', 'Shell interactive mode'),
+                    ('python.*socket.*connect', 'Python socket connection'),
+                    ('python.*pty.spawn', 'Python PTY spawn'),
+                    ('perl.*socket', 'Perl socket'),
+                    ('ruby.*socket', 'Ruby socket'),
+                    ('nc -e', 'Netcat with -e (execute)'),
+                    ('nc.*-c', 'Netcat with -c'),
+                    ('ncat.*--exec', 'Ncat with exec'),
+                    ('socat.*exec', 'Socat with exec'),
+                    ('mkfifo', 'Named pipe (potential shell)'),
+                    ('msfvenom', 'Metasploit payload generator'),
+                    ('meterpreter', 'Meterpreter session'),
+                ]
+
+                for pattern, description in shell_patterns:
+                    if pattern in output:
+                        threats.append(ThreatIndicator(
+                            name=f"Reverse shell indicator: {pattern}",
+                            category=ThreatCategory.REVERSE_SHELL,
+                            level=ThreatLevel.CRITICAL,
+                            description=description,
+                            location="Process list",
+                            evidence=f"Pattern '{pattern}' found in running processes",
+                            remediation="Immediately investigate and terminate suspicious processes"
+                        ))
+
+            # Check for processes with network connections and shell
+            result = subprocess.run(
+                ['ss', '-tnp'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode().lower()
+                shell_processes = ['bash', 'sh', 'zsh', 'fish', 'dash']
+
+                for shell in shell_processes:
+                    if f'"{shell}"' in output or f"({shell})" in output:
+                        # Shell with network connection is suspicious
+                        threats.append(ThreatIndicator(
+                            name=f"Shell with network connection: {shell}",
+                            category=ThreatCategory.REVERSE_SHELL,
+                            level=ThreatLevel.HIGH,
+                            description=f"Shell process has network connection",
+                            location="Network connections",
+                            evidence=f"Shell '{shell}' has active network socket",
+                            remediation="Verify this is not a reverse shell"
+                        ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking reverse shells: {e}")
+
+        return threats
+
+    def _check_tunneling(self) -> List[ThreatIndicator]:
+        """Check for network tunneling tools"""
+        threats = []
+
+        try:
+            # Check for SSH tunnels
+            result = subprocess.run(
+                ['ps', 'aux'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                output = result.stdout.decode()
+
+                # SSH tunnel patterns
+                tunnel_patterns = [
+                    ('ssh.*-L', 'SSH local port forward', ThreatLevel.INFO),
+                    ('ssh.*-R', 'SSH remote port forward', ThreatLevel.MEDIUM),
+                    ('ssh.*-D', 'SSH dynamic (SOCKS) tunnel', ThreatLevel.MEDIUM),
+                    ('ssh.*-w', 'SSH tunnel interface', ThreatLevel.HIGH),
+                    ('autossh', 'Persistent SSH tunnel', ThreatLevel.MEDIUM),
+                    ('sshuttle', 'SSH-based VPN', ThreatLevel.MEDIUM),
+                ]
+
+                for pattern, description, level in tunnel_patterns:
+                    # Use simple string matching
+                    pattern_parts = pattern.replace('.*', ' ').split()
+                    lines = output.split('\n')
+                    for line in lines:
+                        if all(p in line for p in pattern_parts):
+                            threats.append(ThreatIndicator(
+                                name=f"Tunnel: {description}",
+                                category=ThreatCategory.TUNNELING,
+                                level=level,
+                                description=description,
+                                location="Process list",
+                                evidence=line.strip()[:150],
+                                remediation="Verify this tunnel is authorized"
+                            ))
+                            break
+
+            # Check for VPN processes
+            vpn_processes = ['openvpn', 'wireguard', 'wg', 'wg-quick', 'tailscale']
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                if name in vpn_processes:
+                    threats.append(ThreatIndicator(
+                        name=f"VPN: {name}",
+                        category=ThreatCategory.TUNNELING,
+                        level=ThreatLevel.INFO,
+                        description=f"VPN software detected",
+                        location=f"PID: {proc.get('pid', 'unknown')}",
+                        evidence=proc.get('cmdline', name)[:100],
+                        remediation="Verify VPN usage is authorized"
+                    ))
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error checking tunneling: {e}")
+
+        return threats
+
+    def get_ssh_sessions(self) -> List[Dict]:
+        """Get active SSH sessions (both incoming and outgoing)"""
+        sessions = []
+
+        try:
+            # Check for SSH client connections (outgoing)
+            result = subprocess.run(
+                ['pgrep', '-a', 'ssh'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if line.strip() and 'sshd' not in line:
+                        parts = line.split(None, 1)
+                        if len(parts) >= 2:
+                            sessions.append({
+                                'type': 'outgoing',
+                                'pid': parts[0],
+                                'command': parts[1],
+                            })
+
+            # Check for sshd sessions (incoming)
+            result = subprocess.run(
+                ['who'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            sessions.append({
+                                'type': 'incoming',
+                                'user': parts[0],
+                                'terminal': parts[1],
+                                'time': ' '.join(parts[2:4]) if len(parts) > 3 else parts[2],
+                                'from': parts[4].strip('()') if len(parts) > 4 else 'local'
+                            })
+
+        except Exception as e:
+            logger.debug(f"Error getting SSH sessions: {e}")
+
+        return sessions
+
+    def get_ftp_connections(self) -> List[Dict]:
+        """Get active FTP connections"""
+        connections = []
+
+        try:
+            # Check for FTP connections on ports 20, 21
+            result = subprocess.run(
+                ['ss', '-tnp', 'sport', '=', ':21', 'or', 'sport', '=', ':20',
+                 'or', 'dport', '=', ':21', 'or', 'dport', '=', ':20'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n')[1:]:
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            connections.append({
+                                'state': parts[0],
+                                'local': parts[3],
+                                'remote': parts[4],
+                                'process': parts[-1] if 'users:' in line else ''
+                            })
+
+            # Also check for FTP client processes
+            ftp_clients = ['ftp', 'sftp', 'lftp', 'ncftp', 'curl', 'wget']
+            processes = self._get_running_processes()
+
+            for proc in processes:
+                name = proc.get('name', '').lower()
+                cmdline = proc.get('cmdline', '').lower()
+                if name in ftp_clients or any(f'{c} ftp' in cmdline for c in ftp_clients):
+                    if 'ftp' in cmdline or name in ['ftp', 'sftp', 'lftp', 'ncftp']:
+                        connections.append({
+                            'type': 'client',
+                            'process': name,
+                            'pid': proc.get('pid'),
+                            'command': proc.get('cmdline', '')[:100]
+                        })
+
+        except Exception as e:
+            logger.debug(f"Error getting FTP connections: {e}")
+
+        return connections
+
     def get_status(self) -> Dict:
         """Get scanner status"""
         return {
             'scan_running': self._scan_running,
             'signatures_loaded': len(self.signatures.SUSPICIOUS_PROCESS_NAMES),
             'file_patterns': len(self.signatures.SUSPICIOUS_FILE_PATTERNS),
-            'monitored_dirs': len(self.signatures.SUSPICIOUS_DIRECTORIES)
+            'monitored_dirs': len(self.signatures.SUSPICIOUS_DIRECTORIES),
+            'screen_sharing_sigs': len(self.screen_sharing_sigs.SCREEN_SHARING_PROCESSES),
+            'network_ports_monitored': len(self.network_sigs.MONITORED_PORTS),
+            'network_process_sigs': len(self.network_sigs.SUSPICIOUS_NETWORK_PROCESSES)
         }
 
 
@@ -922,6 +2007,617 @@ class RealTimeMonitor:
         return self._running
 
 
+class StartupMonitor:
+    """
+    Monitors startup programs and alerts on new additions.
+
+    Features:
+    - Scans all startup locations (autostart, systemd, cron, etc.)
+    - Maintains an encrypted persistent list of known programs
+    - Checks hourly for newly added programs
+    - Provides friendly (non-scary) notifications
+
+    The goal is to catch unwanted programs that add themselves to startup
+    while reassuring users when they see programs they may have forgotten
+    they installed.
+    """
+
+    # Default locations to monitor for startup programs
+    STARTUP_LOCATIONS = {
+        'user_autostart': os.path.expanduser('~/.config/autostart'),
+        'system_autostart': '/etc/xdg/autostart',
+        'xinitrc': os.path.expanduser('~/.xinitrc'),
+        'xprofile': os.path.expanduser('~/.xprofile'),
+        'xsession': os.path.expanduser('~/.xsession'),
+        'bashrc': os.path.expanduser('~/.bashrc'),
+        'bash_profile': os.path.expanduser('~/.bash_profile'),
+        'profile': os.path.expanduser('~/.profile'),
+        'zshrc': os.path.expanduser('~/.zshrc'),
+        'user_systemd': os.path.expanduser('~/.config/systemd/user'),
+        'system_systemd': '/etc/systemd/system',
+        'user_systemd_enabled': os.path.expanduser('~/.config/systemd/user/default.target.wants'),
+        'system_systemd_enabled': '/etc/systemd/system/multi-user.target.wants',
+        'init_d': '/etc/init.d',
+        'rc_local': '/etc/rc.local',
+        'cron_d': '/etc/cron.d',
+        'user_crontab': '/var/spool/cron/crontabs',
+    }
+
+    def __init__(self,
+                 data_dir: str = None,
+                 notification_callback: Callable[[str, Dict], None] = None,
+                 check_interval_hours: float = 1.0):
+        """
+        Initialize the startup monitor.
+
+        Args:
+            data_dir: Directory to store encrypted program list (default: ~/.local/share/boundary-daemon)
+            notification_callback: Function to call when new programs are detected
+                                   Signature: callback(message: str, program_info: Dict)
+            check_interval_hours: How often to check for new programs (default: 1 hour)
+        """
+        self.data_dir = data_dir or os.path.expanduser('~/.local/share/boundary-daemon')
+        self.data_file = os.path.join(self.data_dir, '.startup_programs.enc')
+        self.notification_callback = notification_callback
+        self.check_interval = check_interval_hours * 3600  # Convert to seconds
+
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._known_programs: Dict[str, Dict] = {}
+        self._encryption_key = self._derive_key()
+
+        # Ensure data directory exists
+        os.makedirs(self.data_dir, mode=0o700, exist_ok=True)
+
+        # Load existing program list
+        self._load_known_programs()
+
+    def _derive_key(self) -> bytes:
+        """
+        Derive an encryption key from machine-specific information.
+        This keeps the data tied to this machine.
+        """
+        # Collect machine identifiers
+        machine_info = []
+
+        # Machine ID (if available)
+        for path in ['/etc/machine-id', '/var/lib/dbus/machine-id']:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r') as f:
+                        machine_info.append(f.read().strip())
+                        break
+                except Exception:
+                    pass
+
+        # Fallback: use hostname + username
+        machine_info.append(os.environ.get('HOSTNAME', 'localhost'))
+        machine_info.append(os.environ.get('USER', 'user'))
+
+        # Create a key using PBKDF2-like derivation
+        key_material = ':'.join(machine_info).encode()
+        key = hashlib.pbkdf2_hmac(
+            'sha256',
+            key_material,
+            b'boundary-daemon-startup-monitor',
+            100000,
+            dklen=32
+        )
+        return key
+
+    def _encrypt(self, data: str) -> str:
+        """Simple encryption using XOR with derived key and HMAC for integrity"""
+        data_bytes = data.encode('utf-8')
+
+        # Extend key to match data length
+        extended_key = (self._encryption_key * ((len(data_bytes) // 32) + 1))[:len(data_bytes)]
+
+        # XOR encrypt
+        encrypted = bytes(a ^ b for a, b in zip(data_bytes, extended_key))
+
+        # Add HMAC for integrity
+        hmac_digest = hmac.new(self._encryption_key, encrypted, 'sha256').digest()
+
+        # Combine and encode
+        combined = hmac_digest + encrypted
+        return base64.b64encode(combined).decode('ascii')
+
+    def _decrypt(self, encrypted_data: str) -> Optional[str]:
+        """Decrypt data and verify integrity"""
+        try:
+            combined = base64.b64decode(encrypted_data.encode('ascii'))
+
+            # Split HMAC and data
+            stored_hmac = combined[:32]
+            encrypted = combined[32:]
+
+            # Verify HMAC
+            expected_hmac = hmac.new(self._encryption_key, encrypted, 'sha256').digest()
+            if not hmac.compare_digest(stored_hmac, expected_hmac):
+                logger.warning("Startup program list integrity check failed")
+                return None
+
+            # Extend key to match data length
+            extended_key = (self._encryption_key * ((len(encrypted) // 32) + 1))[:len(encrypted)]
+
+            # XOR decrypt
+            decrypted = bytes(a ^ b for a, b in zip(encrypted, extended_key))
+            return decrypted.decode('utf-8')
+
+        except Exception as e:
+            logger.debug(f"Decryption error: {e}")
+            return None
+
+    def _load_known_programs(self):
+        """Load the encrypted list of known programs"""
+        if not os.path.exists(self.data_file):
+            self._known_programs = {}
+            return
+
+        try:
+            with open(self.data_file, 'r') as f:
+                encrypted_data = f.read()
+
+            decrypted = self._decrypt(encrypted_data)
+            if decrypted:
+                self._known_programs = json.loads(decrypted)
+                logger.debug(f"Loaded {len(self._known_programs)} known startup programs")
+            else:
+                self._known_programs = {}
+
+        except Exception as e:
+            logger.debug(f"Error loading known programs: {e}")
+            self._known_programs = {}
+
+    def _save_known_programs(self):
+        """Save the encrypted list of known programs"""
+        try:
+            data_json = json.dumps(self._known_programs, indent=2)
+            encrypted = self._encrypt(data_json)
+
+            with open(self.data_file, 'w') as f:
+                f.write(encrypted)
+
+            # Set restrictive permissions
+            os.chmod(self.data_file, 0o600)
+            logger.debug(f"Saved {len(self._known_programs)} known startup programs")
+
+        except Exception as e:
+            logger.error(f"Error saving known programs: {e}")
+
+    def scan_startup_programs(self) -> Dict[str, Dict]:
+        """
+        Scan all startup locations and return discovered programs.
+
+        Returns:
+            Dict mapping program identifiers to their info
+        """
+        programs = {}
+
+        for location_name, location_path in self.STARTUP_LOCATIONS.items():
+            if not os.path.exists(location_path):
+                continue
+
+            try:
+                if os.path.isdir(location_path):
+                    programs.update(self._scan_directory(location_name, location_path))
+                else:
+                    programs.update(self._scan_file(location_name, location_path))
+            except PermissionError:
+                logger.debug(f"Permission denied: {location_path}")
+            except Exception as e:
+                logger.debug(f"Error scanning {location_path}: {e}")
+
+        # Also check systemd user services
+        programs.update(self._scan_systemd_user_services())
+
+        # Check crontab
+        programs.update(self._scan_user_crontab())
+
+        return programs
+
+    def _scan_directory(self, location_name: str, dir_path: str) -> Dict[str, Dict]:
+        """Scan a directory for startup entries"""
+        programs = {}
+
+        try:
+            for entry in os.listdir(dir_path):
+                entry_path = os.path.join(dir_path, entry)
+
+                # Skip if not a file or if hidden (except .desktop files)
+                if not os.path.isfile(entry_path):
+                    continue
+
+                program_id = f"{location_name}:{entry}"
+
+                # Get file info
+                try:
+                    stat_info = os.stat(entry_path)
+                    mtime = datetime.fromtimestamp(stat_info.st_mtime).isoformat()
+                except Exception:
+                    mtime = "unknown"
+
+                # Parse .desktop files for more info
+                display_name = entry
+                exec_cmd = ""
+
+                if entry.endswith('.desktop'):
+                    desktop_info = self._parse_desktop_file(entry_path)
+                    display_name = desktop_info.get('Name', entry.replace('.desktop', ''))
+                    exec_cmd = desktop_info.get('Exec', '')
+
+                # For systemd services
+                elif entry.endswith('.service'):
+                    service_info = self._parse_systemd_service(entry_path)
+                    display_name = entry.replace('.service', '')
+                    exec_cmd = service_info.get('ExecStart', '')
+
+                programs[program_id] = {
+                    'name': display_name,
+                    'path': entry_path,
+                    'location': location_name,
+                    'type': self._get_entry_type(entry),
+                    'exec': exec_cmd,
+                    'modified': mtime,
+                    'first_seen': datetime.utcnow().isoformat() + "Z"
+                }
+
+        except Exception as e:
+            logger.debug(f"Error scanning directory {dir_path}: {e}")
+
+        return programs
+
+    def _scan_file(self, location_name: str, file_path: str) -> Dict[str, Dict]:
+        """Scan a config file for startup entries (e.g., .bashrc, .xinitrc)"""
+        programs = {}
+
+        try:
+            with open(file_path, 'r', errors='ignore') as f:
+                content = f.read()
+
+            # Look for common patterns that start programs
+            # This is a simplified detection - could be expanded
+            patterns = [
+                (r'^\s*exec\s+(.+?)(?:\s*&\s*)?$', 'exec'),
+                (r'^\s*(?:nohup\s+)?(/\S+)\s*(?:&|$)', 'command'),
+                (r'^\s*\(\s*(.+?)\s*\)\s*&\s*$', 'background'),
+            ]
+
+            for line_num, line in enumerate(content.split('\n'), 1):
+                # Skip comments
+                if line.strip().startswith('#'):
+                    continue
+
+                for pattern, entry_type in patterns:
+                    import re
+                    match = re.match(pattern, line, re.MULTILINE)
+                    if match:
+                        cmd = match.group(1).strip()
+                        # Skip common non-program lines
+                        if cmd and not any(skip in cmd for skip in ['$', 'source', '.', 'export', 'alias']):
+                            program_id = f"{location_name}:line{line_num}"
+                            programs[program_id] = {
+                                'name': os.path.basename(cmd.split()[0]) if cmd else 'unknown',
+                                'path': file_path,
+                                'location': location_name,
+                                'type': entry_type,
+                                'exec': cmd,
+                                'line': line_num,
+                                'modified': datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),
+                                'first_seen': datetime.utcnow().isoformat() + "Z"
+                            }
+                            break
+
+        except Exception as e:
+            logger.debug(f"Error scanning file {file_path}: {e}")
+
+        return programs
+
+    def _scan_systemd_user_services(self) -> Dict[str, Dict]:
+        """Scan systemd user services"""
+        programs = {}
+
+        try:
+            # Get list of enabled user services
+            result = subprocess.run(
+                ['systemctl', '--user', 'list-unit-files', '--type=service', '--state=enabled', '--no-pager'],
+                capture_output=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+                for line in result.stdout.decode().split('\n'):
+                    if '.service' in line and 'enabled' in line:
+                        parts = line.split()
+                        if parts:
+                            service_name = parts[0]
+                            program_id = f"systemd_user:{service_name}"
+                            programs[program_id] = {
+                                'name': service_name.replace('.service', ''),
+                                'path': f"systemd user service",
+                                'location': 'systemd_user',
+                                'type': 'systemd_service',
+                                'exec': '',
+                                'modified': 'unknown',
+                                'first_seen': datetime.utcnow().isoformat() + "Z"
+                            }
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            # systemctl not available
+            pass
+        except Exception as e:
+            logger.debug(f"Error scanning systemd user services: {e}")
+
+        return programs
+
+    def _scan_user_crontab(self) -> Dict[str, Dict]:
+        """Scan user's crontab for scheduled programs"""
+        programs = {}
+
+        try:
+            result = subprocess.run(
+                ['crontab', '-l'],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                for line_num, line in enumerate(result.stdout.decode().split('\n'), 1):
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+
+                    # Cron format: min hour day month weekday command
+                    parts = line.split(None, 5)
+                    if len(parts) >= 6:
+                        cmd = parts[5]
+                        program_id = f"crontab:line{line_num}"
+                        programs[program_id] = {
+                            'name': os.path.basename(cmd.split()[0]) if cmd else 'unknown',
+                            'path': 'crontab',
+                            'location': 'crontab',
+                            'type': 'cron_job',
+                            'exec': cmd,
+                            'schedule': ' '.join(parts[:5]),
+                            'first_seen': datetime.utcnow().isoformat() + "Z"
+                        }
+
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error scanning crontab: {e}")
+
+        return programs
+
+    def _parse_desktop_file(self, path: str) -> Dict[str, str]:
+        """Parse a .desktop file for relevant info"""
+        info = {}
+        try:
+            with open(path, 'r', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        if key in ['Name', 'Exec', 'Icon', 'Comment']:
+                            info[key] = value
+        except Exception:
+            pass
+        return info
+
+    def _parse_systemd_service(self, path: str) -> Dict[str, str]:
+        """Parse a systemd service file for relevant info"""
+        info = {}
+        try:
+            with open(path, 'r', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        if key in ['ExecStart', 'Description', 'After']:
+                            info[key] = value
+        except Exception:
+            pass
+        return info
+
+    def _get_entry_type(self, filename: str) -> str:
+        """Determine the type of startup entry"""
+        if filename.endswith('.desktop'):
+            return 'desktop_entry'
+        elif filename.endswith('.service'):
+            return 'systemd_service'
+        elif filename.endswith('.timer'):
+            return 'systemd_timer'
+        elif filename.endswith('.sh'):
+            return 'shell_script'
+        else:
+            return 'other'
+
+    def check_for_new_programs(self) -> List[Dict]:
+        """
+        Check for newly added startup programs.
+
+        Returns:
+            List of new programs detected
+        """
+        current_programs = self.scan_startup_programs()
+        new_programs = []
+
+        for prog_id, prog_info in current_programs.items():
+            if prog_id not in self._known_programs:
+                new_programs.append({
+                    'id': prog_id,
+                    **prog_info
+                })
+                # Add to known programs
+                self._known_programs[prog_id] = prog_info
+
+        # Check for removed programs (informational only)
+        removed = set(self._known_programs.keys()) - set(current_programs.keys())
+        for prog_id in removed:
+            logger.debug(f"Program removed from startup: {prog_id}")
+            del self._known_programs[prog_id]
+
+        # Save updated list if there were changes
+        if new_programs or removed:
+            self._save_known_programs()
+
+        return new_programs
+
+    def _generate_friendly_message(self, program: Dict) -> str:
+        """
+        Generate a friendly, non-scary notification message.
+        """
+        name = program.get('name', 'Unknown program')
+        location = program.get('location', 'startup')
+
+        # Different messages based on type
+        messages = {
+            'desktop_entry': f"A new application has been added to your startup: '{name}'",
+            'systemd_service': f"A new service has been enabled: '{name}'",
+            'cron_job': f"A new scheduled task has been added: '{name}'",
+            'shell_script': f"A new script will run at startup: '{name}'",
+            'default': f"A new startup program was detected: '{name}'"
+        }
+
+        prog_type = program.get('type', 'default')
+        base_message = messages.get(prog_type, messages['default'])
+
+        # Add helpful context
+        reminder = (
+            f"\n\nThis is just a friendly heads-up! If you recently installed "
+            f"'{name}' or added it to startup yourself, you can safely ignore this. "
+            f"If you don't recognize this program, you may want to investigate."
+        )
+
+        location_info = f"\n\nLocation: {program.get('path', 'unknown')}"
+
+        if program.get('exec'):
+            location_info += f"\nCommand: {program['exec'][:100]}"
+
+        return base_message + reminder + location_info
+
+    def _notify_new_program(self, program: Dict):
+        """Send notification about a new startup program"""
+        message = self._generate_friendly_message(program)
+
+        # Use callback if provided
+        if self.notification_callback:
+            try:
+                self.notification_callback(message, program)
+            except Exception as e:
+                logger.debug(f"Notification callback error: {e}")
+
+        # Also log it
+        logger.info(f"New startup program detected: {program.get('name', 'unknown')}")
+
+        # Try to show desktop notification if available
+        self._show_desktop_notification(program)
+
+    def _show_desktop_notification(self, program: Dict):
+        """Try to show a desktop notification"""
+        name = program.get('name', 'Unknown')
+
+        try:
+            # Try notify-send (common on Linux)
+            subprocess.run(
+                [
+                    'notify-send',
+                    '--urgency=low',
+                    '--icon=dialog-information',
+                    'New Startup Program Detected',
+                    f"'{name}' has been added to startup.\n\n"
+                    f"If you installed this recently, no action needed!"
+                ],
+                capture_output=True,
+                timeout=5
+            )
+        except FileNotFoundError:
+            # notify-send not available
+            pass
+        except Exception:
+            pass
+
+    def initialize_baseline(self) -> int:
+        """
+        Perform initial scan and save all current programs as known.
+        Call this when first setting up the monitor.
+
+        Returns:
+            Number of programs found
+        """
+        current_programs = self.scan_startup_programs()
+        self._known_programs = current_programs
+        self._save_known_programs()
+
+        logger.info(f"Initialized startup monitor with {len(current_programs)} programs")
+        return len(current_programs)
+
+    def start(self):
+        """Start the hourly monitoring thread"""
+        if self._running:
+            return
+
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._monitor_loop,
+            daemon=True,
+            name="StartupMonitor"
+        )
+        self._thread.start()
+        logger.info("Startup program monitor started (checking every hour)")
+
+    def stop(self):
+        """Stop the monitoring thread"""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        logger.info("Startup program monitor stopped")
+
+    def _monitor_loop(self):
+        """Main monitoring loop"""
+        while self._running:
+            try:
+                # Check for new programs
+                new_programs = self.check_for_new_programs()
+
+                # Notify for each new program
+                for program in new_programs:
+                    self._notify_new_program(program)
+
+            except Exception as e:
+                logger.debug(f"Startup monitor loop error: {e}")
+
+            # Wait for next check (default: 1 hour)
+            # Use small increments so we can stop quickly
+            wait_seconds = int(self.check_interval)
+            for _ in range(wait_seconds):
+                if not self._running:
+                    break
+                time.sleep(1)
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    def get_known_programs(self) -> Dict[str, Dict]:
+        """Get the current list of known startup programs"""
+        return self._known_programs.copy()
+
+    def get_status(self) -> Dict:
+        """Get monitor status"""
+        return {
+            'running': self._running,
+            'known_programs': len(self._known_programs),
+            'data_file': self.data_file,
+            'check_interval_hours': self.check_interval / 3600,
+            'locations_monitored': len(self.STARTUP_LOCATIONS)
+        }
+
+
 # CLI interface for standalone usage
 if __name__ == '__main__':
     import argparse
@@ -939,6 +2635,15 @@ if __name__ == '__main__':
     parser.add_argument('--files', action='store_true', help='Scan filesystem only')
     parser.add_argument('--input', action='store_true', help='Check input devices')
     parser.add_argument('--persistence', action='store_true', help='Check persistence mechanisms')
+    parser.add_argument('--screen', action='store_true', help='Check for screen sharing/remote viewing')
+    parser.add_argument('--network', action='store_true', help='Check network connections (SSH, FTP, etc.)')
+    parser.add_argument('--ssh', action='store_true', help='Show SSH sessions only')
+    parser.add_argument('--ftp', action='store_true', help='Show FTP connections only')
+    parser.add_argument('--connections', action='store_true', help='Show all active connections summary')
+    parser.add_argument('--startup', action='store_true', help='Scan and list all startup programs')
+    parser.add_argument('--startup-init', action='store_true', help='Initialize baseline of known startup programs')
+    parser.add_argument('--startup-check', action='store_true', help='Check for newly added startup programs')
+    parser.add_argument('--startup-monitor', action='store_true', help='Start hourly startup program monitoring')
     parser.add_argument('--json', action='store_true', help='Output as JSON')
     parser.add_argument('--paths', nargs='+', help='Specific paths to scan')
 
@@ -965,6 +2670,189 @@ if __name__ == '__main__':
     elif args.persistence:
         print("Checking persistence mechanisms...")
         result = scanner.scan_persistence_mechanisms()
+    elif args.screen:
+        print("Checking for screen sharing/remote viewing...")
+        result = scanner.scan_screen_sharing()
+    elif args.network:
+        print("Scanning network connections...")
+        result = scanner.scan_network_connections()
+    elif args.ssh:
+        print("Getting SSH sessions...")
+        sessions = scanner.get_ssh_sessions()
+        if args.json:
+            print(json_module.dumps(sessions, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("SSH SESSIONS")
+            print(f"{'='*60}")
+            if sessions:
+                for s in sessions:
+                    if s.get('type') == 'incoming':
+                        print(f"\n[INCOMING] User: {s.get('user')}")
+                        print(f"  Terminal: {s.get('terminal')}")
+                        print(f"  Time: {s.get('time')}")
+                        print(f"  From: {s.get('from')}")
+                    else:
+                        print(f"\n[OUTGOING] PID: {s.get('pid')}")
+                        print(f"  Command: {s.get('command')}")
+            else:
+                print("\nNo active SSH sessions")
+        result = None
+    elif args.ftp:
+        print("Getting FTP connections...")
+        connections = scanner.get_ftp_connections()
+        if args.json:
+            print(json_module.dumps(connections, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("FTP CONNECTIONS")
+            print(f"{'='*60}")
+            if connections:
+                for c in connections:
+                    if c.get('type') == 'client':
+                        print(f"\n[CLIENT] Process: {c.get('process')} (PID: {c.get('pid')})")
+                        print(f"  Command: {c.get('command')}")
+                    else:
+                        print(f"\n[CONNECTION] {c.get('local')} -> {c.get('remote')}")
+                        print(f"  State: {c.get('state')}")
+                        if c.get('process'):
+                            print(f"  Process: {c.get('process')}")
+            else:
+                print("\nNo active FTP connections")
+        result = None
+    elif args.connections:
+        print("Getting all active connections...")
+        connections = scanner.get_active_connections()
+        if args.json:
+            print(json_module.dumps(connections, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("ACTIVE CONNECTIONS SUMMARY")
+            print(f"{'='*60}")
+            for category, conns in connections.items():
+                if conns:
+                    print(f"\n{category.upper()} ({len(conns)} connections):")
+                    for c in conns[:5]:  # Show first 5
+                        print(f"  {c.get('local', 'N/A')} -> {c.get('remote', 'N/A')} [{c.get('state', 'N/A')}]")
+                    if len(conns) > 5:
+                        print(f"  ... and {len(conns) - 5} more")
+        result = None
+    elif args.startup:
+        print("Scanning startup programs...")
+        startup_monitor = StartupMonitor()
+        programs = startup_monitor.scan_startup_programs()
+        if args.json:
+            print(json_module.dumps(programs, indent=2))
+        else:
+            print(f"\n{'='*60}")
+            print("STARTUP PROGRAMS")
+            print(f"{'='*60}")
+            print(f"\nFound {len(programs)} startup programs:\n")
+
+            # Group by location
+            by_location = {}
+            for prog_id, prog in programs.items():
+                loc = prog.get('location', 'unknown')
+                if loc not in by_location:
+                    by_location[loc] = []
+                by_location[loc].append(prog)
+
+            for location, progs in sorted(by_location.items()):
+                print(f"\n[{location.upper()}] ({len(progs)} programs)")
+                for p in progs:
+                    print(f"  - {p.get('name', 'unknown')}")
+                    if p.get('exec'):
+                        print(f"    Command: {p['exec'][:60]}...")
+        result = None
+    elif args.startup_init:
+        print("Initializing startup program baseline...")
+        startup_monitor = StartupMonitor()
+        count = startup_monitor.initialize_baseline()
+        print(f"\n{'='*60}")
+        print("STARTUP BASELINE INITIALIZED")
+        print(f"{'='*60}")
+        print(f"\nRecorded {count} startup programs as known.")
+        print(f"The encrypted list is saved at: {startup_monitor.data_file}")
+        print("\nFuture checks will alert you when new programs are added.")
+        result = None
+    elif args.startup_check:
+        print("Checking for new startup programs...")
+        startup_monitor = StartupMonitor()
+
+        # If no baseline exists, initialize first
+        if not startup_monitor.get_known_programs():
+            print("No baseline found. Initializing...")
+            startup_monitor.initialize_baseline()
+            print("Baseline created. Run --startup-check again to check for changes.")
+        else:
+            new_programs = startup_monitor.check_for_new_programs()
+            print(f"\n{'='*60}")
+            print("STARTUP PROGRAM CHECK")
+            print(f"{'='*60}")
+
+            if new_programs:
+                print(f"\nFound {len(new_programs)} NEW startup programs:\n")
+                for prog in new_programs:
+                    print(f"\n  New: {prog.get('name', 'unknown')}")
+                    print(f"  Type: {prog.get('type', 'unknown')}")
+                    print(f"  Location: {prog.get('path', 'unknown')}")
+                    if prog.get('exec'):
+                        print(f"  Command: {prog['exec'][:80]}")
+                    print("")
+                    print("  If you recently installed this program, you can safely")
+                    print("  ignore this message. Otherwise, you may want to investigate.")
+            else:
+                print("\nNo new startup programs detected.")
+                print("All programs match the known baseline.")
+
+            status = startup_monitor.get_status()
+            print(f"\nKnown programs: {status['known_programs']}")
+        result = None
+    elif args.startup_monitor:
+        print("Starting startup program monitor...")
+        print("(Press Ctrl+C to stop)")
+        print("")
+
+        def on_new_program(message, program):
+            print(f"\n{'='*60}")
+            print("NEW STARTUP PROGRAM DETECTED")
+            print(f"{'='*60}")
+            print(message)
+            print(f"{'='*60}\n")
+
+        startup_monitor = StartupMonitor(notification_callback=on_new_program)
+
+        # Initialize if needed
+        if not startup_monitor.get_known_programs():
+            count = startup_monitor.initialize_baseline()
+            print(f"Initialized with {count} known programs.")
+        else:
+            print(f"Loaded {len(startup_monitor.get_known_programs())} known programs.")
+
+        # Do an immediate check
+        new_progs = startup_monitor.check_for_new_programs()
+        if new_progs:
+            for prog in new_progs:
+                on_new_program(startup_monitor._generate_friendly_message(prog), prog)
+
+        print(f"\nMonitor started. Checking every hour for new programs...")
+        print("Monitoring locations:")
+        for loc in list(startup_monitor.STARTUP_LOCATIONS.keys())[:5]:
+            print(f"  - {loc}")
+        print(f"  ... and {len(startup_monitor.STARTUP_LOCATIONS) - 5} more")
+
+        startup_monitor.start()
+
+        try:
+            # Keep running until Ctrl+C
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n\nStopping monitor...")
+            startup_monitor.stop()
+            print("Monitor stopped.")
+
+        result = None
     else:
         print("Running quick scan (default)...")
         result = scanner.quick_scan()

@@ -17,10 +17,13 @@ from .code_advisor import (
 from .antivirus import (
     AntivirusScanner,
     RealTimeMonitor,
+    StartupMonitor,
     ThreatIndicator,
     ThreatLevel,
     ThreatCategory,
     KeyloggerSignatures,
+    ScreenSharingSignatures,
+    NetworkMonitoringSignatures,
     ScanResult as AntivirusScanResult,
 )
 
@@ -34,9 +37,12 @@ __all__ = [
     # Antivirus
     'AntivirusScanner',
     'RealTimeMonitor',
+    'StartupMonitor',
     'ThreatIndicator',
     'ThreatLevel',
     'ThreatCategory',
     'KeyloggerSignatures',
+    'ScreenSharingSignatures',
+    'NetworkMonitoringSignatures',
     'AntivirusScanResult',
 ]
