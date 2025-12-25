@@ -20,6 +20,18 @@ class NetworkState(Enum):
     ONLINE = "online"
 
 
+class NetworkType(Enum):
+    """Network interface type classification"""
+    ETHERNET = "ethernet"      # eth*, en*, eno*, enp* interfaces
+    WIFI = "wifi"              # wlan*, wlp*, wifi*, ath* interfaces
+    CELLULAR_4G = "cellular_4g"  # wwan*, wwp*, ppp* with LTE/4G
+    CELLULAR_5G = "cellular_5g"  # wwan* with 5G capability
+    VPN = "vpn"                # tun*, vpn*, wg*, tap* interfaces
+    BLUETOOTH = "bluetooth"    # bt*, bnep* interfaces
+    BRIDGE = "bridge"          # br*, virbr*, docker* interfaces
+    UNKNOWN = "unknown"        # Unclassified interfaces
+
+
 class HardwareTrust(Enum):
     """Hardware trust level based on detected conditions"""
     LOW = "low"
@@ -36,6 +48,7 @@ class EnvironmentState:
 
     # Network details
     active_interfaces: List[str]
+    interface_types: Dict[str, NetworkType]  # Map of interface name to type
     has_internet: bool
     vpn_active: bool
     dns_available: bool
@@ -62,6 +75,7 @@ class EnvironmentState:
         result = asdict(self)
         result['network'] = self.network.value
         result['hardware_trust'] = self.hardware_trust.value
+        result['interface_types'] = {k: v.value for k, v in self.interface_types.items()}
         result['usb_devices'] = list(self.usb_devices)
         result['block_devices'] = list(self.block_devices)
         return result
@@ -173,6 +187,7 @@ class StateMonitor:
             network=network_info['state'],
             hardware_trust=hardware_trust,
             active_interfaces=network_info['interfaces'],
+            interface_types=network_info['interface_types'],
             has_internet=network_info['has_internet'],
             vpn_active=network_info['vpn_active'],
             dns_available=network_info['dns_available'],
@@ -189,9 +204,141 @@ class StateMonitor:
             last_activity=presence_info['last_activity']
         )
 
+    def _detect_interface_type(self, iface: str) -> NetworkType:
+        """
+        Detect the type of a network interface based on its name and system info.
+
+        Args:
+            iface: Interface name (e.g., 'eth0', 'wlan0', 'wg0')
+
+        Returns:
+            NetworkType enum value
+        """
+        iface_lower = iface.lower()
+
+        # VPN interfaces (check first as they may overlay other types)
+        if any(pattern in iface_lower for pattern in ['tun', 'tap', 'vpn', 'wg']):
+            return NetworkType.VPN
+
+        # WiFi/WLAN interfaces
+        if any(pattern in iface_lower for pattern in ['wlan', 'wlp', 'wifi', 'ath', 'wlx']):
+            return NetworkType.WIFI
+
+        # Cellular interfaces - try to detect 5G vs 4G
+        if any(pattern in iface_lower for pattern in ['wwan', 'wwp', 'rmnet', 'usb']):
+            # Check for 5G capability via sysfs if available
+            if self._is_5g_capable(iface):
+                return NetworkType.CELLULAR_5G
+            return NetworkType.CELLULAR_4G
+
+        # PPP interfaces (often used for cellular/dial-up)
+        if iface_lower.startswith('ppp'):
+            return NetworkType.CELLULAR_4G
+
+        # Bluetooth interfaces
+        if any(pattern in iface_lower for pattern in ['bt', 'bnep', 'pan']):
+            return NetworkType.BLUETOOTH
+
+        # Bridge interfaces
+        if any(pattern in iface_lower for pattern in ['br', 'virbr', 'docker', 'veth', 'cni']):
+            return NetworkType.BRIDGE
+
+        # Ethernet interfaces (most common patterns)
+        if any(pattern in iface_lower for pattern in ['eth', 'enp', 'eno', 'ens', 'em']):
+            return NetworkType.ETHERNET
+
+        # Try to detect type from sysfs as a fallback
+        sys_type = self._get_interface_type_from_sysfs(iface)
+        if sys_type:
+            return sys_type
+
+        return NetworkType.UNKNOWN
+
+    def _is_5g_capable(self, iface: str) -> bool:
+        """
+        Check if a cellular interface supports 5G.
+
+        Args:
+            iface: Interface name
+
+        Returns:
+            True if 5G capable, False otherwise
+        """
+        # Check modem capabilities via sysfs/dbus if available
+        try:
+            # Check for 5G modem indicators in sysfs
+            modem_paths = [
+                f'/sys/class/net/{iface}/device/capabilities',
+                f'/sys/class/net/{iface}/device/uevent'
+            ]
+            for path in modem_paths:
+                if os.path.exists(path):
+                    with open(path, 'r') as f:
+                        content = f.read().lower()
+                        if '5g' in content or 'nr' in content:
+                            return True
+
+            # Check ModemManager info if available
+            mm_path = f'/sys/class/net/{iface}/device/driver'
+            if os.path.exists(mm_path):
+                driver = os.readlink(mm_path)
+                # Common 5G modem drivers
+                if any(d in driver.lower() for d in ['qmi', 'mbim', 'option']):
+                    # Additional check would need ModemManager D-Bus API
+                    pass
+        except Exception:
+            pass
+
+        return False
+
+    def _get_interface_type_from_sysfs(self, iface: str) -> Optional[NetworkType]:
+        """
+        Get interface type from sysfs as a fallback.
+
+        Args:
+            iface: Interface name
+
+        Returns:
+            NetworkType if detected, None otherwise
+        """
+        try:
+            # Check the interface type from sysfs
+            type_path = f'/sys/class/net/{iface}/type'
+            if os.path.exists(type_path):
+                with open(type_path, 'r') as f:
+                    iface_type = int(f.read().strip())
+                    # Linux ARPHRD types
+                    if iface_type == 1:  # ARPHRD_ETHER - could be ethernet or wifi
+                        # Check for wireless directory
+                        if os.path.exists(f'/sys/class/net/{iface}/wireless'):
+                            return NetworkType.WIFI
+                        return NetworkType.ETHERNET
+                    elif iface_type == 772:  # ARPHRD_LOOPBACK
+                        return None  # Skip loopback
+                    elif iface_type == 65534:  # ARPHRD_NONE (tunnel)
+                        return NetworkType.VPN
+
+            # Check for wireless interface
+            if os.path.exists(f'/sys/class/net/{iface}/wireless'):
+                return NetworkType.WIFI
+
+            # Check device driver for clues
+            driver_path = f'/sys/class/net/{iface}/device/driver'
+            if os.path.exists(driver_path):
+                driver = os.path.basename(os.readlink(driver_path))
+                if driver in ['iwlwifi', 'ath9k', 'ath10k', 'rtlwifi', 'brcmfmac']:
+                    return NetworkType.WIFI
+                if driver in ['e1000', 'e1000e', 'igb', 'ixgbe', 'r8169']:
+                    return NetworkType.ETHERNET
+        except Exception:
+            pass
+
+        return None
+
     def _check_network(self) -> Dict:
         """Check network state"""
         interfaces = []
+        interface_types: Dict[str, NetworkType] = {}
         has_internet = False
         vpn_active = False
         dns_available = False
@@ -207,8 +354,12 @@ class StateMonitor:
                     if iface != 'lo' and not iface.startswith('lo'):
                         interfaces.append(iface)
 
-                        # Check for VPN interfaces
-                        if 'tun' in iface or 'vpn' in iface.lower() or 'wg' in iface:
+                        # Detect interface type
+                        iface_type = self._detect_interface_type(iface)
+                        interface_types[iface] = iface_type
+
+                        # Check for VPN interfaces using the detected type
+                        if iface_type == NetworkType.VPN:
                             vpn_active = True
         except Exception as e:
             print(f"Error checking network interfaces: {e}")
@@ -235,6 +386,7 @@ class StateMonitor:
         return {
             'state': state,
             'interfaces': interfaces,
+            'interface_types': interface_types,
             'has_internet': has_internet,
             'vpn_active': vpn_active,
             'dns_available': dns_available
@@ -427,6 +579,7 @@ if __name__ == '__main__':
         print(f"New network: {new_state.network.value}")
         print(f"Hardware trust: {new_state.hardware_trust.value}")
         print(f"Active interfaces: {new_state.active_interfaces}")
+        print(f"Interface types: {{{', '.join(f'{k}: {v.value}' for k, v in new_state.interface_types.items())}}}")
         print(f"USB devices: {len(new_state.usb_devices)}")
         print(f"Internet: {new_state.has_internet}")
 
