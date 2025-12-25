@@ -5,6 +5,7 @@ Tests the boundary daemon's ability to detect and resist various network attacks
 This module simulates attack scenarios across different network types:
 - DNS: Tunneling, exfiltration, spoofing, rebinding, cache poisoning
 - ARP: Spoofing, gateway impersonation, duplicate MAC, flood, MITM
+- WiFi Security: Evil Twin AP, deauth flood, handshake capture, rogue AP, weak encryption
 - Cellular: IMSI catcher/Stingray attacks (2G downgrade, tower spoofing)
 - WiFi: Rogue AP, deauthentication attacks
 - Ethernet: USB/storage insertion attacks
@@ -31,6 +32,9 @@ from daemon.security.dns_security import (
 )
 from daemon.security.arp_security import (
     ARPSecurityMonitor, ARPSecurityConfig, ARPSecurityAlert
+)
+from daemon.security.wifi_security import (
+    WiFiSecurityMonitor, WiFiSecurityConfig, WiFiSecurityAlert
 )
 
 
@@ -748,6 +752,160 @@ class ARPAttackSimulator:
         return self.monitor.analyze_arp_entry(trusted_ip, "de:ad:be:ef:ba:ad")
 
 
+class WiFiSecurityAttackSimulator:
+    """Simulates WiFi security attacks using the WiFiSecurityMonitor"""
+
+    def __init__(self, monitor: WiFiSecurityMonitor):
+        self.monitor = monitor
+
+    def simulate_evil_twin_attack(self) -> List[Dict]:
+        """
+        Simulate Evil Twin AP attack.
+        Same SSID broadcast from different BSSIDs.
+        """
+        alerts = []
+        ssid = "CorporateWiFi"
+
+        # Legitimate AP
+        alerts.extend(self.monitor.analyze_access_point(
+            ssid=ssid,
+            bssid="00:11:22:33:44:55",
+            channel=6,
+            signal_strength=-50,
+            encryption="WPA2"
+        ))
+
+        # Evil Twin - same SSID, different BSSID
+        alerts.extend(self.monitor.analyze_access_point(
+            ssid=ssid,
+            bssid="DE:AD:BE:EF:CA:FE",
+            channel=6,
+            signal_strength=-40,  # Often stronger signal
+            encryption="WPA2"
+        ))
+
+        return alerts
+
+    def simulate_deauth_flood_attack(self) -> List[Dict]:
+        """
+        Simulate deauthentication flood attack.
+        Many deauth frames in short time period.
+        """
+        alerts = []
+
+        # Lower threshold for testing
+        original_threshold = self.monitor.config.deauth_threshold
+        self.monitor.config.deauth_threshold = 5
+
+        # Flood with deauth frames
+        for i in range(15):
+            alerts.extend(self.monitor.analyze_deauth_frame(
+                source_mac=f"AA:BB:CC:DD:EE:{i:02X}",
+                target_mac="FF:FF:FF:FF:FF:FF",  # Broadcast
+                bssid="00:11:22:33:44:55",
+                reason_code=7  # Class 3 frame from non-associated station
+            ))
+
+        # Restore threshold
+        self.monitor.config.deauth_threshold = original_threshold
+
+        return alerts
+
+    def simulate_targeted_deauth_attack(self) -> List[Dict]:
+        """
+        Simulate targeted deauthentication (for handshake capture).
+        Repeatedly deauth a specific client.
+        """
+        alerts = []
+        target_client = "11:22:33:44:55:66"
+
+        # Lower threshold for testing
+        original_threshold = self.monitor.config.deauth_threshold
+        self.monitor.config.deauth_threshold = 3
+
+        # Target specific client repeatedly
+        for _ in range(5):
+            alerts.extend(self.monitor.analyze_deauth_frame(
+                source_mac="00:11:22:33:44:55",
+                target_mac=target_client,
+                bssid="00:11:22:33:44:55",
+                reason_code=1
+            ))
+
+        # Restore threshold
+        self.monitor.config.deauth_threshold = original_threshold
+
+        return alerts
+
+    def simulate_rogue_ap_attack(self) -> List[Dict]:
+        """
+        Simulate rogue access point.
+        Known SSID with unknown BSSID.
+        """
+        # Set known APs
+        self.monitor.set_known_aps({
+            "CorpNet": "00:11:22:33:44:55",
+            "GuestNet": "00:11:22:33:44:66"
+        })
+
+        # Rogue AP pretending to be CorpNet
+        return self.monitor.analyze_access_point(
+            ssid="CorpNet",
+            bssid="DE:AD:BE:EF:00:01",  # Not the expected BSSID
+            channel=1,
+            signal_strength=-45,
+            encryption="WPA2"
+        )
+
+    def simulate_weak_encryption_attack(self) -> List[Dict]:
+        """
+        Simulate AP with weak or no encryption.
+        """
+        alerts = []
+
+        # WEP encryption (easily cracked)
+        alerts.extend(self.monitor.analyze_access_point(
+            ssid="LegacyNetwork",
+            bssid="AA:BB:CC:DD:EE:01",
+            channel=11,
+            signal_strength=-60,
+            encryption="WEP"
+        ))
+
+        # Open network
+        alerts.extend(self.monitor.analyze_access_point(
+            ssid="FreeWiFi",
+            bssid="AA:BB:CC:DD:EE:02",
+            channel=6,
+            signal_strength=-55,
+            encryption="Open"
+        ))
+
+        return alerts
+
+    def simulate_handshake_capture_attempt(self) -> List[Dict]:
+        """
+        Simulate WPA handshake capture attempt.
+        Deauth followed by handshake capture.
+        """
+        alerts = []
+        target_client = "66:77:88:99:AA:BB"
+
+        # Clear previous events
+        self.monitor._deauth_events = []
+
+        # Multiple targeted deauths (typical of handshake capture)
+        for _ in range(4):
+            alerts.extend(self.monitor.analyze_deauth_frame(
+                source_mac="00:11:22:33:44:55",
+                target_mac=target_client,
+                bssid="00:11:22:33:44:55",
+                reason_code=7
+            ))
+
+        return alerts
+
+
 class TestARPAttacks(unittest.TestCase):
     """Test suite for ARP attack detection"""
 
@@ -859,6 +1017,119 @@ class TestARPAttacks(unittest.TestCase):
             results.add_fail("Trusted Binding Violation", "Failed to detect trusted binding violation")
 
         self.assertTrue(violation_detected, f"Trusted binding violation not detected. Alerts: {alerts}")
+
+
+class TestWiFiSecurityAttacks(unittest.TestCase):
+    """Test suite for WiFi security attack detection"""
+
+    def setUp(self):
+        self.config = WiFiSecurityConfig(
+            enable_evil_twin_detection=True,
+            enable_deauth_detection=True,
+            enable_handshake_detection=True,
+            enable_rogue_ap_detection=True,
+            deauth_threshold=5,
+        )
+        self.monitor = WiFiSecurityMonitor(config=self.config)
+        self.simulator = WiFiSecurityAttackSimulator(self.monitor)
+
+    def test_evil_twin_detection(self):
+        """Test detection of Evil Twin AP (duplicate SSID, different BSSID)"""
+        alerts = self.simulator.simulate_evil_twin_attack()
+
+        evil_twin_detected = any(
+            alert.get('type') == WiFiSecurityAlert.EVIL_TWIN_DETECTED.value
+            for alert in alerts
+        )
+
+        if evil_twin_detected:
+            results.add_pass("Evil Twin AP Detection", "Detected duplicate SSID with different BSSID")
+        else:
+            results.add_fail("Evil Twin AP Detection", "Failed to detect Evil Twin AP")
+
+        self.assertTrue(evil_twin_detected, f"Evil Twin not detected. Alerts: {alerts}")
+
+    def test_deauth_flood_detection(self):
+        """Test detection of deauthentication flood attack"""
+        alerts = self.simulator.simulate_deauth_flood_attack()
+
+        deauth_flood_detected = any(
+            alert.get('type') == WiFiSecurityAlert.DEAUTH_FLOOD.value
+            for alert in alerts
+        )
+
+        if deauth_flood_detected:
+            results.add_pass("Deauth Flood Detection", "Detected excessive deauth frames")
+        else:
+            results.add_fail("Deauth Flood Detection", "Failed to detect deauth flood")
+
+        self.assertTrue(deauth_flood_detected, f"Deauth flood not detected. Alerts: {alerts}")
+
+    def test_targeted_deauth_detection(self):
+        """Test detection of targeted deauthentication (handshake capture)"""
+        alerts = self.simulator.simulate_targeted_deauth_attack()
+
+        targeted_detected = any(
+            alert.get('type') == WiFiSecurityAlert.DEAUTH_FLOOD.value or
+            alert.get('type') == WiFiSecurityAlert.HANDSHAKE_CAPTURE.value
+            for alert in alerts
+        )
+
+        if targeted_detected:
+            results.add_pass("Targeted Deauth Detection", "Detected targeted deauth attack")
+        else:
+            results.add_fail("Targeted Deauth Detection", "Failed to detect targeted deauth")
+
+        self.assertTrue(targeted_detected, f"Targeted deauth not detected. Alerts: {alerts}")
+
+    def test_rogue_ap_detection(self):
+        """Test detection of rogue access point"""
+        alerts = self.simulator.simulate_rogue_ap_attack()
+
+        rogue_detected = any(
+            alert.get('type') == WiFiSecurityAlert.ROGUE_AP.value
+            for alert in alerts
+        )
+
+        if rogue_detected:
+            results.add_pass("Rogue AP Detection", "Detected unauthorized access point")
+        else:
+            results.add_fail("Rogue AP Detection", "Failed to detect rogue AP")
+
+        self.assertTrue(rogue_detected, f"Rogue AP not detected. Alerts: {alerts}")
+
+    def test_weak_encryption_detection(self):
+        """Test detection of weak or no encryption on APs"""
+        alerts = self.simulator.simulate_weak_encryption_attack()
+
+        weak_encryption_detected = any(
+            alert.get('type') == WiFiSecurityAlert.ROGUE_AP.value and
+            ('WEP' in str(alert) or 'Open' in str(alert) or 'weak' in str(alert).lower())
+            for alert in alerts
+        )
+
+        if weak_encryption_detected:
+            results.add_pass("Weak Encryption Detection", "Detected WEP/Open networks")
+        else:
+            results.add_fail("Weak Encryption Detection", "Failed to detect weak encryption")
+
+        self.assertTrue(weak_encryption_detected, f"Weak encryption not detected. Alerts: {alerts}")
+
+    def test_handshake_capture_attempt(self):
+        """Test detection of WPA handshake capture attempt"""
+        alerts = self.simulator.simulate_handshake_capture_attempt()
+
+        handshake_detected = any(
+            alert.get('type') == WiFiSecurityAlert.HANDSHAKE_CAPTURE.value
+            for alert in alerts
+        )
+
+        if handshake_detected:
+            results.add_pass("Handshake Capture Detection", "Detected WPA handshake capture attempt")
+        else:
+            results.add_fail("Handshake Capture Detection", "Failed to detect handshake capture")
+
+        self.assertTrue(handshake_detected, f"Handshake capture not detected. Alerts: {alerts}")
 
 
 class TestCellularAttacks(unittest.TestCase):
@@ -1217,6 +1488,16 @@ class TestMonitoringToggle(unittest.TestCase):
 
         results.add_pass("ANT+ Toggle", "ANT+ monitoring can be toggled")
 
+    def test_wifi_security_toggle(self):
+        """Test WiFi security monitoring toggle"""
+        self.monitor.set_monitor_wifi_security(False)
+        self.assertFalse(self.monitor.monitoring_config.monitor_wifi_security)
+
+        self.monitor.set_monitor_wifi_security(True)
+        self.assertTrue(self.monitor.monitoring_config.monitor_wifi_security)
+
+        results.add_pass("WiFi Security Toggle", "WiFi security monitoring can be toggled")
+
 
 def run_all_simulations():
     """Run all attack simulations and print summary"""
@@ -1233,6 +1514,7 @@ def run_all_simulations():
     # Add all test classes
     suite.addTests(loader.loadTestsFromTestCase(TestDNSAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestARPAttacks))
+    suite.addTests(loader.loadTestsFromTestCase(TestWiFiSecurityAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestCellularAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestWiFiAttacks))
     suite.addTests(loader.loadTestsFromTestCase(TestEthernetAttacks))

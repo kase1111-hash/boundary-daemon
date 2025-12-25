@@ -81,6 +81,7 @@ class MonitoringConfig:
     monitor_ant_plus: bool = True
     monitor_dns_security: bool = True  # DNS security monitoring
     monitor_arp_security: bool = True  # ARP security monitoring
+    monitor_wifi_security: bool = True  # WiFi security monitoring
 
     def to_dict(self) -> Dict:
         return {
@@ -91,7 +92,8 @@ class MonitoringConfig:
             'monitor_irda': self.monitor_irda,
             'monitor_ant_plus': self.monitor_ant_plus,
             'monitor_dns_security': self.monitor_dns_security,
-            'monitor_arp_security': self.monitor_arp_security
+            'monitor_arp_security': self.monitor_arp_security,
+            'monitor_wifi_security': self.monitor_wifi_security
         }
 
 
@@ -125,6 +127,9 @@ class EnvironmentState:
     # ARP security details
     arp_security_alerts: List[str]
 
+    # WiFi security details
+    wifi_security_alerts: List[str]
+
     # Hardware details
     usb_devices: Set[str]
     block_devices: Set[str]
@@ -151,6 +156,7 @@ class EnvironmentState:
         result['specialty_networks'] = self.specialty_networks.to_dict()
         result['dns_security_alerts'] = self.dns_security_alerts
         result['arp_security_alerts'] = self.arp_security_alerts
+        result['wifi_security_alerts'] = self.wifi_security_alerts
         result['usb_devices'] = list(self.usb_devices)
         result['block_devices'] = list(self.block_devices)
         return result
@@ -195,6 +201,9 @@ class StateMonitor:
 
         # ARP security monitor (lazy initialization)
         self._arp_security_monitor = None
+
+        # WiFi security monitor (lazy initialization)
+        self._wifi_security_monitor = None
 
     def get_monitoring_config(self) -> MonitoringConfig:
         """Get the current monitoring configuration"""
@@ -255,6 +264,20 @@ class StateMonitor:
             except ImportError:
                 return None
         return self._arp_security_monitor
+
+    def set_monitor_wifi_security(self, enabled: bool):
+        """Enable or disable WiFi security monitoring"""
+        self.monitoring_config.monitor_wifi_security = enabled
+
+    def _get_wifi_security_monitor(self):
+        """Get or create WiFi security monitor (lazy initialization)"""
+        if self._wifi_security_monitor is None:
+            try:
+                from daemon.security.wifi_security import WiFiSecurityMonitor
+                self._wifi_security_monitor = WiFiSecurityMonitor()
+            except ImportError:
+                return None
+        return self._wifi_security_monitor
 
     def register_callback(self, callback: callable):
         """
@@ -324,6 +347,9 @@ class StateMonitor:
         # ARP security sensing
         arp_security_alerts = self._check_arp_security()
 
+        # WiFi security sensing
+        wifi_security_alerts = self._check_wifi_security()
+
         # Hardware sensing
         hardware_info = self._check_hardware()
 
@@ -353,6 +379,7 @@ class StateMonitor:
             specialty_networks=specialty_info,
             dns_security_alerts=dns_security_alerts,
             arp_security_alerts=arp_security_alerts,
+            wifi_security_alerts=wifi_security_alerts,
             usb_devices=hardware_info['usb_devices'],
             block_devices=hardware_info['block_devices'],
             camera_available=hardware_info['camera'],
@@ -629,6 +656,29 @@ class StateMonitor:
             return status.alerts
         except Exception as e:
             print(f"Error checking ARP security: {e}")
+            return []
+
+    def _check_wifi_security(self) -> List[str]:
+        """Check for WiFi security threats if monitoring is enabled"""
+        if not self.monitoring_config.monitor_wifi_security:
+            return []
+
+        try:
+            wifi_monitor = self._get_wifi_security_monitor()
+            if wifi_monitor is None:
+                return []
+
+            # Check for suspicious processes (attack tools)
+            alerts = wifi_monitor.check_suspicious_processes()
+
+            # Get current status alerts
+            status = wifi_monitor.get_status()
+            alert_messages = [
+                alert.get('message', str(alert)) for alert in status.active_alerts
+            ]
+            return alert_messages
+        except Exception as e:
+            print(f"Error checking WiFi security: {e}")
             return []
 
     def _detect_lora_devices(self) -> List[str]:
