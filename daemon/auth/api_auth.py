@@ -825,6 +825,95 @@ class TokenManager:
         return {cmd: {'max_requests': limit[0], 'window_seconds': limit[1]}
                 for cmd, limit in COMMAND_RATE_LIMITS.items()}
 
+    def get_rate_limit_headers(self, token_id: str, command: Optional[str] = None) -> Dict[str, Any]:
+        """Get rate limit information for inclusion in API responses.
+
+        Returns headers following common API rate limiting conventions:
+        - X-RateLimit-Limit: Max requests allowed per window
+        - X-RateLimit-Remaining: Requests remaining in current window
+        - X-RateLimit-Reset: Seconds until window resets
+        - X-RateLimit-Global-*: Same for global limits
+        - X-RateLimit-Command-*: Same for per-command limits (if applicable)
+
+        Args:
+            token_id: The token ID to get rate limit info for
+            command: Optional command name for per-command rate limit info
+
+        Returns:
+            Dict with rate limit header values
+        """
+        headers = {}
+        now = time.monotonic()
+
+        with self._lock:
+            # Per-token rate limit info
+            entry = self._rate_limits.get(token_id)
+            if entry:
+                window_start = now - self.rate_limit_window
+                current_requests = len([t for t in entry.request_times if t > window_start])
+                remaining = max(0, self.rate_limit_max_requests - current_requests)
+
+                # Calculate reset time (seconds until oldest request falls out of window)
+                if entry.request_times:
+                    oldest_in_window = min([t for t in entry.request_times if t > window_start], default=now)
+                    reset_seconds = max(0, int(self.rate_limit_window - (now - oldest_in_window)))
+                else:
+                    reset_seconds = self.rate_limit_window
+
+                headers['X-RateLimit-Limit'] = self.rate_limit_max_requests
+                headers['X-RateLimit-Remaining'] = remaining
+                headers['X-RateLimit-Reset'] = reset_seconds
+                headers['X-RateLimit-Window'] = self.rate_limit_window
+
+                if entry.blocked_until and now < entry.blocked_until:
+                    headers['X-RateLimit-Blocked'] = True
+                    headers['X-RateLimit-Retry-After'] = int(entry.blocked_until - now)
+            else:
+                headers['X-RateLimit-Limit'] = self.rate_limit_max_requests
+                headers['X-RateLimit-Remaining'] = self.rate_limit_max_requests
+                headers['X-RateLimit-Reset'] = self.rate_limit_window
+                headers['X-RateLimit-Window'] = self.rate_limit_window
+
+            # Global rate limit info
+            state = self._global_rate_limit
+            window_start = now - self.global_rate_limit_window
+            global_current = len([t for t in state.request_times if t > window_start])
+            global_remaining = max(0, self.global_rate_limit_max_requests - global_current)
+
+            headers['X-RateLimit-Global-Limit'] = self.global_rate_limit_max_requests
+            headers['X-RateLimit-Global-Remaining'] = global_remaining
+
+            if state.blocked_until and now < state.blocked_until:
+                headers['X-RateLimit-Global-Blocked'] = True
+                headers['X-RateLimit-Global-Retry-After'] = int(state.blocked_until - now)
+
+            # Per-command rate limit info (if command specified and has limits)
+            if command and command in COMMAND_RATE_LIMITS:
+                max_requests, window_seconds = COMMAND_RATE_LIMITS[command]
+                token_commands = self._command_rate_limits.get(token_id, {})
+                cmd_entry = token_commands.get(command)
+
+                if cmd_entry:
+                    cmd_window_start = now - window_seconds
+                    cmd_current = len([t for t in cmd_entry.request_times if t > cmd_window_start])
+                    cmd_remaining = max(0, max_requests - cmd_current)
+
+                    headers['X-RateLimit-Command'] = command
+                    headers['X-RateLimit-Command-Limit'] = max_requests
+                    headers['X-RateLimit-Command-Remaining'] = cmd_remaining
+                    headers['X-RateLimit-Command-Window'] = window_seconds
+
+                    if cmd_entry.blocked_until and now < cmd_entry.blocked_until:
+                        headers['X-RateLimit-Command-Blocked'] = True
+                        headers['X-RateLimit-Command-Retry-After'] = int(cmd_entry.blocked_until - now)
+                else:
+                    headers['X-RateLimit-Command'] = command
+                    headers['X-RateLimit-Command-Limit'] = max_requests
+                    headers['X-RateLimit-Command-Remaining'] = max_requests
+                    headers['X-RateLimit-Command-Window'] = window_seconds
+
+        return headers
+
 
 class AuthenticationMiddleware:
     """

@@ -196,6 +196,12 @@ class BoundaryAPIServer:
         - create_token: Create a new API token
         - revoke_token: Revoke an existing token
         - list_tokens: List all tokens
+
+        Response includes rate limit headers:
+        - rate_limit: Per-token rate limit info
+        - rate_limit.X-RateLimit-Limit: Max requests per window
+        - rate_limit.X-RateLimit-Remaining: Requests remaining
+        - rate_limit.X-RateLimit-Reset: Seconds until reset
         """
         command = request.get('command')
         params = request.get('params', {})
@@ -225,6 +231,24 @@ class BoundaryAPIServer:
             except Exception:
                 pass  # Don't fail request on logging error
 
+        # Process command and get response
+        response = self._dispatch_command(command, params, token)
+
+        # Add rate limit headers to response
+        if token:
+            response['rate_limit'] = self.token_manager.get_rate_limit_headers(
+                token.token_id, command
+            )
+
+        return response
+
+    def _dispatch_command(
+        self,
+        command: str,
+        params: Dict[str, Any],
+        token: Any
+    ) -> Dict[str, Any]:
+        """Dispatch command to appropriate handler."""
         # Handle token management commands
         if command == 'create_token':
             return self._handle_create_token(params, token)

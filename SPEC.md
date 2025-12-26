@@ -1981,6 +1981,34 @@ response = client.send_command('rate_limit_status', {'token_id': 'abc123'})
 response = client.send_command('rate_limit_status', {'include_all': True})
 ```
 
+#### Rate Limit Headers in Responses
+
+All API responses include rate limit information in the `rate_limit` field:
+
+```python
+response = client.send_command('status')
+# Response includes:
+# {
+#   'success': True,
+#   'status': {...},
+#   'rate_limit': {
+#     'X-RateLimit-Limit': 100,           # Max requests per window
+#     'X-RateLimit-Remaining': 95,        # Requests remaining
+#     'X-RateLimit-Reset': 45,            # Seconds until reset
+#     'X-RateLimit-Window': 60,           # Window duration in seconds
+#     'X-RateLimit-Global-Limit': 1000,   # Global max requests
+#     'X-RateLimit-Global-Remaining': 950,# Global remaining
+#     'X-RateLimit-Command': 'status',    # Current command
+#     'X-RateLimit-Command-Limit': 200,   # Command-specific limit
+#     'X-RateLimit-Command-Remaining': 195
+#   }
+# }
+```
+
+When rate limited, additional fields appear:
+- `X-RateLimit-Blocked: True` - Currently blocked
+- `X-RateLimit-Retry-After: 30` - Seconds until unblocked
+
 ### Token Management
 
 #### Bootstrap Token
