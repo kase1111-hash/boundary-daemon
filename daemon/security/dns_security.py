@@ -12,6 +12,10 @@ Features:
 
 SECURITY: This module now provides ACTUAL ENFORCEMENT, not just detection.
 Addresses Critical Finding: "Detection Without Enforcement"
+
+SECURITY: External DNS queries and domain resolution are blocked in AIRGAP,
+COLDROOM, and LOCKDOWN modes to prevent data leakage.
+Addresses Critical Finding: "AIRGAP Mode Leaks Network Traffic"
 """
 
 import os
@@ -183,17 +187,30 @@ class DNSSecurityMonitor:
     6. NEW: Firewall-level blocking via iptables/nftables
 
     SECURITY: This class now provides ACTUAL ENFORCEMENT, not just detection.
+
+    SECURITY: External DNS queries are blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+    to prevent data leakage through DNS channels.
     """
 
     # iptables chain name for DNS blocking
     IPTABLES_CHAIN = "BOUNDARY_DNS_BLOCK"
 
+    # Modes that block all external network access
+    NETWORK_BLOCKED_MODES = {'AIRGAP', 'COLDROOM', 'LOCKDOWN'}
+
     def __init__(self, config: Optional[DNSSecurityConfig] = None,
                  event_logger=None,
-                 on_block_callback: Optional[Callable[[str, str], None]] = None):
+                 on_block_callback: Optional[Callable[[str, str], None]] = None,
+                 mode_getter: Optional[Callable[[], str]] = None):
         self.config = config or DNSSecurityConfig()
         self._event_logger = event_logger
         self._on_block_callback = on_block_callback  # Called when domain is blocked
+
+        # SECURITY: Mode getter for network isolation enforcement
+        self._get_mode = mode_getter
+
+        # Track blocked operations for security auditing
+        self._blocked_dns_ops: List[Dict] = []
 
         # Query tracking
         self._query_history: List[DNSQueryRecord] = []
@@ -233,6 +250,46 @@ class DNSSecurityMonitor:
         if self.config.enforcement_enabled and not self._has_root:
             logger.warning("DNS enforcement enabled but not running as root. "
                           "Hosts file and firewall blocking may fail.")
+
+    def set_mode_getter(self, getter: Callable[[], str]):
+        """Set the mode getter callback."""
+        self._get_mode = getter
+
+    def _is_network_blocked(self) -> bool:
+        """
+        Check if external network access is blocked in current mode.
+
+        Returns:
+            True if network access should be blocked (AIRGAP, COLDROOM, LOCKDOWN)
+        """
+        if not self._get_mode:
+            return False  # No mode getter, assume network allowed
+
+        try:
+            current_mode = self._get_mode()
+            if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
+                return True
+        except Exception:
+            pass
+
+        return False
+
+    def _log_blocked_dns_op(self, operation: str, target: str, reason: str):
+        """Log a blocked DNS operation for security auditing."""
+        entry = {
+            'timestamp': datetime.now().isoformat(),
+            'operation': operation,
+            'target': target,
+            'reason': reason,
+            'mode': self._get_mode() if self._get_mode else 'unknown',
+        }
+        self._blocked_dns_ops.append(entry)
+        logger.warning(f"SECURITY: Blocked DNS {operation} for {target}: {reason}")
+
+    def get_blocked_dns_operations(self) -> List[Dict]:
+        """Get list of DNS operations blocked due to network isolation."""
+        with self._lock:
+            return list(self._blocked_dns_ops)
 
     def start(self):
         """Start continuous DNS monitoring"""
@@ -551,12 +608,24 @@ class DNSSecurityMonitor:
 
         Note: This blocks by IP, so dynamic DNS may evade this.
         For comprehensive blocking, use hosts file method too.
+
+        SECURITY: DNS resolution is blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+        to prevent data leakage through DNS queries.
         """
         if not self._has_root:
             return (False, "Need root for firewall rules")
 
         if not self._has_iptables:
             return (False, "iptables not available")
+
+        # SECURITY: Block DNS resolution in network-isolated modes
+        if self._is_network_blocked():
+            self._log_blocked_dns_op(
+                'firewall_block_resolve',
+                domain,
+                'DNS resolution blocked in current security mode'
+            )
+            return (False, "DNS resolution blocked: Network isolated mode active")
 
         try:
             # Resolve domain to IPs
@@ -1233,6 +1302,9 @@ class DNSSecurityMonitor:
         """
         Verify a DNS response by querying multiple resolvers.
 
+        SECURITY: External DNS queries are blocked in AIRGAP/COLDROOM/LOCKDOWN
+        modes to prevent domain name leakage to public resolvers.
+
         Args:
             domain: Domain to verify
             expected_ips: Optional list of expected IP addresses
@@ -1246,6 +1318,19 @@ class DNSSecurityMonitor:
             'responses': {},
             'alerts': []
         }
+
+        # SECURITY: Block external DNS queries in network-isolated modes
+        if self._is_network_blocked():
+            self._log_blocked_dns_op(
+                'verify_dns_response',
+                domain,
+                'External DNS queries blocked in current security mode'
+            )
+            results['alerts'].append(
+                "DNS verification skipped: Network isolated mode active"
+            )
+            results['responses']['blocked'] = ['network_isolated']
+            return results
 
         resolvers = [
             ('1.1.1.1', 'Cloudflare'),

@@ -17,6 +17,10 @@ NEW ENFORCEMENT FEATURES:
 SECURITY: This module now provides ACTUAL ENFORCEMENT, not just detection.
 Addresses Critical Finding: "Detection Without Enforcement"
 
+SECURITY: MalwareBazaar API calls are blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+to prevent hash exfiltration to external services.
+Addresses Critical Finding: "AIRGAP Mode Leaks Network Traffic"
+
 Usage:
     scanner = AntivirusScanner()
     results = scanner.full_scan()
@@ -385,18 +389,30 @@ class MalwareBazaarClient:
     hash lookups to identify known malware samples.
 
     API Documentation: https://bazaar.abuse.ch/api/
+
+    SECURITY: API calls are blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+    to prevent hash exfiltration.
     """
 
     API_URL = "https://mb-api.abuse.ch/api/v1/"
     TIMEOUT = 10  # seconds
 
-    def __init__(self, cache_ttl: int = 3600, max_cache_size: int = 10000):
+    # Modes that block all external network access
+    NETWORK_BLOCKED_MODES = {'AIRGAP', 'COLDROOM', 'LOCKDOWN'}
+
+    def __init__(
+        self,
+        cache_ttl: int = 3600,
+        max_cache_size: int = 10000,
+        mode_getter: Optional[Callable[[], str]] = None,
+    ):
         """
         Initialize the MalwareBazaar client.
 
         Args:
             cache_ttl: Time-to-live for cache entries in seconds (default 1 hour)
             max_cache_size: Maximum number of entries to cache
+            mode_getter: Callback to get current boundary mode (e.g., 'AIRGAP')
         """
         self._cache: Dict[str, Tuple[MalwareBazaarResult, float]] = {}
         self._cache_ttl = cache_ttl
@@ -404,6 +420,51 @@ class MalwareBazaarClient:
         self._cache_lock = threading.Lock()
         self._enabled = True
         self._last_error: Optional[str] = None
+
+        # SECURITY: Mode getter for network isolation enforcement
+        self._get_mode = mode_getter
+
+        # Track blocked API calls for security auditing
+        self._blocked_api_calls: List[Dict] = []
+
+    def set_mode_getter(self, getter: Callable[[], str]):
+        """Set the mode getter callback."""
+        self._get_mode = getter
+
+    def _is_network_blocked(self) -> bool:
+        """
+        Check if external network access is blocked in current mode.
+
+        Returns:
+            True if network access should be blocked (AIRGAP, COLDROOM, LOCKDOWN)
+        """
+        if not self._get_mode:
+            return False  # No mode getter, assume network allowed
+
+        try:
+            current_mode = self._get_mode()
+            if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
+                return True
+        except Exception:
+            pass
+
+        return False
+
+    def _log_blocked_api_call(self, target: str, reason: str):
+        """Log a blocked API call for security auditing."""
+        entry = {
+            'timestamp': datetime.now().isoformat(),
+            'api': 'MalwareBazaar',
+            'target': target,
+            'reason': reason,
+            'mode': self._get_mode() if self._get_mode else 'unknown',
+        }
+        self._blocked_api_calls.append(entry)
+        logging.warning(f"SECURITY: Blocked MalwareBazaar API call for {target}: {reason}")
+
+    def get_blocked_api_calls(self) -> List[Dict]:
+        """Get list of API calls blocked due to network isolation."""
+        return list(self._blocked_api_calls)
 
     def set_enabled(self, enabled: bool):
         """Enable or disable API lookups"""
@@ -461,6 +522,9 @@ class MalwareBazaarClient:
         """
         Query MalwareBazaar for a SHA256 hash.
 
+        SECURITY: This method is blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+        to prevent hash exfiltration to external services.
+
         Args:
             sha256_hash: The SHA256 hash to look up
 
@@ -473,6 +537,18 @@ class MalwareBazaarClient:
                 is_malware=False,
                 sha256_hash=sha256_hash,
                 error="Invalid SHA256 hash format"
+            )
+
+        # SECURITY: Block external API calls in network-isolated modes
+        if self._is_network_blocked():
+            self._log_blocked_api_call(
+                sha256_hash[:16] + "...",
+                'Network blocked in current security mode'
+            )
+            return MalwareBazaarResult(
+                is_malware=False,
+                sha256_hash=sha256_hash,
+                error="API blocked: Network isolated mode active"
             )
 
         # Check if disabled
