@@ -7,12 +7,19 @@ Features:
 - Gratuitous ARP flood detection AND MITIGATION
 - Gateway impersonation detection AND STATIC BINDING ENFORCEMENT
 - ARP cache poisoning detection AND PROTECTION
-- NEW: Static ARP binding enforcement
-- NEW: Attacker IP blocking via iptables
-- NEW: Gateway MAC pinning
+- Static ARP binding enforcement
+- Attacker IP blocking via iptables
+- Gateway MAC pinning
 
 SECURITY: This module now provides ACTUAL ENFORCEMENT, not just detection.
 Addresses Critical Finding: "Detection Without Enforcement"
+
+SECURITY: Thread-safe implementation with RLock protection.
+Addresses Critical Finding: "Thread Safety Issues in ARP Monitor"
+- All shared state access is protected by self._lock (RLock)
+- TOCTOU races prevented in block_ip/unblock_ip
+- Gateway state reads/writes are atomic
+- Cache lookups are thread-safe
 """
 
 import os
@@ -285,21 +292,11 @@ class ARPSecurityMonitor:
 
         Returns:
             (success, message)
+
+        SECURITY: Thread-safe - all shared state checks are within lock
         """
         if not self.config.enforcement_enabled:
             return (False, "Enforcement is disabled")
-
-        # Check whitelist
-        if ip in self.config.whitelisted_ips:
-            return (False, f"IP {ip} is whitelisted")
-
-        # Don't block the gateway
-        if ip == self._gateway_ip:
-            return (False, f"Cannot block gateway IP {ip}")
-
-        # Already blocked?
-        if ip in self._blocked_ips:
-            return (True, f"IP {ip} already blocked")
 
         if not self._has_root:
             return (False, "Need root for iptables rules")
@@ -307,8 +304,28 @@ class ARPSecurityMonitor:
         if not self._has_iptables:
             return (False, "iptables not available")
 
+        # Thread-safe checks - must hold lock to prevent TOCTOU races
+        with self._lock:
+            # Check whitelist
+            if ip in self.config.whitelisted_ips:
+                return (False, f"IP {ip} is whitelisted")
+
+            # Don't block the gateway
+            if ip == self._gateway_ip:
+                return (False, f"Cannot block gateway IP {ip}")
+
+            # Already blocked?
+            if ip in self._blocked_ips:
+                return (True, f"IP {ip} already blocked")
+
+            # Mark as blocked BEFORE iptables call to prevent race
+            # (will be removed if iptables fails)
+            self._blocked_ips.add(ip)
+            self._block_reasons[ip] = reason
+            self._block_timestamps[ip] = datetime.utcnow()
+
         try:
-            # Ensure our chain exists
+            # Ensure our chain exists (outside lock - subprocess call)
             self._setup_iptables_chain()
 
             # Add block rule
@@ -318,12 +335,12 @@ class ARPSecurityMonitor:
 
             result = subprocess.run(cmd, capture_output=True, timeout=5)
             if result.returncode != 0:
+                # Rollback the pre-emptive blocking
+                with self._lock:
+                    self._blocked_ips.discard(ip)
+                    self._block_reasons.pop(ip, None)
+                    self._block_timestamps.pop(ip, None)
                 return (False, f"iptables error: {result.stderr.decode()}")
-
-            with self._lock:
-                self._blocked_ips.add(ip)
-                self._block_reasons[ip] = reason
-                self._block_timestamps[ip] = datetime.utcnow()
 
             # Log the blocking event
             self._log_block_event(ip, reason)
@@ -339,6 +356,11 @@ class ARPSecurityMonitor:
             return (True, f"Blocked IP {ip}")
 
         except Exception as e:
+            # Rollback on any exception
+            with self._lock:
+                self._blocked_ips.discard(ip)
+                self._block_reasons.pop(ip, None)
+                self._block_timestamps.pop(ip, None)
             logger.error(f"Failed to block IP: {e}")
             return (False, str(e))
 
@@ -351,15 +373,24 @@ class ARPSecurityMonitor:
 
         Returns:
             (success, message)
-        """
-        if ip not in self._blocked_ips:
-            return (False, f"IP {ip} is not blocked")
 
+        SECURITY: Thread-safe - checks and modifications within lock
+        """
         if not self._has_root or not self._has_iptables:
             return (False, "Need root and iptables")
 
+        # Thread-safe check - must hold lock to prevent TOCTOU races
+        with self._lock:
+            if ip not in self._blocked_ips:
+                return (False, f"IP {ip} is not blocked")
+
+            # Mark as unblocked BEFORE iptables call to prevent race
+            self._blocked_ips.discard(ip)
+            saved_reason = self._block_reasons.pop(ip, None)
+            saved_timestamp = self._block_timestamps.pop(ip, None)
+
         try:
-            # Remove the block rule
+            # Remove the block rule (outside lock - subprocess call)
             comment = f'boundary-arp-block-{ip}'
 
             result = subprocess.run(
@@ -381,16 +412,18 @@ class ARPSecurityMonitor:
                         capture_output=True, timeout=5
                     )
 
-            with self._lock:
-                self._blocked_ips.discard(ip)
-                self._block_reasons.pop(ip, None)
-                self._block_timestamps.pop(ip, None)
-
             self._log_unblock_event(ip)
             logger.info(f"ARP UNBLOCKED IP: {ip}")
             return (True, f"Unblocked IP {ip}")
 
         except Exception as e:
+            # Rollback on exception - restore blocked state
+            with self._lock:
+                self._blocked_ips.add(ip)
+                if saved_reason:
+                    self._block_reasons[ip] = saved_reason
+                if saved_timestamp:
+                    self._block_timestamps[ip] = saved_timestamp
             logger.error(f"Failed to unblock IP: {e}")
             return (False, str(e))
 
@@ -494,25 +527,42 @@ class ARPSecurityMonitor:
         """
         Protect the gateway by setting a static ARP entry.
         This prevents gateway impersonation attacks.
+
+        SECURITY: Thread-safe - reads shared state within lock
         """
-        if not self._gateway_ip or not self._original_gateway_mac:
+        # Thread-safe read of gateway info
+        with self._lock:
+            gateway_ip = self._gateway_ip
+            gateway_mac = self._original_gateway_mac
+
+        if not gateway_ip or not gateway_mac:
             return (False, "Gateway not detected")
 
-        success, msg = self.set_static_arp(self._gateway_ip, self._original_gateway_mac)
+        success, msg = self.set_static_arp(gateway_ip, gateway_mac)
         if success:
-            self._gateway_protected = True
-            logger.info(f"Gateway protected: {self._gateway_ip} -> {self._original_gateway_mac}")
+            with self._lock:
+                self._gateway_protected = True
+            logger.info(f"Gateway protected: {gateway_ip} -> {gateway_mac}")
 
         return (success, msg)
 
     def unprotect_gateway(self) -> Tuple[bool, str]:
-        """Remove gateway protection (static ARP)."""
-        if not self._gateway_ip:
+        """
+        Remove gateway protection (static ARP).
+
+        SECURITY: Thread-safe - reads shared state within lock
+        """
+        # Thread-safe read of gateway info
+        with self._lock:
+            gateway_ip = self._gateway_ip
+
+        if not gateway_ip:
             return (False, "Gateway not detected")
 
-        success, msg = self.remove_static_arp(self._gateway_ip)
+        success, msg = self.remove_static_arp(gateway_ip)
         if success:
-            self._gateway_protected = False
+            with self._lock:
+                self._gateway_protected = False
 
         return (success, msg)
 
@@ -638,13 +688,15 @@ class ARPSecurityMonitor:
 
     def add_trusted_binding(self, ip: str, mac: str):
         """Add a trusted IP-MAC binding"""
-        self.config.trusted_bindings[ip] = mac.lower()
+        with self._lock:
+            self.config.trusted_bindings[ip] = mac.lower()
 
     def set_gateway(self, ip: str, mac: str):
         """Manually set the gateway IP and MAC"""
-        self._gateway_ip = ip
-        self._gateway_mac = mac.lower()
-        self._original_gateway_mac = mac.lower()
+        with self._lock:
+            self._gateway_ip = ip
+            self._gateway_mac = mac.lower()
+            self._original_gateway_mac = mac.lower()
 
     def analyze_arp_entry(self, ip: str, mac: str, interface: str = "",
                          auto_block: bool = True) -> List[str]:
@@ -781,21 +833,35 @@ class ARPSecurityMonitor:
 
         Returns:
             (is_valid, message)
+
+        SECURITY: Thread-safe - reads shared state within lock
         """
-        if not self._gateway_ip or not self._original_gateway_mac:
+        # Thread-safe read of gateway info
+        with self._lock:
+            gateway_ip = self._gateway_ip
+            original_mac = self._original_gateway_mac
+
+        if not gateway_ip or not original_mac:
             return True, "Gateway not configured for verification"
 
-        current_mac = self._get_mac_for_ip(self._gateway_ip)
-        if current_mac and current_mac != self._original_gateway_mac:
+        current_mac = self._get_mac_for_ip(gateway_ip)
+        if current_mac and current_mac != original_mac:
             return False, (
-                f"Gateway MAC mismatch! Expected {self._original_gateway_mac}, "
+                f"Gateway MAC mismatch! Expected {original_mac}, "
                 f"got {current_mac}. Possible ARP spoofing attack!"
             )
 
         return True, "Gateway MAC verified"
 
     def _detect_gateway(self):
-        """Auto-detect the default gateway"""
+        """
+        Auto-detect the default gateway.
+
+        SECURITY: Thread-safe - updates shared state within lock
+        """
+        detected_ip = None
+        detected_mac = None
+
         try:
             # Try to get default gateway from /proc/net/route
             with open('/proc/net/route', 'r') as f:
@@ -807,22 +873,18 @@ class ARPSecurityMonitor:
                             # Gateway is in hex, little-endian
                             gateway_hex = parts[2]
                             # Convert hex to IP
-                            gateway_ip = '.'.join([
+                            detected_ip = '.'.join([
                                 str(int(gateway_hex[i:i+2], 16))
                                 for i in range(6, -1, -2)
                             ])
-                            self._gateway_ip = gateway_ip
-                            self.config.gateway_ip = gateway_ip
-
                             # Get gateway MAC from ARP cache
-                            self._gateway_mac = self._get_mac_for_ip(gateway_ip)
-                            self._original_gateway_mac = self._gateway_mac
+                            detected_mac = self._get_mac_for_ip(detected_ip)
                             break
         except Exception as e:
             print(f"Error detecting gateway: {e}")
 
         # Fallback: try ip route command
-        if not self._gateway_ip:
+        if not detected_ip:
             try:
                 result = subprocess.run(
                     ['ip', 'route', 'show', 'default'],
@@ -832,20 +894,31 @@ class ARPSecurityMonitor:
                     output = result.stdout.decode()
                     match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', output)
                     if match:
-                        self._gateway_ip = match.group(1)
-                        self.config.gateway_ip = self._gateway_ip
-                        self._gateway_mac = self._get_mac_for_ip(self._gateway_ip)
-                        self._original_gateway_mac = self._gateway_mac
+                        detected_ip = match.group(1)
+                        detected_mac = self._get_mac_for_ip(detected_ip)
             except Exception:
                 pass
 
-    def _get_mac_for_ip(self, ip: str) -> Optional[str]:
-        """Get MAC address for an IP from the ARP cache"""
-        # First check our cache
-        if ip in self._arp_cache:
-            return self._arp_cache[ip].mac_address
+        # Thread-safe update of gateway state
+        if detected_ip:
+            with self._lock:
+                self._gateway_ip = detected_ip
+                self.config.gateway_ip = detected_ip
+                self._gateway_mac = detected_mac
+                self._original_gateway_mac = detected_mac
 
-        # Try reading from /proc/net/arp
+    def _get_mac_for_ip(self, ip: str) -> Optional[str]:
+        """
+        Get MAC address for an IP from the ARP cache.
+
+        SECURITY: Thread-safe - cache lookup within lock
+        """
+        # Thread-safe check of our cache first
+        with self._lock:
+            if ip in self._arp_cache:
+                return self._arp_cache[ip].mac_address
+
+        # Try reading from /proc/net/arp (no lock needed - system file)
         try:
             with open('/proc/net/arp', 'r') as f:
                 for line in f.readlines()[1:]:  # Skip header
@@ -857,7 +930,7 @@ class ARPSecurityMonitor:
         except Exception:
             pass
 
-        # Try arp command
+        # Try arp command (no lock needed - external command)
         try:
             result = subprocess.run(
                 ['arp', '-n', ip],
