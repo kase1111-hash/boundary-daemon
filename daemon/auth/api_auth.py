@@ -375,7 +375,14 @@ class TokenManager:
             print(f"Warning: Failed to save tokens: {e}")
 
     def _create_bootstrap_token(self) -> str:
-        """Create initial admin token on first run."""
+        """
+        Create initial admin token on first run.
+
+        SECURITY: Bootstrap token is now encrypted at rest to prevent
+        plaintext credential exposure. Use 'authctl decrypt' to retrieve.
+
+        Addresses Critical Finding: "Insecure Token Storage"
+        """
         token, _ = self.create_token(
             name="bootstrap-admin",
             capabilities={'admin'},
@@ -383,20 +390,53 @@ class TokenManager:
             expires_in_days=None,  # Never expires
         )
 
-        # Write bootstrap token to a separate file for initial setup
-        bootstrap_file = self.token_file.parent / 'bootstrap_token.txt'
+        # Write bootstrap token to an ENCRYPTED file for initial setup
+        bootstrap_file = self.token_file.parent / 'bootstrap_token.enc'
+
+        try:
+            from daemon.auth.secure_token_storage import SecureTokenStorage
+
+            storage = SecureTokenStorage()
+            success, msg = storage.encrypt_bootstrap_token(
+                token=token,
+                output_path=str(bootstrap_file),
+            )
+
+            if success:
+                print(f"[AUTH] Bootstrap admin token created (ENCRYPTED): {bootstrap_file}")
+                print(f"[AUTH] To retrieve: authctl decrypt {bootstrap_file}")
+            else:
+                # Fallback to secure-ish plaintext with strong warnings
+                self._write_bootstrap_fallback(token, bootstrap_file.with_suffix('.txt'))
+
+        except ImportError:
+            # SecureTokenStorage not available, use fallback
+            self._write_bootstrap_fallback(token, bootstrap_file.with_suffix('.txt'))
+
+        return token
+
+    def _write_bootstrap_fallback(self, token: str, bootstrap_file: Path):
+        """
+        Fallback for writing bootstrap token when encryption is unavailable.
+        Writes with strong security warnings.
+        """
         with open(bootstrap_file, 'w') as f:
-            f.write(f"# Boundary Daemon Bootstrap Token\n")
+            f.write("# SECURITY WARNING: PLAINTEXT TOKEN FILE\n")
+            f.write("#\n")
+            f.write("# Boundary Daemon Bootstrap Token\n")
             f.write(f"# Created: {datetime.utcnow().isoformat()}\n")
-            f.write(f"# WARNING: Store this securely and delete this file after setup!\n")
-            f.write(f"#\n")
-            f.write(f"# This token has full admin access. Use it to create other tokens.\n")
-            f.write(f"#\n")
+            f.write("#\n")
+            f.write("# !!! DELETE THIS FILE AFTER RETRIEVING THE TOKEN !!!\n")
+            f.write("# !!! DO NOT COMMIT THIS FILE TO VERSION CONTROL !!!\n")
+            f.write("# !!! STORE THE TOKEN IN A SECRETS MANAGER !!!\n")
+            f.write("#\n")
+            f.write("# This token has full admin access. Use it to create other tokens.\n")
+            f.write("#\n")
             f.write(f"{token}\n")
         os.chmod(bootstrap_file, 0o600)
 
-        print(f"[AUTH] Bootstrap admin token created: {bootstrap_file}")
-        return token
+        print(f"[AUTH] WARNING: Bootstrap token created as PLAINTEXT: {bootstrap_file}")
+        print(f"[AUTH] Delete this file after retrieving the token!")
 
     def create_token(
         self,
