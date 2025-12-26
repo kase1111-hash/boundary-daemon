@@ -20,6 +20,10 @@ SECURITY: The filter cannot be bypassed by simply setting config.enabled = False
 - All bypass attempts are logged to the event logger
 
 Addresses Critical Finding: "Bypassable Security Controls"
+
+SECURITY: Now uses BypassResistantPIIDetector by default to prevent regex
+bypass attacks using encoding, homoglyphs, and zero-width characters.
+Addresses Critical Finding: "Regex-Based PII Detection Bypasses"
 """
 
 import json
@@ -41,6 +45,20 @@ from daemon.pii.detector import (
     PIISeverity,
     RedactionMethod,
 )
+
+# SECURITY: Import bypass-resistant detector to prevent regex bypasses
+try:
+    from daemon.pii.bypass_resistant_detector import (
+        BypassResistantPIIDetector,
+        BypassDetector,
+        TextNormalizer,
+    )
+    BYPASS_RESISTANT_AVAILABLE = True
+except ImportError:
+    BYPASS_RESISTANT_AVAILABLE = False
+    BypassResistantPIIDetector = None
+    BypassDetector = None
+    TextNormalizer = None
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +234,7 @@ class PIIFilter:
         detector: Optional[PIIDetector] = None,
         event_logger=None,
         current_mode_getter: Optional[Callable[[], str]] = None,
+        use_bypass_resistant: bool = True,
     ):
         """
         Initialize PII filter.
@@ -225,9 +244,33 @@ class PIIFilter:
             detector: PII detector instance
             event_logger: Event logger for audit trail
             current_mode_getter: Callback to get current boundary mode
+            use_bypass_resistant: Use bypass-resistant detector (default True)
+
+        SECURITY: By default, uses BypassResistantPIIDetector to prevent
+        regex bypass attacks using encoding, homoglyphs, and zero-width chars.
         """
         self._config = config or PIIFilterConfig()
-        self.detector = detector or PIIDetector()
+
+        # SECURITY: Use bypass-resistant detector by default
+        # This addresses: "Regex-Based PII Detection Bypasses"
+        if detector:
+            self.detector = detector
+            self._bypass_resistant = False
+        elif use_bypass_resistant and BYPASS_RESISTANT_AVAILABLE and BypassResistantPIIDetector:
+            base_detector = PIIDetector()
+            self.detector = BypassResistantPIIDetector(
+                base_detector=base_detector,
+                normalize_before_scan=True,
+                detect_bypass_attempts=True,
+                scan_decoded_content=True,
+                flag_suspicious_entropy=True,
+            )
+            self._bypass_resistant = True
+            logger.info("PII Filter using bypass-resistant detection")
+        else:
+            self.detector = PIIDetector()
+            self._bypass_resistant = False
+            logger.warning("PII Filter using standard detection (bypass-resistant not available)")
         self._event_logger = event_logger
         self._get_current_mode = current_mode_getter
         self._lock = threading.RLock()
@@ -453,10 +496,40 @@ class PIIFilter:
             ctx_key = context.value
             self._stats['by_context'][ctx_key] = self._stats['by_context'].get(ctx_key, 0) + 1
 
-        # Detect PII
-        entities = self.detector.detect(text)
+        # Detect PII (handle both bypass-resistant Dict and base List returns)
+        detection_result = self.detector.detect(text)
+
+        # Extract entities - handle both Dict (bypass-resistant) and List (base) returns
+        bypass_attempts = []
+        bypass_warnings = []
+        if isinstance(detection_result, dict):
+            # Bypass-resistant detector returns Dict
+            entities = detection_result.get('entities', [])
+            bypass_attempts = detection_result.get('bypass_attempts', [])
+            bypass_warnings = detection_result.get('warnings', [])
+
+            # Log bypass attempts if detected
+            if bypass_attempts and self._event_logger:
+                self._event_logger.log_security_event(
+                    event_type="pii_bypass_attempt",
+                    severity="warning",
+                    details={
+                        'attempts': bypass_attempts,
+                        'count': len(bypass_attempts),
+                        'context': context.value,
+                        'warnings': bypass_warnings,
+                    },
+                )
+        else:
+            # Base detector returns List
+            entities = detection_result
 
         if not entities:
+            result_metadata = metadata.copy() if metadata else {}
+            if bypass_attempts:
+                # Even if no PII found, log bypass attempts in metadata
+                result_metadata['bypass_attempts'] = bypass_attempts
+                result_metadata['bypass_warnings'] = bypass_warnings
             return PIIFilterResult(
                 allowed=True,
                 original_text=text,
@@ -466,7 +539,7 @@ class PIIFilter:
                 entities_redacted=[],
                 action_taken=PIIAction.ALLOW,
                 context=context,
-                metadata=metadata or {},
+                metadata=result_metadata,
             )
 
         # Determine actions for each entity
@@ -518,6 +591,12 @@ class PIIFilter:
                 RedactionMethod.REPLACE,
             )
 
+        # Build result metadata including bypass detection info
+        result_metadata = metadata.copy() if metadata else {}
+        if bypass_attempts:
+            result_metadata['bypass_attempts'] = bypass_attempts
+            result_metadata['bypass_warnings'] = bypass_warnings
+
         result = PIIFilterResult(
             allowed=(overall_action != PIIAction.BLOCK),
             original_text=text,
@@ -527,7 +606,7 @@ class PIIFilter:
             entities_redacted=entities_redacted,
             action_taken=overall_action,
             context=context,
-            metadata=metadata or {},
+            metadata=result_metadata,
         )
 
         # Update statistics
