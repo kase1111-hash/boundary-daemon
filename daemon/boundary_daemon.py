@@ -190,6 +190,22 @@ except ImportError:
     IntegrityAction = None
     verify_daemon_integrity = None
 
+# Import secure config storage (SECURITY: Configuration encryption)
+try:
+    from .config import (
+        SecureConfigStorage,
+        SecureConfigOptions,
+        EncryptionMode,
+        load_secure_config,
+    )
+    SECURE_CONFIG_AVAILABLE = True
+except ImportError:
+    SECURE_CONFIG_AVAILABLE = False
+    SecureConfigStorage = None
+    SecureConfigOptions = None
+    EncryptionMode = None
+    load_secure_config = None
+
 
 class BoundaryDaemon:
     """
@@ -1757,7 +1773,63 @@ class BoundaryDaemon:
                 'manager_available': False,
             }
 
+        # Add secure config status
+        status['secure_config_available'] = SECURE_CONFIG_AVAILABLE
+        if self._integrity_protector:
+            status['integrity_verified'] = self._integrity_verified
+
         return status
+
+    def load_config_secure(self, config_path: str) -> dict:
+        """
+        Load a configuration file with encryption support.
+
+        SECURITY: Automatically decrypts encrypted configuration files
+        using machine-derived keys.
+
+        Args:
+            config_path: Path to configuration file
+
+        Returns:
+            Decrypted configuration dictionary
+        """
+        if not SECURE_CONFIG_AVAILABLE:
+            # Fall back to basic JSON/YAML loading
+            import json
+            with open(config_path) as f:
+                content = f.read()
+                if content.strip().startswith('{'):
+                    return json.loads(content)
+                else:
+                    # Try YAML if available
+                    try:
+                        import yaml
+                        return yaml.safe_load(content)
+                    except ImportError:
+                        raise RuntimeError("Config loading requires pyyaml")
+
+        return load_secure_config(config_path)
+
+    def save_config_secure(self, config: dict, config_path: str, encrypt: bool = True):
+        """
+        Save a configuration file with optional encryption.
+
+        SECURITY: Encrypts sensitive fields in the configuration.
+
+        Args:
+            config: Configuration dictionary
+            config_path: Path to save configuration
+            encrypt: Whether to encrypt sensitive fields
+        """
+        if not SECURE_CONFIG_AVAILABLE:
+            # Fall back to basic JSON saving
+            import json
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+            return
+
+        from .config import save_secure_config
+        save_secure_config(config, config_path, encrypt=encrypt)
 
     def verify_log_integrity(self) -> tuple[bool, str]:
         """
