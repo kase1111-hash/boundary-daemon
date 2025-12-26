@@ -232,6 +232,8 @@ class BoundaryAPIServer:
             return self._handle_revoke_token(params, token)
         elif command == 'list_tokens':
             return self._handle_list_tokens(params)
+        elif command == 'rate_limit_status':
+            return self._handle_rate_limit_status(params)
 
         if command == 'status':
             return self._handle_status()
@@ -353,6 +355,43 @@ class BoundaryAPIServer:
                 'tokens': tokens,
                 'count': len(tokens),
             }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _handle_rate_limit_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get rate limit status.
+
+        Params:
+            token_id: str (optional) - Get status for specific token
+            include_all: bool (optional) - Include all tokens' rate limits (default: False)
+        """
+        try:
+            token_id = params.get('token_id')
+            include_all = params.get('include_all', False)
+
+            if include_all:
+                # Get global + all token rate limits
+                all_status = self.token_manager.get_all_rate_limit_status()
+                return {
+                    'success': True,
+                    'rate_limits': all_status,
+                }
+            elif token_id:
+                # Get specific token's rate limit
+                token_status = self.token_manager.get_rate_limit_status(token_id)
+                return {
+                    'success': True,
+                    'token_id': token_id,
+                    'rate_limit': token_status,
+                }
+            else:
+                # Get just global rate limit
+                global_status = self.token_manager.get_global_rate_limit_status()
+                return {
+                    'success': True,
+                    'global_rate_limit': global_status,
+                }
         except Exception as e:
             return {'success': False, 'error': str(e)}
 

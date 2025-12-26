@@ -78,6 +78,7 @@ COMMAND_CAPABILITIES = {
     'create_token': APICapability.MANAGE_TOKENS,
     'revoke_token': APICapability.MANAGE_TOKENS,
     'list_tokens': APICapability.MANAGE_TOKENS,
+    'rate_limit_status': APICapability.MANAGE_TOKENS,
 }
 
 
@@ -154,6 +155,15 @@ class RateLimitEntry:
     blocked_until: Optional[float] = None  # Monotonic timestamp
 
 
+@dataclass
+class GlobalRateLimitState:
+    """Tracks global rate limiting across all tokens."""
+    request_times: List[float] = field(default_factory=list)  # Monotonic timestamps
+    blocked_until: Optional[float] = None  # Monotonic timestamp
+    total_requests: int = 0  # Total requests ever
+    blocked_count: int = 0  # Number of times global limit was hit
+
+
 class TokenManager:
     """
     Manages API tokens with secure storage and rate limiting.
@@ -164,9 +174,11 @@ class TokenManager:
     - Supports token expiration and revocation
 
     Rate Limiting:
-    - Per-token request rate limiting
-    - Configurable window and max requests
+    - Per-token request rate limiting (prevents single token abuse)
+    - Global rate limiting (prevents DDoS with multiple tokens)
+    - Configurable windows and max requests
     - Automatic blocking on limit exceeded
+    - Uses monotonic time to prevent clock manipulation
     """
 
     TOKEN_PREFIX = "bd_"  # Boundary Daemon token prefix
@@ -176,25 +188,39 @@ class TokenManager:
         self,
         token_file: str = "./config/api_tokens.json",
         rate_limit_window: int = 60,      # 60 seconds
-        rate_limit_max_requests: int = 100,  # 100 requests per window
+        rate_limit_max_requests: int = 100,  # 100 requests per window per token
         rate_limit_block_duration: int = 300,  # 5 minute block on limit exceeded
+        global_rate_limit_window: int = 60,  # 60 seconds for global limit
+        global_rate_limit_max_requests: int = 1000,  # 1000 total requests per window
+        global_rate_limit_block_duration: int = 60,  # 1 minute global block
     ):
         """
         Initialize token manager.
 
         Args:
             token_file: Path to token storage file
-            rate_limit_window: Rate limit window in seconds
-            rate_limit_max_requests: Max requests per window
-            rate_limit_block_duration: Block duration in seconds when limit exceeded
+            rate_limit_window: Rate limit window in seconds (per token)
+            rate_limit_max_requests: Max requests per window (per token)
+            rate_limit_block_duration: Block duration in seconds when per-token limit exceeded
+            global_rate_limit_window: Rate limit window in seconds (global)
+            global_rate_limit_max_requests: Max total requests per window (global)
+            global_rate_limit_block_duration: Block duration when global limit exceeded
         """
         self.token_file = Path(token_file)
+
+        # Per-token rate limiting
         self.rate_limit_window = rate_limit_window
         self.rate_limit_max_requests = rate_limit_max_requests
         self.rate_limit_block_duration = rate_limit_block_duration
 
+        # Global rate limiting
+        self.global_rate_limit_window = global_rate_limit_window
+        self.global_rate_limit_max_requests = global_rate_limit_max_requests
+        self.global_rate_limit_block_duration = global_rate_limit_block_duration
+
         self._tokens: Dict[str, APIToken] = {}  # token_hash -> APIToken
         self._rate_limits: Dict[str, RateLimitEntry] = {}  # token_id -> RateLimitEntry
+        self._global_rate_limit = GlobalRateLimitState()  # Global rate limit tracking
         self._lock = threading.RLock()
 
         # Ensure config directory exists
@@ -366,6 +392,11 @@ class TokenManager:
         token_hash = self._hash_token(raw_token)
 
         with self._lock:
+            # Check global rate limit first (before token lookup)
+            is_global_allowed, global_reason = self._check_global_rate_limit()
+            if not is_global_allowed:
+                return False, None, global_reason
+
             token = self._tokens.get(token_hash)
 
             if not token:
@@ -376,7 +407,7 @@ class TokenManager:
             if not is_valid:
                 return False, token, reason
 
-            # Check rate limit
+            # Check per-token rate limit
             is_allowed, rate_reason = self._check_rate_limit(token.token_id)
             if not is_allowed:
                 return False, token, rate_reason
@@ -419,6 +450,40 @@ class TokenManager:
             return False, token, f"Token lacks capability: {required_cap.name}"
 
         return True, token, "Authorized"
+
+    def _check_global_rate_limit(self) -> Tuple[bool, str]:
+        """Check and update global rate limit across all tokens.
+
+        Uses monotonic time to prevent clock manipulation attacks.
+        Must be called within self._lock.
+        """
+        now = time.monotonic()
+        state = self._global_rate_limit
+
+        # Check if currently blocked
+        if state.blocked_until and now < state.blocked_until:
+            remaining = int(state.blocked_until - now)
+            return False, f"Global rate limit exceeded. Try again in {remaining}s"
+
+        # Clear block if expired
+        if state.blocked_until:
+            state.blocked_until = None
+
+        # Remove old request times
+        window_start = now - self.global_rate_limit_window
+        state.request_times = [t for t in state.request_times if t > window_start]
+
+        # Check if over limit
+        if len(state.request_times) >= self.global_rate_limit_max_requests:
+            state.blocked_until = now + self.global_rate_limit_block_duration
+            state.blocked_count += 1
+            return False, f"Global rate limit exceeded ({self.global_rate_limit_max_requests} req/{self.global_rate_limit_window}s). Blocked for {self.global_rate_limit_block_duration}s"
+
+        # Record this request
+        state.request_times.append(now)
+        state.total_requests += 1
+
+        return True, "OK"
 
     def _check_rate_limit(self, token_id: str) -> Tuple[bool, str]:
         """Check and update rate limit for a token.
@@ -576,6 +641,54 @@ class TokenManager:
                 'blocked': is_blocked,
                 'blocked_remaining_seconds': blocked_remaining,
             }
+
+    def get_global_rate_limit_status(self) -> Dict:
+        """Get global rate limit status across all tokens.
+
+        Returns:
+            Dict with global rate limit information
+        """
+        with self._lock:
+            state = self._global_rate_limit
+            now = time.monotonic()
+
+            window_start = now - self.global_rate_limit_window
+            current_requests = len([t for t in state.request_times if t > window_start])
+
+            is_blocked = state.blocked_until is not None and now < state.blocked_until
+            blocked_remaining = max(0, int(state.blocked_until - now)) if is_blocked else 0
+
+            return {
+                'requests_in_window': current_requests,
+                'max_requests': self.global_rate_limit_max_requests,
+                'window_seconds': self.global_rate_limit_window,
+                'blocked': is_blocked,
+                'blocked_remaining_seconds': blocked_remaining,
+                'total_requests_ever': state.total_requests,
+                'times_blocked': state.blocked_count,
+                'utilization_percent': round(current_requests / self.global_rate_limit_max_requests * 100, 1),
+            }
+
+    def get_all_rate_limit_status(self) -> Dict:
+        """Get combined rate limit status (global + all tokens).
+
+        Returns:
+            Dict with global and per-token rate limit information
+        """
+        with self._lock:
+            result = {
+                'global': self.get_global_rate_limit_status(),
+                'tokens': {},
+            }
+
+            for token in self._tokens.values():
+                if token.token_id in self._rate_limits:
+                    result['tokens'][token.token_id] = {
+                        'name': token.name,
+                        'status': self.get_rate_limit_status(token.token_id),
+                    }
+
+            return result
 
 
 class AuthenticationMiddleware:

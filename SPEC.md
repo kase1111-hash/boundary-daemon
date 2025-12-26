@@ -437,14 +437,14 @@ See [Unimplemented Features](#unimplemented-features) section below.
 ### Quality & Hardening Features
 
 #### 12. **API Authentication**
-- **Status**: Not implemented
-- **Current**: Anyone with socket access can query daemon
-- **What's Needed**: Token-based auth, capability-based access
+- **Status**: ✅ Implemented
+- **Current**: Token-based auth with capability-based access control
+- **Features**: 256-bit token entropy, SHA-256 hashing, authctl CLI, bootstrap tokens
 
 #### 13. **Rate Limiting**
-- **Status**: Not implemented
-- **Current**: API can be spammed with requests
-- **What's Needed**: Request throttling, backoff mechanisms
+- **Status**: ✅ Implemented
+- **Current**: Per-token and global rate limiting with configurable windows and block durations
+- **Features**: Request throttling (100 req/60s per token, 1000 req/60s global), automatic blocking, rate limit status API
 
 #### 14. **Code Signing & Integrity**
 - **Status**: Not implemented
@@ -1926,11 +1926,40 @@ Tokens are assigned capabilities that control what commands they can execute:
 
 ### Rate Limiting
 
-Each token is rate-limited to prevent abuse:
+The API implements two layers of rate limiting to prevent abuse:
+
+#### Per-Token Rate Limiting
+
+Each token has independent rate limits:
 
 - **Default Limit**: 100 requests per 60 seconds
 - **Block Duration**: 300 seconds when limit exceeded
 - **Per-Token Tracking**: Each token has independent rate limits
+
+#### Global Rate Limiting
+
+Protects against distributed attacks using many tokens:
+
+- **Default Limit**: 1000 total requests per 60 seconds (across all tokens)
+- **Block Duration**: 60 seconds when global limit exceeded
+- **Priority**: Global limit checked before per-token limits
+- **DDoS Protection**: Prevents overwhelming the daemon even with valid tokens
+
+#### Rate Limit Status API
+
+Check current rate limit status via the `rate_limit_status` command:
+
+```python
+# Get global rate limit status
+response = client.send_command('rate_limit_status')
+# Returns: {global_rate_limit: {requests_in_window, max_requests, blocked, ...}}
+
+# Get specific token's rate limit
+response = client.send_command('rate_limit_status', {'token_id': 'abc123'})
+
+# Get all rate limits (requires MANAGE_TOKENS capability)
+response = client.send_command('rate_limit_status', {'include_all': True})
+```
 
 ### Token Management
 
