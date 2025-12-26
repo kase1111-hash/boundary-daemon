@@ -4,8 +4,12 @@ API Authentication - Token-based authentication for Boundary Daemon API.
 Provides:
 - Secure token generation and storage
 - Capability-based access control
-- Rate limiting
+- Rate limiting (with optional persistence to survive restarts)
 - Token lifecycle management (create, revoke, expire)
+
+SECURITY: Rate limiting now supports persistence to disk, preventing
+bypass via daemon restart. This addresses the vulnerability:
+"Rate Limiting Bypass via Restart"
 """
 
 import hashlib
@@ -20,6 +24,14 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
+
+# Import persistent rate limiter (SECURITY: survives restarts)
+try:
+    from .persistent_rate_limiter import PersistentRateLimiter
+    PERSISTENT_RATE_LIMIT_AVAILABLE = True
+except ImportError:
+    PERSISTENT_RATE_LIMIT_AVAILABLE = False
+    PersistentRateLimiter = None
 
 
 class APICapability(Enum):
@@ -227,6 +239,8 @@ class TokenManager:
         global_rate_limit_max_requests: int = 1000,  # 1000 total requests per window
         global_rate_limit_block_duration: int = 60,  # 1 minute global block
         event_logger=None,  # Optional EventLogger for rate limit events
+        use_persistent_rate_limit: bool = True,  # SECURITY: Use persistent rate limiting
+        rate_limit_state_file: str = None,  # Path to rate limit state file
     ):
         """
         Initialize token manager.
@@ -240,6 +254,8 @@ class TokenManager:
             global_rate_limit_max_requests: Max total requests per window (global)
             global_rate_limit_block_duration: Block duration when global limit exceeded
             event_logger: Optional EventLogger instance for logging rate limit events
+            use_persistent_rate_limit: Whether to use persistent rate limiting (survives restarts)
+            rate_limit_state_file: Path to rate limit state file (default: /var/lib/boundary-daemon/rate_limits.json)
         """
         self.token_file = Path(token_file)
         self._event_logger = event_logger
@@ -259,6 +275,29 @@ class TokenManager:
         self._command_rate_limits: Dict[str, Dict[str, CommandRateLimitEntry]] = {}  # token_id -> command -> entry
         self._global_rate_limit = GlobalRateLimitState()  # Global rate limit tracking
         self._lock = threading.RLock()
+
+        # SECURITY: Initialize persistent rate limiter (survives daemon restarts)
+        # This addresses the vulnerability: "Rate Limiting Bypass via Restart"
+        self._persistent_rate_limiter = None
+        if use_persistent_rate_limit and PERSISTENT_RATE_LIMIT_AVAILABLE and PersistentRateLimiter:
+            try:
+                self._persistent_rate_limiter = PersistentRateLimiter(
+                    state_file=rate_limit_state_file,
+                    rate_limit_window=rate_limit_window,
+                    rate_limit_max_requests=rate_limit_max_requests,
+                    rate_limit_block_duration=rate_limit_block_duration,
+                    global_rate_limit_window=global_rate_limit_window,
+                    global_rate_limit_max_requests=global_rate_limit_max_requests,
+                    global_rate_limit_block_duration=global_rate_limit_block_duration,
+                    event_logger=event_logger,
+                )
+                print("SECURITY: Persistent rate limiting enabled (survives restarts)")
+            except Exception as e:
+                print(f"Warning: Persistent rate limiting failed to initialize: {e}")
+                print("WARNING: Rate limits will be reset on daemon restart!")
+        elif use_persistent_rate_limit:
+            print("WARNING: Persistent rate limiting not available")
+            print("WARNING: Rate limits will be reset on daemon restart!")
 
         # Ensure config directory exists
         self.token_file.parent.mkdir(parents=True, exist_ok=True)
@@ -589,9 +628,15 @@ class TokenManager:
     def _check_global_rate_limit(self) -> Tuple[bool, str]:
         """Check and update global rate limit across all tokens.
 
-        Uses monotonic time to prevent clock manipulation attacks.
+        SECURITY: Uses persistent rate limiter when available to survive restarts.
+        Falls back to monotonic time-based rate limiting otherwise.
         Must be called within self._lock.
         """
+        # SECURITY: Use persistent rate limiter if available (survives restarts)
+        if self._persistent_rate_limiter:
+            return self._persistent_rate_limiter.check_global_rate_limit()
+
+        # Fallback: in-memory rate limiting (resets on restart)
         now = time.monotonic()
         state = self._global_rate_limit
 
@@ -636,8 +681,14 @@ class TokenManager:
     def _check_rate_limit(self, token_id: str) -> Tuple[bool, str]:
         """Check and update rate limit for a token.
 
-        Uses monotonic time to prevent clock manipulation attacks.
+        SECURITY: Uses persistent rate limiter when available to survive restarts.
+        Falls back to monotonic time-based rate limiting otherwise.
         """
+        # SECURITY: Use persistent rate limiter if available (survives restarts)
+        if self._persistent_rate_limiter:
+            return self._persistent_rate_limiter.check_rate_limit(token_id)
+
+        # Fallback: in-memory rate limiting (resets on restart)
         now = time.monotonic()  # Monotonic clock cannot be manipulated
 
         with self._lock:
@@ -691,13 +742,25 @@ class TokenManager:
         Per-command rate limits allow different limits for different operations.
         For example, read-only 'status' can have higher limits than 'set_mode'.
 
-        Uses monotonic time to prevent clock manipulation attacks.
+        SECURITY: Uses persistent rate limiter when available to survive restarts.
+        Falls back to monotonic time-based rate limiting otherwise.
         """
         # Check if this command has a specific rate limit
         if command not in COMMAND_RATE_LIMITS:
             return True, "OK"  # No per-command limit, use global/per-token only
 
         max_requests, window_seconds = COMMAND_RATE_LIMITS[command]
+
+        # SECURITY: Use persistent rate limiter if available (survives restarts)
+        if self._persistent_rate_limiter:
+            return self._persistent_rate_limiter.check_command_rate_limit(
+                token_id=token_id,
+                command=command,
+                max_requests=max_requests,
+                window=window_seconds,
+            )
+
+        # Fallback: in-memory rate limiting (resets on restart)
         now = time.monotonic()
 
         with self._lock:
