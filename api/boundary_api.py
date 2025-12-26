@@ -1,6 +1,12 @@
 """
 Boundary API - Unix Socket Interface
 Provides local-only socket API for other Agent OS components.
+
+Security Features:
+- Token-based authentication
+- Capability-based access control
+- Per-token rate limiting
+- Request logging
 """
 
 import json
@@ -10,27 +16,69 @@ import threading
 from typing import Optional, Dict, Any
 
 from daemon.policy_engine import BoundaryMode, Operator, MemoryClass
+from daemon.auth.api_auth import (
+    TokenManager,
+    AuthenticationMiddleware,
+    APICapability,
+    COMMAND_CAPABILITIES,
+)
 
 
 class BoundaryAPIServer:
     """
     Unix socket API server for boundary daemon.
-    Provides read-only status and command interface.
+    Provides authenticated API with capability-based access control.
+
+    Authentication:
+        All requests must include a 'token' field with a valid API token.
+        Tokens are created using the 'create_token' command or authctl CLI.
+
+    Rate Limiting:
+        Each token is rate-limited to prevent abuse.
+        Default: 100 requests per 60 seconds.
     """
 
-    def __init__(self, daemon, socket_path: str = './api/boundary.sock'):
+    def __init__(
+        self,
+        daemon,
+        socket_path: str = './api/boundary.sock',
+        token_file: str = './config/api_tokens.json',
+        require_auth: bool = True,
+        rate_limit_window: int = 60,
+        rate_limit_max_requests: int = 100,
+    ):
         """
         Initialize API server.
 
         Args:
             daemon: Reference to BoundaryDaemon instance
             socket_path: Path to Unix socket
+            token_file: Path to token storage file
+            require_auth: Whether authentication is required
+            rate_limit_window: Rate limit window in seconds
+            rate_limit_max_requests: Max requests per window
         """
         self.daemon = daemon
         self.socket_path = socket_path
+        self.require_auth = require_auth
         self._running = False
         self._server_thread: Optional[threading.Thread] = None
         self._socket: Optional[socket.socket] = None
+
+        # Initialize authentication
+        # Get event logger from daemon if available
+        event_logger = getattr(daemon, 'event_logger', None) if daemon else None
+
+        self.token_manager = TokenManager(
+            token_file=token_file,
+            rate_limit_window=rate_limit_window,
+            rate_limit_max_requests=rate_limit_max_requests,
+            event_logger=event_logger,
+        )
+        self.auth_middleware = AuthenticationMiddleware(
+            token_manager=self.token_manager,
+            require_auth=require_auth,
+        )
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(socket_path), exist_ok=True)
@@ -143,12 +191,77 @@ class BoundaryAPIServer:
 
         Request format:
         {
-            "command": "status|check_recall|check_tool|set_mode|get_events|verify_log|check_message|check_natlangchain|check_agentos",
+            "command": "status|check_recall|check_tool|set_mode|get_events|verify_log|...",
+            "token": "<api_token>",
             "params": {...}
         }
+
+        Token Management Commands (require MANAGE_TOKENS capability):
+        - create_token: Create a new API token
+        - revoke_token: Revoke an existing token
+        - list_tokens: List all tokens
+
+        Response includes rate limit headers:
+        - rate_limit: Per-token rate limit info
+        - rate_limit.X-RateLimit-Limit: Max requests per window
+        - rate_limit.X-RateLimit-Remaining: Requests remaining
+        - rate_limit.X-RateLimit-Reset: Seconds until reset
         """
         command = request.get('command')
         params = request.get('params', {})
+
+        # Authenticate request
+        is_authorized, token, auth_message = self.auth_middleware.authenticate_request(request)
+
+        if not is_authorized:
+            return {
+                'success': False,
+                'error': f'Authentication failed: {auth_message}',
+                'auth_error': True,
+            }
+
+        # Log authenticated request (if we have event logger)
+        if token and hasattr(self.daemon, 'event_logger'):
+            try:
+                from daemon.event_logger import EventType
+                self.daemon.event_logger.log_event(
+                    event_type=EventType.API_REQUEST,
+                    data={
+                        'command': command,
+                        'token_id': token.token_id,
+                        'token_name': token.name,
+                    }
+                )
+            except Exception:
+                pass  # Don't fail request on logging error
+
+        # Process command and get response
+        response = self._dispatch_command(command, params, token)
+
+        # Add rate limit headers to response
+        if token:
+            response['rate_limit'] = self.token_manager.get_rate_limit_headers(
+                token.token_id, command
+            )
+
+        return response
+
+    def _dispatch_command(
+        self,
+        command: str,
+        params: Dict[str, Any],
+        token: Any
+    ) -> Dict[str, Any]:
+        """Dispatch command to appropriate handler."""
+        # Handle token management commands
+        if command == 'create_token':
+            return self._handle_create_token(params, token)
+        elif command == 'revoke_token':
+            return self._handle_revoke_token(params, token)
+        elif command == 'list_tokens':
+            return self._handle_list_tokens(params)
+        elif command == 'rate_limit_status':
+            return self._handle_rate_limit_status(params)
 
         if command == 'status':
             return self._handle_status()
@@ -179,6 +292,136 @@ class BoundaryAPIServer:
 
         else:
             return {'error': f'Unknown command: {command}'}
+
+    def _handle_create_token(self, params: Dict[str, Any], requesting_token) -> Dict[str, Any]:
+        """
+        Create a new API token.
+
+        Params:
+            name: str - Human-readable name for the token
+            capabilities: list - List of capabilities or capability set name
+            expires_in_days: int (optional) - Days until expiration (default: 365)
+            metadata: dict (optional) - Additional metadata
+        """
+        try:
+            name = params.get('name')
+            capabilities = params.get('capabilities')
+
+            if not name:
+                return {'success': False, 'error': 'name parameter required'}
+            if not capabilities:
+                return {'success': False, 'error': 'capabilities parameter required'}
+
+            expires_in_days = params.get('expires_in_days', 365)
+            metadata = params.get('metadata', {})
+
+            # Convert capabilities to set
+            if isinstance(capabilities, str):
+                capabilities = {capabilities}
+            else:
+                capabilities = set(capabilities)
+
+            # Create token
+            raw_token, token_obj = self.token_manager.create_token(
+                name=name,
+                capabilities=capabilities,
+                created_by=requesting_token.name if requesting_token else 'system',
+                expires_in_days=expires_in_days,
+                metadata=metadata,
+            )
+
+            return {
+                'success': True,
+                'token': raw_token,  # Only returned once!
+                'token_id': token_obj.token_id,
+                'name': token_obj.name,
+                'capabilities': [c.name for c in token_obj.capabilities],
+                'expires_at': token_obj.expires_at.isoformat() if token_obj.expires_at else None,
+                'warning': 'Store this token securely - it cannot be retrieved again!',
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _handle_revoke_token(self, params: Dict[str, Any], requesting_token) -> Dict[str, Any]:
+        """
+        Revoke an API token.
+
+        Params:
+            token_id: str - Token ID to revoke (first 8 chars)
+        """
+        try:
+            token_id = params.get('token_id')
+            if not token_id:
+                return {'success': False, 'error': 'token_id parameter required'}
+
+            # Prevent self-revocation
+            if requesting_token and requesting_token.token_id == token_id:
+                return {'success': False, 'error': 'Cannot revoke your own token'}
+
+            success, message = self.token_manager.revoke_token(
+                token_id=token_id,
+                revoked_by=requesting_token.name if requesting_token else 'system',
+            )
+
+            return {'success': success, 'message': message}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _handle_list_tokens(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        List all API tokens.
+
+        Params:
+            include_revoked: bool (optional) - Include revoked tokens (default: False)
+        """
+        try:
+            include_revoked = params.get('include_revoked', False)
+            tokens = self.token_manager.list_tokens(include_revoked=include_revoked)
+
+            return {
+                'success': True,
+                'tokens': tokens,
+                'count': len(tokens),
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _handle_rate_limit_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get rate limit status.
+
+        Params:
+            token_id: str (optional) - Get status for specific token
+            include_all: bool (optional) - Include all tokens' rate limits (default: False)
+        """
+        try:
+            token_id = params.get('token_id')
+            include_all = params.get('include_all', False)
+
+            if include_all:
+                # Get global + all token rate limits
+                all_status = self.token_manager.get_all_rate_limit_status()
+                return {
+                    'success': True,
+                    'rate_limits': all_status,
+                }
+            elif token_id:
+                # Get specific token's rate limit
+                token_status = self.token_manager.get_rate_limit_status(token_id)
+                return {
+                    'success': True,
+                    'token_id': token_id,
+                    'rate_limit': token_status,
+                }
+            else:
+                # Get just global rate limit
+                global_status = self.token_manager.get_global_rate_limit_status()
+                return {
+                    'success': True,
+                    'global_rate_limit': global_status,
+                }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
 
     def _handle_status(self) -> Dict[str, Any]:
         """Get daemon status"""
@@ -484,23 +727,90 @@ class BoundaryAPIClient:
     """
     Client for communicating with the Boundary Daemon API.
     Used by other Agent OS components (Memory Vault, synth-mind, etc.)
+
+    Authentication:
+        The client requires an API token for authentication. Tokens can be:
+        1. Passed directly to the constructor
+        2. Loaded from BOUNDARY_API_TOKEN environment variable
+        3. Loaded from a token file
+
+    Example:
+        # Using environment variable
+        os.environ['BOUNDARY_API_TOKEN'] = 'bd_...'
+        client = BoundaryAPIClient()
+
+        # Using direct token
+        client = BoundaryAPIClient(token='bd_...')
+
+        # Using token file
+        client = BoundaryAPIClient(token_file='./my_token.txt')
     """
 
-    def __init__(self, socket_path: str = './api/boundary.sock'):
+    def __init__(
+        self,
+        socket_path: str = './api/boundary.sock',
+        token: Optional[str] = None,
+        token_file: Optional[str] = None,
+    ):
         """
         Initialize API client.
 
         Args:
             socket_path: Path to Unix socket
+            token: API token for authentication (optional if using env var)
+            token_file: Path to file containing API token
         """
         self.socket_path = socket_path
+        self._token = self._resolve_token(token, token_file)
+
+    def _resolve_token(
+        self,
+        token: Optional[str],
+        token_file: Optional[str],
+    ) -> Optional[str]:
+        """Resolve token from various sources."""
+        # Priority: direct token > token file > environment variable
+        if token:
+            return token.strip()
+
+        if token_file:
+            try:
+                with open(token_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            return line
+            except Exception as e:
+                print(f"Warning: Could not read token file: {e}")
+
+        # Try environment variable
+        env_token = os.environ.get('BOUNDARY_API_TOKEN')
+        if env_token:
+            return env_token.strip()
+
+        return None
+
+    @property
+    def token(self) -> Optional[str]:
+        """Get the current token (masked for security)."""
+        if self._token:
+            return f"{self._token[:12]}...{self._token[-4:]}"
+        return None
+
+    def set_token(self, token: str):
+        """Set the API token."""
+        self._token = token.strip()
 
     def _send_request(self, command: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Send a request to the daemon"""
+        """Send an authenticated request to the daemon."""
         request = {
             'command': command,
-            'params': params or {}
+            'params': params or {},
         }
+
+        # Add token if available
+        if self._token:
+            request['token'] = self._token
 
         try:
             # Connect to socket
@@ -758,6 +1068,64 @@ class BoundaryAPIClient:
             response.get('reason', ''),
             response.get('result')
         )
+
+    # Token management methods (require MANAGE_TOKENS capability)
+
+    def create_token(
+        self,
+        name: str,
+        capabilities: list,
+        expires_in_days: Optional[int] = 365,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new API token.
+
+        Args:
+            name: Human-readable name for the token
+            capabilities: List of capabilities or capability set name
+                         Options: 'readonly', 'operator', 'admin'
+                         Or individual: 'STATUS', 'READ_EVENTS', 'SET_MODE', etc.
+            expires_in_days: Days until expiration (None = never)
+            metadata: Additional metadata
+
+        Returns:
+            Response containing the new token (store securely!)
+        """
+        params = {
+            'name': name,
+            'capabilities': capabilities,
+        }
+        if expires_in_days is not None:
+            params['expires_in_days'] = expires_in_days
+        if metadata:
+            params['metadata'] = metadata
+
+        return self._send_request('create_token', params)
+
+    def revoke_token(self, token_id: str) -> Dict[str, Any]:
+        """
+        Revoke an API token.
+
+        Args:
+            token_id: Token ID to revoke (first 8 characters)
+
+        Returns:
+            Response indicating success/failure
+        """
+        return self._send_request('revoke_token', {'token_id': token_id})
+
+    def list_tokens(self, include_revoked: bool = False) -> Dict[str, Any]:
+        """
+        List all API tokens.
+
+        Args:
+            include_revoked: Whether to include revoked tokens
+
+        Returns:
+            Response containing list of tokens
+        """
+        return self._send_request('list_tokens', {'include_revoked': include_revoked})
 
 
 if __name__ == '__main__':

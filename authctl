@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+"""
+authctl - Token Management CLI for Boundary Daemon API
+
+Commands:
+    create      Create a new API token
+    revoke      Revoke an existing token
+    list        List all tokens
+    info        Show token info
+    export      Export token to file
+    test        Test a token
+
+Examples:
+    # Create a readonly token
+    authctl create --name "monitoring-service" --capabilities readonly
+
+    # Create an operator token that expires in 30 days
+    authctl create --name "operator-1" --capabilities operator --expires 30
+
+    # Create admin token
+    authctl create --name "admin-token" --capabilities admin
+
+    # List all tokens
+    authctl list
+
+    # Revoke a token
+    authctl revoke abc12345
+
+    # Test a token
+    authctl test bd_xxxxx...
+"""
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from daemon.auth.api_auth import (
+    TokenManager,
+    APICapability,
+    CAPABILITY_SETS,
+)
+
+
+def format_datetime(dt_str: str) -> str:
+    """Format ISO datetime string for display."""
+    if not dt_str:
+        return "Never"
+    try:
+        dt = datetime.fromisoformat(dt_str)
+        return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    except Exception:
+        return dt_str
+
+
+def format_capabilities(caps: list) -> str:
+    """Format capability list for display."""
+    if not caps:
+        return "None"
+    if 'ADMIN' in caps:
+        return "ADMIN (full access)"
+    return ", ".join(caps)
+
+
+def cmd_create(args, manager: TokenManager):
+    """Create a new API token."""
+    # Parse capabilities
+    capabilities = set()
+    for cap in args.capabilities:
+        capabilities.add(cap.lower())
+
+    # Handle expiration
+    expires_in_days = args.expires
+    if expires_in_days == 0:
+        expires_in_days = None  # Never expires
+
+    try:
+        raw_token, token_obj = manager.create_token(
+            name=args.name,
+            capabilities=capabilities,
+            created_by="authctl",
+            expires_in_days=expires_in_days,
+            metadata={'created_via': 'authctl'},
+        )
+
+        print("\n" + "=" * 60)
+        print("  NEW API TOKEN CREATED")
+        print("=" * 60)
+        print(f"\n  Token ID:     {token_obj.token_id}")
+        print(f"  Name:         {token_obj.name}")
+        print(f"  Capabilities: {format_capabilities([c.name for c in token_obj.capabilities])}")
+        print(f"  Expires:      {format_datetime(token_obj.expires_at.isoformat() if token_obj.expires_at else None)}")
+        print(f"\n  Token (SAVE THIS - shown only once!):")
+        print(f"\n    {raw_token}")
+        print("\n" + "=" * 60)
+
+        # Optionally save to file
+        if args.output:
+            with open(args.output, 'w') as f:
+                f.write(f"# Boundary Daemon API Token\n")
+                f.write(f"# Name: {args.name}\n")
+                f.write(f"# Created: {datetime.utcnow().isoformat()}\n")
+                f.write(f"# Capabilities: {', '.join([c.name for c in token_obj.capabilities])}\n")
+                f.write(f"{raw_token}\n")
+            os.chmod(args.output, 0o600)
+            print(f"\n  Token saved to: {args.output}")
+
+        print("\n  Set environment variable:")
+        print(f"    export BOUNDARY_API_TOKEN='{raw_token}'")
+        print()
+
+    except Exception as e:
+        print(f"Error creating token: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_revoke(args, manager: TokenManager):
+    """Revoke an API token."""
+    success, message = manager.revoke_token(args.token_id, revoked_by="authctl")
+
+    if success:
+        print(f"Token revoked: {args.token_id}")
+    else:
+        print(f"Failed to revoke token: {message}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_list(args, manager: TokenManager):
+    """List all tokens."""
+    tokens = manager.list_tokens(include_revoked=args.all)
+
+    if not tokens:
+        print("No tokens found.")
+        return
+
+    print("\n" + "-" * 80)
+    print(f"{'ID':<10} {'Name':<25} {'Status':<12} {'Capabilities':<20} {'Last Used':<20}")
+    print("-" * 80)
+
+    for token in tokens:
+        status = token.get('status', 'unknown')
+        if token.get('revoked'):
+            status = 'revoked'
+        elif not token.get('is_valid'):
+            status = 'invalid'
+
+        caps = token.get('capabilities', [])
+        if 'ADMIN' in caps:
+            caps_str = 'ADMIN'
+        elif len(caps) > 3:
+            caps_str = f"{len(caps)} caps"
+        else:
+            caps_str = ', '.join(caps[:3])
+
+        last_used = token.get('last_used')
+        if last_used:
+            last_used_str = format_datetime(last_used)[:16]
+        else:
+            last_used_str = "Never"
+
+        print(f"{token['token_id']:<10} {token['name'][:24]:<25} {status:<12} {caps_str[:19]:<20} {last_used_str:<20}")
+
+    print("-" * 80)
+    print(f"Total: {len(tokens)} tokens")
+    print()
+
+
+def cmd_info(args, manager: TokenManager):
+    """Show detailed token info."""
+    token = manager.get_token_by_id(args.token_id)
+
+    if not token:
+        print(f"Token not found: {args.token_id}", file=sys.stderr)
+        sys.exit(1)
+
+    is_valid, status = token.is_valid()
+
+    print("\n" + "=" * 50)
+    print(f"  Token: {token.token_id}")
+    print("=" * 50)
+    print(f"  Name:         {token.name}")
+    print(f"  Status:       {'Valid' if is_valid else status}")
+    print(f"  Revoked:      {'Yes' if token.revoked else 'No'}")
+    print(f"  Created:      {format_datetime(token.created_at.isoformat())}")
+    print(f"  Created By:   {token.created_by}")
+    print(f"  Expires:      {format_datetime(token.expires_at.isoformat() if token.expires_at else None)}")
+    print(f"  Last Used:    {format_datetime(token.last_used.isoformat() if token.last_used else None)}")
+    print(f"  Use Count:    {token.use_count}")
+    print(f"  Capabilities: {format_capabilities([c.name for c in token.capabilities])}")
+
+    if token.metadata:
+        print(f"  Metadata:     {json.dumps(token.metadata)}")
+
+    # Rate limit status
+    rate_status = manager.get_rate_limit_status(token.token_id)
+    print(f"\n  Rate Limit:")
+    print(f"    Requests:   {rate_status['requests_in_window']}/{rate_status['max_requests']} per {rate_status['window_seconds']}s")
+    print(f"    Blocked:    {'Yes' if rate_status['blocked'] else 'No'}")
+
+    print()
+
+
+def cmd_test(args, manager: TokenManager):
+    """Test a token."""
+    is_valid, token, message = manager.validate_token(args.token)
+
+    if is_valid:
+        print(f"\n  Token is VALID")
+        print(f"  Token ID:     {token.token_id}")
+        print(f"  Name:         {token.name}")
+        print(f"  Capabilities: {format_capabilities([c.name for c in token.capabilities])}")
+    else:
+        print(f"\n  Token is INVALID: {message}")
+        if token:
+            print(f"  Token ID:     {token.token_id}")
+            print(f"  Name:         {token.name}")
+        sys.exit(1)
+
+
+def cmd_capabilities(args, manager: TokenManager):
+    """List available capabilities."""
+    print("\nAvailable Capabilities:")
+    print("-" * 50)
+
+    print("\nPredefined Sets:")
+    for name, caps in CAPABILITY_SETS.items():
+        cap_names = [c.name for c in caps]
+        print(f"  {name:<15} {', '.join(cap_names)}")
+
+    print("\nIndividual Capabilities:")
+    for cap in APICapability:
+        print(f"  {cap.name}")
+
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Token Management CLI for Boundary Daemon API",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+
+    parser.add_argument(
+        '--token-file',
+        default='./config/api_tokens.json',
+        help='Path to token storage file',
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # Create command
+    create_parser = subparsers.add_parser('create', help='Create a new API token')
+    create_parser.add_argument('--name', '-n', required=True, help='Token name')
+    create_parser.add_argument(
+        '--capabilities', '-c',
+        nargs='+',
+        required=True,
+        help='Capabilities: readonly, operator, admin, or individual caps',
+    )
+    create_parser.add_argument(
+        '--expires', '-e',
+        type=int,
+        default=365,
+        help='Days until expiration (0 = never, default: 365)',
+    )
+    create_parser.add_argument(
+        '--output', '-o',
+        help='Save token to file',
+    )
+
+    # Revoke command
+    revoke_parser = subparsers.add_parser('revoke', help='Revoke an API token')
+    revoke_parser.add_argument('token_id', help='Token ID to revoke (first 8 chars)')
+
+    # List command
+    list_parser = subparsers.add_parser('list', help='List all tokens')
+    list_parser.add_argument('--all', '-a', action='store_true', help='Include revoked tokens')
+
+    # Info command
+    info_parser = subparsers.add_parser('info', help='Show token details')
+    info_parser.add_argument('token_id', help='Token ID')
+
+    # Test command
+    test_parser = subparsers.add_parser('test', help='Test a token')
+    test_parser.add_argument('token', help='Full token string to test')
+
+    # Capabilities command
+    caps_parser = subparsers.add_parser('capabilities', help='List available capabilities')
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    # Initialize token manager
+    manager = TokenManager(token_file=args.token_file)
+
+    # Execute command
+    if args.command == 'create':
+        cmd_create(args, manager)
+    elif args.command == 'revoke':
+        cmd_revoke(args, manager)
+    elif args.command == 'list':
+        cmd_list(args, manager)
+    elif args.command == 'info':
+        cmd_info(args, manager)
+    elif args.command == 'test':
+        cmd_test(args, manager)
+    elif args.command == 'capabilities':
+        cmd_capabilities(args, manager)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

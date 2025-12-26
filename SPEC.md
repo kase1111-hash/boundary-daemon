@@ -145,12 +145,16 @@ The Boundary Daemon (codenamed "Agent Smith") is the mandatory trust enforcement
 - **CeremonyManager**: Human override ceremony (3-step process with cooldown)
 - **Capability Queries**: Mode-based capability discovery
 
-#### 6. API Server (`boundary_api.py`)
+#### 6. API Server (`boundary_api.py`) ✅
 - **Unix Socket**: Local-only communication
-- **Commands**: status, check_recall, check_tool, set_mode, get_events, verify_log
-- **Client Library**: Full Python client implementation
+- **Commands**: status, check_recall, check_tool, set_mode, get_events, verify_log, create_token, revoke_token, list_tokens
+- **Client Library**: Full Python client implementation with token support
 - **JSON Protocol**: Request/response serialization
 - **Thread Safety**: Concurrent request handling
+- **Token Authentication**: Secure token-based authentication (256-bit entropy)
+- **Capability-Based Access Control**: Fine-grained permissions per token
+- **Rate Limiting**: Per-token rate limiting (100 req/60s default)
+- **Token Management**: Create, revoke, list tokens via API or authctl CLI
 
 #### 7. CLI Tool (`boundaryctl`)
 - **Commands**: status, check-recall, check-tool, set-mode, events, verify, watch
@@ -304,6 +308,19 @@ The Boundary Daemon (codenamed "Agent Smith") is the mandatory trust enforcement
 - **Remote Endpoint**: BOUNDARY_TELEMETRY_ENDPOINT for OTLP collector
 - **Daemon Integration**: BoundaryDaemon provides get_telemetry_summary(), record_telemetry_span(), record_telemetry_metric(), get_recent_telemetry_spans(), get_telemetry_metrics()
 
+#### 20. Clock Drift Protection (`daemon/security/clock_monitor.py`) ✅ NEW
+- **Time Manipulation Detection**: Detects sudden clock jumps (forward/backward)
+- **NTP Sync Verification**: Checks NTP synchronization via timedatectl, ntpstat, chronyc
+- **Monotonic Time Usage**: Rate limiting uses monotonic clock (cannot be manipulated)
+- **Drift Tracking**: Tracks clock drift in parts per million (ppm)
+- **Severity Classification**: LOW (<1min), MEDIUM (<5min), HIGH (<1hr), CRITICAL (>1day)
+- **Event Logging**: Logs CLOCK_JUMP, CLOCK_DRIFT, NTP_SYNC_LOST events
+- **Secure Timer**: Provides SecureTimer class for manipulation-resistant timing
+- **Trust Verification**: is_time_trustworthy() checks clock integrity
+- **Jump History**: Maintains history of detected time jumps
+- **Callback System**: Supports callbacks for time_jump, ntp_lost, manipulation events
+- **Daemon Integration**: BoundaryDaemon provides clock status in get_status()
+
 ### ⚠️ Partially Implemented / Limited
 
 #### 1. Enforcement Mechanism
@@ -420,14 +437,14 @@ See [Unimplemented Features](#unimplemented-features) section below.
 ### Quality & Hardening Features
 
 #### 12. **API Authentication**
-- **Status**: Not implemented
-- **Current**: Anyone with socket access can query daemon
-- **What's Needed**: Token-based auth, capability-based access
+- **Status**: ✅ Implemented
+- **Current**: Token-based auth with capability-based access control
+- **Features**: 256-bit token entropy, SHA-256 hashing, authctl CLI, bootstrap tokens
 
 #### 13. **Rate Limiting**
-- **Status**: Not implemented
-- **Current**: API can be spammed with requests
-- **What's Needed**: Request throttling, backoff mechanisms
+- **Status**: ✅ Implemented
+- **Current**: Per-token and global rate limiting with configurable windows and block durations
+- **Features**: Request throttling (100 req/60s per token, 1000 req/60s global), automatic blocking, rate limit status API
 
 #### 14. **Code Signing & Integrity**
 - **Status**: Not implemented
@@ -1857,21 +1874,285 @@ class ExposureMonitor:
 
 **Protocol**: JSON over Unix domain socket
 
+### Authentication
+
+The API uses token-based authentication with capability-based access control. All requests must include a valid API token.
+
+**Token Format**: `bd_<random_string>` (256 bits of entropy)
+
 **Request Format**:
 ```json
 {
-  "command": "status|check_recall|check_tool|set_mode|get_events|verify_log",
+  "command": "status|check_recall|check_tool|set_mode|get_events|verify_log|...",
+  "token": "bd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "params": {
     // Command-specific parameters
   }
 }
 ```
 
-**Response Format**:
+**Authentication Errors**:
+```json
+{
+  "success": false,
+  "error": "Authentication failed: Token not found",
+  "auth_error": true
+}
+```
+
+### Capability Sets
+
+Tokens are assigned capabilities that control what commands they can execute:
+
+| Set | Capabilities | Use Case |
+|-----|--------------|----------|
+| `readonly` | STATUS, READ_EVENTS, VERIFY_LOG, CHECK_RECALL, CHECK_TOOL, CHECK_MESSAGE | Monitoring services |
+| `operator` | readonly + SET_MODE | Operators who can change modes |
+| `admin` | All capabilities including MANAGE_TOKENS | Full administrative access |
+
+### Individual Capabilities
+
+| Capability | Commands Allowed |
+|------------|------------------|
+| STATUS | status |
+| READ_EVENTS | get_events |
+| VERIFY_LOG | verify_log |
+| CHECK_RECALL | check_recall |
+| CHECK_TOOL | check_tool |
+| CHECK_MESSAGE | check_message, check_natlangchain, check_agentos |
+| SET_MODE | set_mode |
+| MANAGE_TOKENS | create_token, revoke_token, list_tokens |
+| ADMIN | All commands |
+
+### Rate Limiting
+
+The API implements two layers of rate limiting to prevent abuse:
+
+#### Per-Token Rate Limiting
+
+Each token has independent rate limits:
+
+- **Default Limit**: 100 requests per 60 seconds
+- **Block Duration**: 300 seconds when limit exceeded
+- **Per-Token Tracking**: Each token has independent rate limits
+
+#### Global Rate Limiting
+
+Protects against distributed attacks using many tokens:
+
+- **Default Limit**: 1000 total requests per 60 seconds (across all tokens)
+- **Block Duration**: 60 seconds when global limit exceeded
+- **Priority**: Global limit checked before per-token limits
+- **DDoS Protection**: Prevents overwhelming the daemon even with valid tokens
+
+#### Per-Command Rate Limiting
+
+Different commands have different rate limits based on their cost and sensitivity:
+
+| Command | Max Requests | Window | Notes |
+|---------|-------------|--------|-------|
+| `status` | 200 | 60s | Read-only, high limit |
+| `get_events` | 100 | 60s | Read-only |
+| `check_recall` | 500 | 60s | Frequent memory operations |
+| `check_tool` | 300 | 60s | Frequent tool calls |
+| `check_message` | 200 | 60s | Message validation |
+| `set_mode` | 10 | 60s | Privileged operation |
+| `create_token` | 5 | 60s | Admin operation |
+| `revoke_token` | 10 | 60s | Admin operation |
+| `list_tokens` | 20 | 60s | Admin read |
+
+- **Checked After**: Global and per-token limits are checked first
+- **Independent**: Each command has its own tracking window per token
+- **Block Duration**: Half of the window period (minimum 30s)
+
+#### Rate Limit Status API
+
+Check current rate limit status via the `rate_limit_status` command:
+
+```python
+# Get global rate limit status
+response = client.send_command('rate_limit_status')
+# Returns: {global_rate_limit: {requests_in_window, max_requests, blocked, ...}}
+
+# Get specific token's rate limit
+response = client.send_command('rate_limit_status', {'token_id': 'abc123'})
+
+# Get all rate limits (requires MANAGE_TOKENS capability)
+response = client.send_command('rate_limit_status', {'include_all': True})
+```
+
+#### Rate Limit Headers in Responses
+
+All API responses include rate limit information in the `rate_limit` field:
+
+```python
+response = client.send_command('status')
+# Response includes:
+# {
+#   'success': True,
+#   'status': {...},
+#   'rate_limit': {
+#     'X-RateLimit-Limit': 100,           # Max requests per window
+#     'X-RateLimit-Remaining': 95,        # Requests remaining
+#     'X-RateLimit-Reset': 45,            # Seconds until reset
+#     'X-RateLimit-Window': 60,           # Window duration in seconds
+#     'X-RateLimit-Global-Limit': 1000,   # Global max requests
+#     'X-RateLimit-Global-Remaining': 950,# Global remaining
+#     'X-RateLimit-Command': 'status',    # Current command
+#     'X-RateLimit-Command-Limit': 200,   # Command-specific limit
+#     'X-RateLimit-Command-Remaining': 195
+#   }
+# }
+```
+
+When rate limited, additional fields appear:
+- `X-RateLimit-Blocked: True` - Currently blocked
+- `X-RateLimit-Retry-After: 30` - Seconds until unblocked
+
+#### Rate Limit Events
+
+Rate limit events are logged to the event logger for security monitoring:
+
+| Event Type | Description | Data Fields |
+|------------|-------------|-------------|
+| `RATE_LIMIT_TOKEN` | Per-token limit exceeded | token_id, limit, window, block_duration |
+| `RATE_LIMIT_GLOBAL` | Global limit exceeded | limit, window, block_duration, requests_in_window |
+| `RATE_LIMIT_COMMAND` | Per-command limit exceeded | token_id, command, limit, window, block_duration |
+| `RATE_LIMIT_UNBLOCK` | Block expired | token_id (optional), command (optional), limit, window |
+
+These events can be monitored for:
+- Abuse detection (repeated limit violations)
+- DDoS attack identification (global limit hits)
+- Misconfigured clients (command-specific violations)
+
+### Token Management
+
+#### Bootstrap Token
+
+On first start, the daemon creates a bootstrap admin token and writes it to `./config/bootstrap_token.txt`. This file should be:
+1. Read to obtain initial admin access
+2. Used to create other tokens with appropriate capabilities
+3. Deleted after setup for security
+
+#### Using authctl CLI
+
+```bash
+# Create a readonly token for monitoring
+./authctl create --name "monitoring-service" --capabilities readonly
+
+# Create an operator token that expires in 30 days
+./authctl create --name "operator-1" --capabilities operator --expires 30
+
+# Create admin token
+./authctl create --name "admin-token" --capabilities admin
+
+# List all tokens
+./authctl list
+
+# Revoke a token
+./authctl revoke <token_id>
+
+# Show token info
+./authctl info <token_id>
+
+# Test a token
+./authctl test bd_xxxxx...
+```
+
+#### Environment Variable
+
+Clients can use the `BOUNDARY_API_TOKEN` environment variable:
+
+```bash
+export BOUNDARY_API_TOKEN="bd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+./boundaryctl status
+```
+
+### Token Management Commands
+
+#### `create_token`
+Create a new API token (requires MANAGE_TOKENS capability).
+
+**Request**:
+```json
+{
+  "command": "create_token",
+  "token": "bd_admin_token...",
+  "params": {
+    "name": "monitoring-service",
+    "capabilities": ["readonly"],
+    "expires_in_days": 365,
+    "metadata": {"team": "ops"}
+  }
+}
+```
+
+**Response**:
 ```json
 {
   "success": true,
-  "// ... command-specific fields"
+  "token": "bd_newtoken...",
+  "token_id": "abc12345",
+  "name": "monitoring-service",
+  "capabilities": ["STATUS", "READ_EVENTS", "VERIFY_LOG", "CHECK_RECALL", "CHECK_TOOL", "CHECK_MESSAGE"],
+  "expires_at": "2026-12-26T00:00:00",
+  "warning": "Store this token securely - it cannot be retrieved again!"
+}
+```
+
+#### `revoke_token`
+Revoke an API token (requires MANAGE_TOKENS capability).
+
+**Request**:
+```json
+{
+  "command": "revoke_token",
+  "token": "bd_admin_token...",
+  "params": {
+    "token_id": "abc12345"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Token revoked: abc12345"
+}
+```
+
+#### `list_tokens`
+List all API tokens (requires MANAGE_TOKENS capability).
+
+**Request**:
+```json
+{
+  "command": "list_tokens",
+  "token": "bd_admin_token...",
+  "params": {
+    "include_revoked": false
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "tokens": [
+    {
+      "token_id": "abc12345",
+      "name": "monitoring-service",
+      "capabilities": ["STATUS", "READ_EVENTS"],
+      "created_at": "2025-12-26T00:00:00",
+      "expires_at": "2026-12-26T00:00:00",
+      "last_used": "2025-12-26T01:00:00",
+      "is_valid": true,
+      "status": "active"
+    }
+  ],
+  "count": 1
 }
 ```
 
@@ -1882,7 +2163,7 @@ Get current daemon status.
 
 **Request**:
 ```json
-{"command": "status"}
+{"command": "status", "token": "bd_..."}
 ```
 
 **Response**:
