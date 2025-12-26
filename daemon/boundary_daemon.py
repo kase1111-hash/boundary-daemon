@@ -13,7 +13,7 @@ import sys
 import time
 import threading
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 
 # Import core components
 from .state_monitor import StateMonitor, EnvironmentState, NetworkState
@@ -48,6 +48,18 @@ except ImportError:
     NetworkEnforcer = None
     USBEnforcer = None
     ProcessEnforcer = None
+
+# Import protection persistence (Critical: Survives Daemon Restarts)
+try:
+    from .enforcement import (
+        ProtectionPersistenceManager,
+        CleanupPolicy,
+    )
+    PROTECTION_PERSISTENCE_AVAILABLE = True
+except ImportError:
+    PROTECTION_PERSISTENCE_AVAILABLE = False
+    ProtectionPersistenceManager = None
+    CleanupPolicy = None
 
 # Import privilege manager (Critical: Prevents Silent Enforcement Failures)
 try:
@@ -308,6 +320,41 @@ class BoundaryDaemon:
                 self.privilege_manager.register_module(
                     EnforcementModule.PROCESS, False, "Module not loaded"
                 )
+
+        # Initialize protection persistence manager (Critical: Survives Restarts)
+        # SECURITY: This addresses "Cleanup on Shutdown Removes All Protection"
+        self.protection_persistence = None
+        if PROTECTION_PERSISTENCE_AVAILABLE and ProtectionPersistenceManager:
+            try:
+                self.protection_persistence = ProtectionPersistenceManager(
+                    cleanup_policy=CleanupPolicy.EXPLICIT_ONLY,
+                    event_logger=self.event_logger,
+                )
+                print("Protection persistence enabled (protections survive restarts)")
+
+                # Check for orphaned protections from crashed daemon
+                orphaned = self.protection_persistence.check_orphaned_protections()
+                if orphaned:
+                    print(f"  Found {len(orphaned)} orphaned protections from previous daemon")
+
+                # Mark daemon started
+                self.protection_persistence.mark_daemon_started()
+
+                # Set persistence manager on enforcers
+                if self.network_enforcer:
+                    self.network_enforcer.set_persistence_manager(self.protection_persistence)
+                if self.usb_enforcer:
+                    self.usb_enforcer.set_persistence_manager(self.protection_persistence)
+
+                # Re-apply persisted protections
+                self._reapply_persisted_protections()
+
+            except Exception as e:
+                print(f"Warning: Protection persistence failed to initialize: {e}")
+                print("  Protections will NOT survive daemon restarts!")
+        else:
+            print("Protection persistence: not available")
+            print("  WARNING: Protections will be removed on daemon shutdown!")
 
         # Initialize TPM manager (Plan 2: TPM Integration)
         self.tpm_manager = None
@@ -778,6 +825,75 @@ class BoundaryDaemon:
             }
         )
 
+    def _reapply_persisted_protections(self):
+        """
+        Re-apply any protections that were persisted from a previous daemon run.
+
+        SECURITY: This ensures that protections survive daemon restarts.
+        Called during daemon initialization to restore the security state.
+        """
+        if not self.protection_persistence:
+            return
+
+        print("Checking for persisted protections...")
+
+        reapplied = []
+
+        # Re-apply network protections
+        if self.network_enforcer and self.network_enforcer.is_available:
+            mode = self.network_enforcer.check_and_reapply_persisted_mode()
+            if mode:
+                reapplied.append(f"Network: {mode}")
+
+        # Re-apply USB protections
+        if self.usb_enforcer and self.usb_enforcer.is_available:
+            mode = self.usb_enforcer.check_and_reapply_persisted_mode()
+            if mode:
+                reapplied.append(f"USB: {mode}")
+
+        if reapplied:
+            print(f"  Re-applied {len(reapplied)} persisted protections:")
+            for prot in reapplied:
+                print(f"    - {prot}")
+            self.event_logger.log_event(
+                EventType.DAEMON_START,
+                f"Re-applied {len(reapplied)} persisted protections from previous run",
+                metadata={'protections': reapplied}
+            )
+        else:
+            print("  No persisted protections to re-apply")
+
+    def request_cleanup_all(self, token: str, force: bool = False) -> Tuple[bool, str]:
+        """
+        Request cleanup of all protections with authentication.
+
+        This is the only authorized way to remove protections.
+
+        Args:
+            token: Admin authentication token
+            force: Force cleanup of sticky/emergency protections
+
+        Returns:
+            (success, message)
+        """
+        if not self.protection_persistence:
+            return False, "Protection persistence not available"
+
+        results = []
+
+        # Request cleanup for each enforcer
+        if self.network_enforcer and self.network_enforcer.is_available:
+            success, msg = self.network_enforcer.cleanup(token=token, force=force)
+            results.append(f"Network: {msg}")
+
+        if self.usb_enforcer and self.usb_enforcer.is_available:
+            success, msg = self.usb_enforcer.cleanup(token=token, force=force)
+            results.append(f"USB: {msg}")
+
+        self._cleanup_on_shutdown_requested = True
+
+        return True, "\n".join(results)
+
     def _on_time_jump(self, event: 'TimeJumpEvent'):
         """Handle detected time jump (clock manipulation)."""
         direction = "forward" if event.direction.name == "FORWARD" else "backward"
@@ -969,17 +1085,33 @@ class BoundaryDaemon:
             self._enforcement_thread.join(timeout=5.0)
 
         # Cleanup enforcement rules (Plan 1)
+        # SECURITY: By default, protections are NOT cleaned up on shutdown
+        # This addresses "Cleanup on Shutdown Removes All Protection"
+        cleanup_requested = getattr(self, '_cleanup_on_shutdown_requested', False)
+
         if self.network_enforcer and self.network_enforcer.is_available:
             try:
-                self.network_enforcer.cleanup()
-                print("Network enforcement rules cleaned up")
+                if cleanup_requested or not self.protection_persistence:
+                    success, msg = self.network_enforcer.cleanup(graceful=True)
+                    if success:
+                        print("Network enforcement rules cleaned up")
+                    else:
+                        print(f"Network rules preserved: {msg}")
+                else:
+                    print("Network enforcement rules PRESERVED (protection persistence enabled)")
             except Exception as e:
                 print(f"Warning: Failed to cleanup network rules: {e}")
 
         if self.usb_enforcer and self.usb_enforcer.is_available:
             try:
-                self.usb_enforcer.cleanup()
-                print("USB enforcement rules cleaned up")
+                if cleanup_requested or not self.protection_persistence:
+                    success, msg = self.usb_enforcer.cleanup(graceful=True)
+                    if success:
+                        print("USB enforcement rules cleaned up")
+                    else:
+                        print(f"USB rules preserved: {msg}")
+                else:
+                    print("USB enforcement rules PRESERVED (protection persistence enabled)")
             except Exception as e:
                 print(f"Warning: Failed to cleanup USB rules: {e}")
 

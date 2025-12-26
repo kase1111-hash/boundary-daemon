@@ -9,9 +9,13 @@ Components:
 - USBEnforcer: udev rules for USB device prevention
 - ProcessEnforcer: seccomp/container isolation for process restriction
 - SecureProfileManager: Cryptographically signed seccomp profiles with integrity verification
+- ProtectionPersistenceManager: Ensures protections survive daemon restarts
 
 SECURITY: SecureProfileManager addresses "Seccomp Profiles Stored in Writable Directory"
 by providing HMAC integrity verification, restrictive permissions, and optional immutable flags.
+
+SECURITY: ProtectionPersistenceManager addresses "Cleanup on Shutdown Removes All Protection"
+by persisting protection state to disk and requiring authentication for cleanup.
 """
 
 from .network_enforcer import (
@@ -41,6 +45,15 @@ from .secure_profile_manager import (
     SECURE_PROFILE_TEMPLATES,
 )
 
+from .protection_persistence import (
+    ProtectionPersistenceManager,
+    ProtectionType,
+    CleanupPolicy,
+    PersistenceReason,
+    PersistedProtection,
+    ProtectionState,
+)
+
 __all__ = [
     # Network Enforcement (Plan 1 Phase 1)
     'NetworkEnforcer',
@@ -61,4 +74,11 @@ __all__ = [
     'SecureProfileManager',
     'ProfileIntegrity',
     'SECURE_PROFILE_TEMPLATES',
+    # Protection Persistence (Survives Restarts)
+    'ProtectionPersistenceManager',
+    'ProtectionType',
+    'CleanupPolicy',
+    'PersistenceReason',
+    'PersistedProtection',
+    'ProtectionState',
 ]
