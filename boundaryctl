@@ -19,7 +19,16 @@ from api.boundary_api import BoundaryAPIClient
 def format_status(status: dict):
     """Format status output"""
     if not status.get('success'):
-        print(f"Error: {status.get('error', 'Unknown error')}")
+        error = status.get('error', 'Unknown error')
+        if status.get('auth_error'):
+            print(f"\nAuthentication Error: {error}")
+            print("\nProvide a valid token using one of:")
+            print("  --token <token>")
+            print("  --token-file <path>")
+            print("  BOUNDARY_API_TOKEN environment variable")
+            print("\nUse 'authctl list' to see available tokens.")
+        else:
+            print(f"Error: {error}")
         return
 
     data = status.get('status', {})
@@ -186,11 +195,19 @@ Examples:
   boundaryctl events                    # Show recent events
   boundaryctl verify                    # Verify log integrity
   boundaryctl watch                     # Watch status (live updates)
+
+Authentication:
+  Use --token or --token-file to provide an API token.
+  Alternatively, set the BOUNDARY_API_TOKEN environment variable.
 """
     )
 
     parser.add_argument('--socket', type=str, default='./api/boundary.sock',
                        help='Path to boundary daemon socket')
+    parser.add_argument('--token', type=str,
+                       help='API token for authentication')
+    parser.add_argument('--token-file', type=str,
+                       help='Path to file containing API token')
 
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
 
@@ -251,8 +268,12 @@ Examples:
         parser.print_help()
         return 1
 
-    # Create API client
-    client = BoundaryAPIClient(socket_path=args.socket)
+    # Create API client with authentication
+    client = BoundaryAPIClient(
+        socket_path=args.socket,
+        token=args.token,
+        token_file=args.token_file,
+    )
 
     # Execute command
     try:

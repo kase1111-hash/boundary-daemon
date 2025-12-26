@@ -145,12 +145,16 @@ The Boundary Daemon (codenamed "Agent Smith") is the mandatory trust enforcement
 - **CeremonyManager**: Human override ceremony (3-step process with cooldown)
 - **Capability Queries**: Mode-based capability discovery
 
-#### 6. API Server (`boundary_api.py`)
+#### 6. API Server (`boundary_api.py`) ✅
 - **Unix Socket**: Local-only communication
-- **Commands**: status, check_recall, check_tool, set_mode, get_events, verify_log
-- **Client Library**: Full Python client implementation
+- **Commands**: status, check_recall, check_tool, set_mode, get_events, verify_log, create_token, revoke_token, list_tokens
+- **Client Library**: Full Python client implementation with token support
 - **JSON Protocol**: Request/response serialization
 - **Thread Safety**: Concurrent request handling
+- **Token Authentication**: Secure token-based authentication (256-bit entropy)
+- **Capability-Based Access Control**: Fine-grained permissions per token
+- **Rate Limiting**: Per-token rate limiting (100 req/60s default)
+- **Token Management**: Create, revoke, list tokens via API or authctl CLI
 
 #### 7. CLI Tool (`boundaryctl`)
 - **Commands**: status, check-recall, check-tool, set-mode, events, verify, watch
@@ -1857,21 +1861,192 @@ class ExposureMonitor:
 
 **Protocol**: JSON over Unix domain socket
 
+### Authentication
+
+The API uses token-based authentication with capability-based access control. All requests must include a valid API token.
+
+**Token Format**: `bd_<random_string>` (256 bits of entropy)
+
 **Request Format**:
 ```json
 {
-  "command": "status|check_recall|check_tool|set_mode|get_events|verify_log",
+  "command": "status|check_recall|check_tool|set_mode|get_events|verify_log|...",
+  "token": "bd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "params": {
     // Command-specific parameters
   }
 }
 ```
 
-**Response Format**:
+**Authentication Errors**:
+```json
+{
+  "success": false,
+  "error": "Authentication failed: Token not found",
+  "auth_error": true
+}
+```
+
+### Capability Sets
+
+Tokens are assigned capabilities that control what commands they can execute:
+
+| Set | Capabilities | Use Case |
+|-----|--------------|----------|
+| `readonly` | STATUS, READ_EVENTS, VERIFY_LOG, CHECK_RECALL, CHECK_TOOL, CHECK_MESSAGE | Monitoring services |
+| `operator` | readonly + SET_MODE | Operators who can change modes |
+| `admin` | All capabilities including MANAGE_TOKENS | Full administrative access |
+
+### Individual Capabilities
+
+| Capability | Commands Allowed |
+|------------|------------------|
+| STATUS | status |
+| READ_EVENTS | get_events |
+| VERIFY_LOG | verify_log |
+| CHECK_RECALL | check_recall |
+| CHECK_TOOL | check_tool |
+| CHECK_MESSAGE | check_message, check_natlangchain, check_agentos |
+| SET_MODE | set_mode |
+| MANAGE_TOKENS | create_token, revoke_token, list_tokens |
+| ADMIN | All commands |
+
+### Rate Limiting
+
+Each token is rate-limited to prevent abuse:
+
+- **Default Limit**: 100 requests per 60 seconds
+- **Block Duration**: 300 seconds when limit exceeded
+- **Per-Token Tracking**: Each token has independent rate limits
+
+### Token Management
+
+#### Bootstrap Token
+
+On first start, the daemon creates a bootstrap admin token and writes it to `./config/bootstrap_token.txt`. This file should be:
+1. Read to obtain initial admin access
+2. Used to create other tokens with appropriate capabilities
+3. Deleted after setup for security
+
+#### Using authctl CLI
+
+```bash
+# Create a readonly token for monitoring
+./authctl create --name "monitoring-service" --capabilities readonly
+
+# Create an operator token that expires in 30 days
+./authctl create --name "operator-1" --capabilities operator --expires 30
+
+# Create admin token
+./authctl create --name "admin-token" --capabilities admin
+
+# List all tokens
+./authctl list
+
+# Revoke a token
+./authctl revoke <token_id>
+
+# Show token info
+./authctl info <token_id>
+
+# Test a token
+./authctl test bd_xxxxx...
+```
+
+#### Environment Variable
+
+Clients can use the `BOUNDARY_API_TOKEN` environment variable:
+
+```bash
+export BOUNDARY_API_TOKEN="bd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+./boundaryctl status
+```
+
+### Token Management Commands
+
+#### `create_token`
+Create a new API token (requires MANAGE_TOKENS capability).
+
+**Request**:
+```json
+{
+  "command": "create_token",
+  "token": "bd_admin_token...",
+  "params": {
+    "name": "monitoring-service",
+    "capabilities": ["readonly"],
+    "expires_in_days": 365,
+    "metadata": {"team": "ops"}
+  }
+}
+```
+
+**Response**:
 ```json
 {
   "success": true,
-  "// ... command-specific fields"
+  "token": "bd_newtoken...",
+  "token_id": "abc12345",
+  "name": "monitoring-service",
+  "capabilities": ["STATUS", "READ_EVENTS", "VERIFY_LOG", "CHECK_RECALL", "CHECK_TOOL", "CHECK_MESSAGE"],
+  "expires_at": "2026-12-26T00:00:00",
+  "warning": "Store this token securely - it cannot be retrieved again!"
+}
+```
+
+#### `revoke_token`
+Revoke an API token (requires MANAGE_TOKENS capability).
+
+**Request**:
+```json
+{
+  "command": "revoke_token",
+  "token": "bd_admin_token...",
+  "params": {
+    "token_id": "abc12345"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Token revoked: abc12345"
+}
+```
+
+#### `list_tokens`
+List all API tokens (requires MANAGE_TOKENS capability).
+
+**Request**:
+```json
+{
+  "command": "list_tokens",
+  "token": "bd_admin_token...",
+  "params": {
+    "include_revoked": false
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "tokens": [
+    {
+      "token_id": "abc12345",
+      "name": "monitoring-service",
+      "capabilities": ["STATUS", "READ_EVENTS"],
+      "created_at": "2025-12-26T00:00:00",
+      "expires_at": "2026-12-26T00:00:00",
+      "last_used": "2025-12-26T01:00:00",
+      "is_valid": true,
+      "status": "active"
+    }
+  ],
+  "count": 1
 }
 ```
 
@@ -1882,7 +2057,7 @@ Get current daemon status.
 
 **Request**:
 ```json
-{"command": "status"}
+{"command": "status", "token": "bd_..."}
 ```
 
 **Response**:

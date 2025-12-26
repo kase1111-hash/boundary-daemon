@@ -28,6 +28,7 @@ class EventType(Enum):
     DAEMON_STOP = "daemon_stop"
     HEALTH_CHECK = "health_check"
     MESSAGE_CHECK = "message_check"  # NatLangChain/Agent-OS message validation
+    API_REQUEST = "api_request"  # Authenticated API request
 
 
 @dataclass
