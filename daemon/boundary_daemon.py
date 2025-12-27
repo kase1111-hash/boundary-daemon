@@ -282,6 +282,26 @@ except ImportError:
     ComponentStatus = None
     create_health_monitor = None
 
+# Import queue monitor (Plan 11: Queue Monitoring)
+try:
+    from .queue_monitor import (
+        QueueMonitor,
+        QueueMonitorConfig,
+        QueueConfig,
+        QueueAlertLevel,
+        BackpressureState,
+        create_queue_monitor,
+    )
+    QUEUE_MONITOR_AVAILABLE = True
+except ImportError:
+    QUEUE_MONITOR_AVAILABLE = False
+    QueueMonitor = None
+    QueueMonitorConfig = None
+    QueueConfig = None
+    QueueAlertLevel = None
+    BackpressureState = None
+    create_queue_monitor = None
+
 
 class BoundaryDaemon:
     """
@@ -823,6 +843,39 @@ class BoundaryDaemon:
         else:
             print("Health monitor module not loaded")
 
+        # Initialize queue monitor (Plan 11: Queue Monitoring)
+        self.queue_monitor = None
+        self.queue_monitor_enabled = False
+        if QUEUE_MONITOR_AVAILABLE and QueueMonitor:
+            try:
+                sample_interval = float(os.environ.get('BOUNDARY_QUEUE_INTERVAL', '5.0'))
+                warning_depth = int(os.environ.get('BOUNDARY_QUEUE_WARNING', '100'))
+                critical_depth = int(os.environ.get('BOUNDARY_QUEUE_CRITICAL', '500'))
+
+                config = QueueMonitorConfig(
+                    sample_interval=sample_interval,
+                    default_warning_depth=warning_depth,
+                    default_critical_depth=critical_depth,
+                )
+
+                self.queue_monitor = QueueMonitor(
+                    daemon=self,
+                    config=config,
+                    on_alert=self._on_queue_alert,
+                )
+
+                # Connect telemetry if available
+                if self.telemetry_manager:
+                    self.queue_monitor.set_telemetry_manager(self.telemetry_manager)
+
+                self.queue_monitor_enabled = True
+                print(f"Queue monitor available (sample interval: {sample_interval}s)")
+                print(f"  Warning depth: {warning_depth}, Critical depth: {critical_depth}")
+            except Exception as e:
+                print(f"Warning: Queue monitor failed to initialize: {e}")
+        else:
+            print("Queue monitor module not loaded")
+
         # Initialize message checker (Plan 10: Message Checking for NatLangChain/Agent-OS)
         self.message_checker = None
         self.message_checker_enabled = False
@@ -1321,6 +1374,29 @@ class BoundaryDaemon:
         else:
             print(f"[HEALTH] {alert.component} - {alert.message}")
 
+    def _on_queue_alert(self, alert):
+        """Handle alert from queue monitor."""
+        # Log to event logger
+        self.event_logger.log_event(
+            EventType.ALERT if alert.level.value == 'critical' else EventType.INFO,
+            f"Queue alert [{alert.queue_name}]: {alert.message}",
+            metadata={
+                'queue_name': alert.queue_name,
+                'alert_type': alert.alert_type,
+                'level': alert.level.value,
+                'current_depth': alert.current_depth,
+                'threshold': alert.threshold,
+            }
+        )
+
+        # Print to console
+        level_prefix = {
+            'info': '[QUEUE]',
+            'warning': '[QUEUE] WARNING:',
+            'critical': '[QUEUE] CRITICAL:',
+        }.get(alert.level.value, '[QUEUE]')
+        print(f"{level_prefix} {alert.queue_name} - {alert.message}")
+
     def start(self):
         """Start the boundary daemon"""
         if self._running:
@@ -1463,6 +1539,14 @@ class BoundaryDaemon:
             except Exception as e:
                 print(f"Warning: Health monitor failed to start: {e}")
 
+        # Start queue monitor (Plan 11: Queue Monitoring)
+        if self.queue_monitor and self.queue_monitor_enabled:
+            try:
+                self.queue_monitor.start()
+                print("Queue monitor started")
+            except Exception as e:
+                print(f"Warning: Queue monitor failed to start: {e}")
+
         print("Boundary Daemon running. Press Ctrl+C to stop.")
         print("=" * 70)
 
@@ -1542,6 +1626,18 @@ class BoundaryDaemon:
                 print("Health monitor stopped")
             except Exception as e:
                 print(f"Warning: Failed to stop health monitor: {e}")
+
+        # Stop queue monitor (Plan 11: Queue Monitoring)
+        if self.queue_monitor and self.queue_monitor_enabled:
+            try:
+                # Log final queue status
+                summary = self.queue_monitor.get_summary()
+                print(f"Queues at shutdown: {summary['queue_count']} monitored, "
+                      f"total depth: {summary['total_depth']}")
+                self.queue_monitor.stop()
+                print("Queue monitor stopped")
+            except Exception as e:
+                print(f"Warning: Failed to stop queue monitor: {e}")
 
         # Stop hardened watchdog endpoint
         if self.watchdog_endpoint and self.hardened_watchdog_enabled:
@@ -2211,6 +2307,22 @@ class BoundaryDaemon:
                 }
             except Exception as e:
                 status['health'] = {'error': str(e)}
+
+        # Add queue monitor information (Plan 11: Queue Monitoring)
+        status['queue_monitor_enabled'] = self.queue_monitor_enabled
+        if self.queue_monitor and self.queue_monitor_enabled:
+            try:
+                queue_summary = self.queue_monitor.get_summary()
+                status['queues'] = {
+                    'queue_count': queue_summary['queue_count'],
+                    'queues': queue_summary['queues'],
+                    'total_depth': queue_summary['total_depth'],
+                    'queues_with_backpressure': queue_summary['queues_with_backpressure'],
+                    'alerts_count': queue_summary['alerts_count'],
+                    'sample_count': queue_summary['sample_count'],
+                }
+            except Exception as e:
+                status['queues'] = {'error': str(e)}
 
         # Add privilege/enforcement status (SECURITY: Addresses silent failure issue)
         if self.privilege_manager:
