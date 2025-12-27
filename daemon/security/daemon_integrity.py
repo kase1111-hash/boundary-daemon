@@ -28,6 +28,15 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+# Cross-platform path defaults
+IS_WINDOWS = sys.platform == 'win32'
+if IS_WINDOWS:
+    _DEFAULT_MANIFEST_PATH = "./config/manifest.json"
+    _DEFAULT_SIGNING_KEY_PATH = "./config/signing.key"
+else:
+    _DEFAULT_MANIFEST_PATH = "/etc/boundary-daemon/manifest.json"
+    _DEFAULT_SIGNING_KEY_PATH = "/etc/boundary-daemon/signing.key"
+
 
 class IntegrityStatus(Enum):
     """Status of integrity verification."""
@@ -54,11 +63,11 @@ class IntegrityAction(Enum):
 class IntegrityConfig:
     """Configuration for daemon integrity protection."""
     # Manifest location (should be read-only)
-    manifest_path: str = "/etc/boundary-daemon/manifest.json"
+    manifest_path: str = _DEFAULT_MANIFEST_PATH
 
     # Signing key path (for HMAC verification)
     # In production, this would be in TPM or hardware security module
-    signing_key_path: str = "/etc/boundary-daemon/signing.key"
+    signing_key_path: str = _DEFAULT_SIGNING_KEY_PATH
 
     # Hash algorithm
     hash_algorithm: str = "sha256"

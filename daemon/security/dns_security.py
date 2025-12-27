@@ -279,8 +279,12 @@ class DNSSecurityMonitor:
         self._has_nftables = shutil.which('nft') is not None
 
         if self.config.enforcement_enabled and not self._has_root:
-            logger.warning("DNS enforcement enabled but not running as root. "
-                          "Hosts file and firewall blocking may fail.")
+            if sys.platform == 'win32':
+                logger.warning("DNS enforcement enabled but not running as Administrator. "
+                              "Hosts file and firewall blocking may fail.")
+            else:
+                logger.warning("DNS enforcement enabled but not running as root. "
+                              "Hosts file and firewall blocking may fail.")
 
         # SECURITY: Initialize native DNS resolver (no external tool dependencies)
         # This addresses: "DNS Response Verification Uses External Tools"
