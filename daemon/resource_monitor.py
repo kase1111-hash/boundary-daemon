@@ -143,6 +143,8 @@ class ResourceMonitorConfig:
     cpu_warning_percent: float = 80.0
     cpu_critical_percent: float = 95.0
     cpu_sustained_samples: int = 6     # 1 min at 10s - must be high for this long
+    cpu_spike_threshold: float = 50.0  # Sudden jump in CPU percent
+    cpu_alert_cooldown: int = 30       # Samples between repeated alerts (5 min)
 
     # Disk thresholds
     disk_warning_percent: float = 80.0
@@ -164,6 +166,9 @@ class ResourceMonitorConfig:
             'thread_critical': self.thread_critical,
             'cpu_warning_percent': self.cpu_warning_percent,
             'cpu_critical_percent': self.cpu_critical_percent,
+            'cpu_sustained_samples': self.cpu_sustained_samples,
+            'cpu_spike_threshold': self.cpu_spike_threshold,
+            'cpu_alert_cooldown': self.cpu_alert_cooldown,
             'disk_warning_percent': self.disk_warning_percent,
             'disk_critical_percent': self.disk_critical_percent,
             'disk_paths': self.disk_paths,
@@ -220,8 +225,15 @@ class ResourceMonitor:
         self._baseline_fd_count: Optional[int] = None
         self._baseline_thread_count: Optional[int] = None
 
-        # CPU sustained high tracking
-        self._high_cpu_samples: int = 0
+        # Enhanced CPU sustained high tracking
+        self._cpu_warning_samples: int = 0       # Consecutive samples at warning+
+        self._cpu_critical_samples: int = 0      # Consecutive samples at critical
+        self._cpu_peak_during_sustained: float = 0.0  # Peak CPU during current sustained period
+        self._cpu_sustained_start: Optional[float] = None  # When sustained period started
+        self._last_cpu_alert_sample: int = 0     # Sample count at last alert (for cooldown)
+        self._sample_count: int = 0              # Total samples taken
+        self._previous_cpu_percent: float = 0.0  # For spike detection
+        self._cpu_was_sustained: bool = False    # Track if we need to send recovery alert
 
         # Process handle
         self._process: Optional[Any] = None
@@ -278,6 +290,7 @@ class ResourceMonitor:
                 with self._lock:
                     self._current_snapshot = snapshot
                     self._history.append(snapshot)
+                    self._sample_count += 1
 
                     # Set baselines on first sample
                     if self._baseline_fd_count is None:
@@ -417,36 +430,120 @@ class ResourceMonitor:
             )
 
     def _check_cpu_thresholds(self, snapshot: ResourceSnapshot):
-        """Check CPU usage thresholds with sustained detection"""
-        if snapshot.cpu_percent >= self.config.cpu_critical_percent:
-            self._high_cpu_samples += 1
-            if self._high_cpu_samples >= self.config.cpu_sustained_samples:
-                self._raise_alert(
-                    ResourceAlertLevel.CRITICAL,
-                    ResourceType.CPU,
-                    "cpu_sustained_critical",
-                    f"CPU sustained critical: {snapshot.cpu_percent:.1f}% for "
-                    f"{self._high_cpu_samples * self.config.sample_interval:.0f}s",
-                    snapshot.cpu_percent,
-                    self.config.cpu_critical_percent,
-                    metadata={'sustained_samples': self._high_cpu_samples},
-                )
-        elif snapshot.cpu_percent >= self.config.cpu_warning_percent:
-            self._high_cpu_samples += 1
-            if self._high_cpu_samples >= self.config.cpu_sustained_samples:
-                self._raise_alert(
-                    ResourceAlertLevel.WARNING,
-                    ResourceType.CPU,
-                    "cpu_sustained_warning",
-                    f"CPU sustained warning: {snapshot.cpu_percent:.1f}% for "
-                    f"{self._high_cpu_samples * self.config.sample_interval:.0f}s",
-                    snapshot.cpu_percent,
-                    self.config.cpu_warning_percent,
-                    metadata={'sustained_samples': self._high_cpu_samples},
-                )
+        """
+        Enhanced CPU usage monitoring with:
+        - Sustained high detection (warning and critical tracked separately)
+        - Spike detection for sudden CPU jumps
+        - Alert cooldown to prevent log spam
+        - Recovery alerts when CPU normalizes
+        - Peak tracking during sustained periods
+        """
+        cpu = snapshot.cpu_percent
+        now = time.time()
+
+        # Check for CPU spike (sudden jump)
+        cpu_delta = cpu - self._previous_cpu_percent
+        if cpu_delta >= self.config.cpu_spike_threshold and self._sample_count > 1:
+            self._raise_alert(
+                ResourceAlertLevel.WARNING,
+                ResourceType.CPU,
+                "cpu_spike",
+                f"CPU spike detected: {self._previous_cpu_percent:.1f}% -> {cpu:.1f}% "
+                f"(+{cpu_delta:.1f}%)",
+                cpu,
+                self.config.cpu_spike_threshold,
+                metadata={
+                    'previous': self._previous_cpu_percent,
+                    'delta': cpu_delta,
+                },
+            )
+        self._previous_cpu_percent = cpu
+
+        # Track sustained high CPU
+        is_warning = cpu >= self.config.cpu_warning_percent
+        is_critical = cpu >= self.config.cpu_critical_percent
+
+        if is_warning:
+            # Start or continue sustained period
+            if self._cpu_warning_samples == 0:
+                self._cpu_sustained_start = now
+                self._cpu_peak_during_sustained = cpu
+            else:
+                self._cpu_peak_during_sustained = max(self._cpu_peak_during_sustained, cpu)
+
+            self._cpu_warning_samples += 1
+            if is_critical:
+                self._cpu_critical_samples += 1
+
+            # Check if we should alert (sustained threshold met and cooldown expired)
+            samples_since_alert = self._sample_count - self._last_cpu_alert_sample
+            cooldown_expired = samples_since_alert >= self.config.cpu_alert_cooldown
+
+            if self._cpu_warning_samples >= self.config.cpu_sustained_samples:
+                sustained_duration = now - self._cpu_sustained_start if self._cpu_sustained_start else 0
+
+                # Determine alert level based on critical samples
+                if self._cpu_critical_samples >= self.config.cpu_sustained_samples:
+                    if cooldown_expired or not self._cpu_was_sustained:
+                        self._raise_alert(
+                            ResourceAlertLevel.CRITICAL,
+                            ResourceType.CPU,
+                            "cpu_sustained_critical",
+                            f"CPU sustained critical: {cpu:.1f}% (peak: {self._cpu_peak_during_sustained:.1f}%) "
+                            f"for {sustained_duration:.0f}s",
+                            cpu,
+                            self.config.cpu_critical_percent,
+                            metadata={
+                                'sustained_samples': self._cpu_critical_samples,
+                                'peak_percent': self._cpu_peak_during_sustained,
+                                'duration_seconds': sustained_duration,
+                            },
+                        )
+                        self._last_cpu_alert_sample = self._sample_count
+                        self._cpu_was_sustained = True
+                else:
+                    if cooldown_expired or not self._cpu_was_sustained:
+                        self._raise_alert(
+                            ResourceAlertLevel.WARNING,
+                            ResourceType.CPU,
+                            "cpu_sustained_warning",
+                            f"CPU sustained warning: {cpu:.1f}% (peak: {self._cpu_peak_during_sustained:.1f}%) "
+                            f"for {sustained_duration:.0f}s",
+                            cpu,
+                            self.config.cpu_warning_percent,
+                            metadata={
+                                'sustained_samples': self._cpu_warning_samples,
+                                'peak_percent': self._cpu_peak_during_sustained,
+                                'duration_seconds': sustained_duration,
+                            },
+                        )
+                        self._last_cpu_alert_sample = self._sample_count
+                        self._cpu_was_sustained = True
         else:
-            # Reset sustained counter when CPU is normal
-            self._high_cpu_samples = 0
+            # CPU returned to normal
+            if self._cpu_was_sustained and self._cpu_sustained_start:
+                # Send recovery alert
+                sustained_duration = now - self._cpu_sustained_start
+                self._raise_alert(
+                    ResourceAlertLevel.INFO,
+                    ResourceType.CPU,
+                    "cpu_recovered",
+                    f"CPU recovered: {cpu:.1f}% (was sustained high for {sustained_duration:.0f}s, "
+                    f"peak: {self._cpu_peak_during_sustained:.1f}%)",
+                    cpu,
+                    self.config.cpu_warning_percent,
+                    metadata={
+                        'peak_percent': self._cpu_peak_during_sustained,
+                        'duration_seconds': sustained_duration,
+                    },
+                )
+
+            # Reset sustained tracking
+            self._cpu_warning_samples = 0
+            self._cpu_critical_samples = 0
+            self._cpu_peak_during_sustained = 0.0
+            self._cpu_sustained_start = None
+            self._cpu_was_sustained = False
 
     def _check_disk_thresholds(self, snapshot: ResourceSnapshot):
         """Check disk space thresholds"""
@@ -695,6 +792,55 @@ class ResourceMonitor:
             stats['baseline_thread_count'] = self._baseline_thread_count
             if current:
                 stats['thread_growth'] = current.thread_count - self._baseline_thread_count
+
+        # Add CPU sustained tracking info
+        stats['cpu_monitoring'] = {
+            'warning_samples': self._cpu_warning_samples,
+            'critical_samples': self._cpu_critical_samples,
+            'is_sustained_high': self._cpu_was_sustained,
+            'sustained_threshold': self.config.cpu_sustained_samples,
+        }
+        if self._cpu_sustained_start:
+            stats['cpu_monitoring']['sustained_duration'] = time.time() - self._cpu_sustained_start
+            stats['cpu_monitoring']['peak_during_sustained'] = self._cpu_peak_during_sustained
+
+        return stats
+
+    def get_cpu_stats(self) -> Dict:
+        """
+        Get detailed CPU statistics.
+
+        Returns:
+            Dictionary with CPU monitoring state and history
+        """
+        with self._lock:
+            history = list(self._history)
+
+        # Calculate CPU statistics from history
+        if not history:
+            return {'available': False, 'message': 'No samples collected yet'}
+
+        cpu_values = [s.cpu_percent for s in history]
+        recent_cpu = cpu_values[-min(6, len(cpu_values)):]  # Last minute (6 samples at 10s)
+
+        stats = {
+            'current': cpu_values[-1] if cpu_values else 0,
+            'average_1min': sum(recent_cpu) / len(recent_cpu) if recent_cpu else 0,
+            'average_all': sum(cpu_values) / len(cpu_values) if cpu_values else 0,
+            'min': min(cpu_values) if cpu_values else 0,
+            'max': max(cpu_values) if cpu_values else 0,
+            'samples': len(cpu_values),
+            'sustained_high': {
+                'is_active': self._cpu_was_sustained,
+                'warning_samples': self._cpu_warning_samples,
+                'critical_samples': self._cpu_critical_samples,
+                'threshold': self.config.cpu_sustained_samples,
+            },
+        }
+
+        if self._cpu_sustained_start:
+            stats['sustained_high']['duration_seconds'] = time.time() - self._cpu_sustained_start
+            stats['sustained_high']['peak'] = self._cpu_peak_during_sustained
 
         return stats
 
