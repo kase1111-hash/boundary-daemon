@@ -423,6 +423,18 @@ class TelemetryManager:
             unit="MB/h"
         )
 
+        # Resource metrics (Plan 11: Resource Monitoring)
+        self._counters['resource_alerts'] = self._meter.create_counter(
+            "boundary.resource.alerts.total",
+            description="Total number of resource alerts",
+            unit="1"
+        )
+        self._histograms['api_latency'] = self._meter.create_histogram(
+            "boundary.api.latency",
+            description="API call latency",
+            unit="ms"
+        )
+
     def shutdown(self):
         """Shutdown telemetry providers"""
         if not self._initialized:
@@ -624,6 +636,62 @@ class TelemetryManager:
         attrs = {'leak_indicator': leak_indicator}
         self.record_histogram('memory_growth_rate', growth_rate_mb_per_hour, attrs)
         self.set_gauge('memory.growth_rate_mb_h', int(growth_rate_mb_per_hour))
+
+    # Resource monitoring methods (Plan 11: Resource Monitoring)
+
+    def record_resource_snapshot(self, fd_count: int, fd_limit: int, thread_count: int,
+                                  cpu_percent: float, connection_count: int):
+        """
+        Record a resource snapshot.
+
+        Args:
+            fd_count: Open file descriptors
+            fd_limit: FD limit (ulimit)
+            thread_count: Number of threads
+            cpu_percent: CPU usage percent
+            connection_count: Open network connections
+        """
+        self.set_gauge('resource.fd_count', fd_count)
+        self.set_gauge('resource.fd_limit', fd_limit)
+        self.set_gauge('resource.thread_count', thread_count)
+        self.set_gauge('resource.cpu_percent', int(cpu_percent))
+        self.set_gauge('resource.connection_count', connection_count)
+
+    def record_resource_alert(self, resource_type: str, alert_type: str,
+                               level: str, current_value: float):
+        """
+        Record a resource alert.
+
+        Args:
+            resource_type: Type of resource (fd, thread, disk, cpu, connection)
+            alert_type: Alert type identifier
+            level: Alert severity
+            current_value: Current metric value
+        """
+        attrs = {
+            'resource_type': resource_type,
+            'alert_type': alert_type,
+            'level': level,
+        }
+        self.increment_counter('resource_alerts', 1, attrs)
+
+    def record_api_latency(self, endpoint: str, method: str, latency_ms: float,
+                           success: bool = True):
+        """
+        Record API call latency.
+
+        Args:
+            endpoint: API endpoint name
+            method: HTTP method or command
+            latency_ms: Latency in milliseconds
+            success: Whether the call succeeded
+        """
+        attrs = {
+            'endpoint': endpoint,
+            'method': method,
+            'success': str(success),
+        }
+        self.record_histogram('api_latency', latency_ms, attrs)
 
     def get_summary_stats(self) -> dict:
         """Get summary statistics"""

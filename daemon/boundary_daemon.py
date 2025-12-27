@@ -246,6 +246,24 @@ except ImportError:
     LeakReport = None
     create_memory_monitor = None
 
+# Import resource monitor (Plan 11: Resource Monitoring)
+try:
+    from .resource_monitor import (
+        ResourceMonitor,
+        ResourceMonitorConfig,
+        ResourceAlertLevel,
+        ResourceType,
+        create_resource_monitor,
+    )
+    RESOURCE_MONITOR_AVAILABLE = True
+except ImportError:
+    RESOURCE_MONITOR_AVAILABLE = False
+    ResourceMonitor = None
+    ResourceMonitorConfig = None
+    ResourceAlertLevel = None
+    ResourceType = None
+    create_resource_monitor = None
+
 
 class BoundaryDaemon:
     """
@@ -716,6 +734,46 @@ class BoundaryDaemon:
         else:
             print("Memory monitor module not loaded")
 
+        # Initialize resource monitor (Plan 11: Resource Monitoring - FD, Threads, Disk, CPU)
+        self.resource_monitor = None
+        self.resource_monitor_enabled = False
+        if RESOURCE_MONITOR_AVAILABLE and ResourceMonitor:
+            try:
+                sample_interval = float(os.environ.get('BOUNDARY_RESOURCE_INTERVAL', '10.0'))
+                fd_warning = float(os.environ.get('BOUNDARY_FD_WARNING_PERCENT', '70'))
+                disk_warning = float(os.environ.get('BOUNDARY_DISK_WARNING_PERCENT', '80'))
+
+                # Get log directory for disk monitoring
+                disk_paths = [log_dir, '/var/log', '/tmp']
+
+                config = ResourceMonitorConfig(
+                    sample_interval=sample_interval,
+                    fd_warning_percent=fd_warning,
+                    disk_warning_percent=disk_warning,
+                    disk_paths=disk_paths,
+                )
+
+                self.resource_monitor = ResourceMonitor(
+                    daemon=self,
+                    config=config,
+                    on_alert=self._on_resource_alert,
+                )
+
+                # Connect telemetry if available
+                if self.telemetry_manager:
+                    self.resource_monitor.set_telemetry_manager(self.telemetry_manager)
+
+                self.resource_monitor_enabled = self.resource_monitor.is_available
+                if self.resource_monitor_enabled:
+                    print(f"Resource monitor available (interval: {sample_interval}s)")
+                    print(f"  FD warning: {fd_warning}%, Disk warning: {disk_warning}%")
+                else:
+                    print("Resource monitor: psutil not available")
+            except Exception as e:
+                print(f"Warning: Resource monitor failed to initialize: {e}")
+        else:
+            print("Resource monitor module not loaded")
+
         # Initialize message checker (Plan 10: Message Checking for NatLangChain/Agent-OS)
         self.message_checker = None
         self.message_checker_enabled = False
@@ -793,6 +851,11 @@ class BoundaryDaemon:
         if API_SERVER_AVAILABLE and BoundaryAPIServer:
             socket_path = os.path.join(os.path.dirname(log_dir), 'api', 'boundary.sock')
             self.api_server = BoundaryAPIServer(daemon=self, socket_path=socket_path)
+
+            # Connect telemetry for API latency monitoring (Plan 11)
+            if self.telemetry_manager:
+                self.api_server.set_telemetry_manager(self.telemetry_manager)
+
             print(f"API server initialized (socket: {socket_path})")
         else:
             print("API server: not available")
@@ -1156,6 +1219,40 @@ class BoundaryDaemon:
         if alert.level.value == 'critical' and 'confirmed' in alert.alert_type:
             print("[MEMORY] Confirmed memory leak detected - consider restarting daemon")
 
+    def _on_resource_alert(self, alert):
+        """Handle resource alert from resource monitor."""
+        # Log to event logger
+        event_type = EventType.ALERT if alert.level.value == 'critical' else EventType.INFO
+        self.event_logger.log_event(
+            event_type,
+            f"Resource alert [{alert.level.value}]: {alert.message}",
+            metadata={
+                'alert_type': alert.alert_type,
+                'resource_type': alert.resource_type.value,
+                'level': alert.level.value,
+                'current_value': alert.current_value,
+                'threshold': alert.threshold,
+                **alert.metadata,
+            }
+        )
+
+        # Log to telemetry if available
+        if self.telemetry_manager and self.telemetry_enabled:
+            self.telemetry_manager.record_resource_alert(
+                resource_type=alert.resource_type.value,
+                alert_type=alert.alert_type,
+                level=alert.level.value,
+                current_value=alert.current_value,
+            )
+
+        # Print to console
+        level_prefix = {
+            'info': '[RESOURCE]',
+            'warning': '[RESOURCE] WARNING:',
+            'critical': '[RESOURCE] CRITICAL:',
+        }.get(alert.level.value, '[RESOURCE]')
+        print(f"{level_prefix} {alert.message}")
+
     def start(self):
         """Start the boundary daemon"""
         if self._running:
@@ -1282,6 +1379,14 @@ class BoundaryDaemon:
             except Exception as e:
                 print(f"Warning: Memory monitor failed to start: {e}")
 
+        # Start resource monitor (Plan 11: Resource Monitoring)
+        if self.resource_monitor and self.resource_monitor_enabled:
+            try:
+                self.resource_monitor.start()
+                print("Resource monitor started")
+            except Exception as e:
+                print(f"Warning: Resource monitor failed to start: {e}")
+
         print("Boundary Daemon running. Press Ctrl+C to stop.")
         print("=" * 70)
 
@@ -1334,6 +1439,21 @@ class BoundaryDaemon:
                 print("Memory monitor stopped")
             except Exception as e:
                 print(f"Warning: Failed to stop memory monitor: {e}")
+
+        # Stop resource monitor (Plan 11: Resource Monitoring)
+        if self.resource_monitor and self.resource_monitor_enabled:
+            try:
+                # Log final resource stats
+                stats = self.resource_monitor.get_summary_stats()
+                if stats.get('current'):
+                    current = stats['current']
+                    fd_info = current.get('file_descriptors', {})
+                    print(f"Resources at shutdown: FD={fd_info.get('count', 0)}, "
+                          f"Threads={current.get('threads', {}).get('count', 0)}")
+                self.resource_monitor.stop()
+                print("Resource monitor stopped")
+            except Exception as e:
+                print(f"Warning: Failed to stop resource monitor: {e}")
 
         # Stop hardened watchdog endpoint
         if self.watchdog_endpoint and self.hardened_watchdog_enabled:
@@ -1959,6 +2079,33 @@ class BoundaryDaemon:
                     status['memory']['growth_percent'] = mem_stats['growth_since_baseline_percent']
             except Exception as e:
                 status['memory'] = {'error': str(e)}
+
+        # Add resource monitor information (Plan 11: Resource Monitoring)
+        status['resource_monitor_enabled'] = self.resource_monitor_enabled
+        if self.resource_monitor and self.resource_monitor_enabled:
+            try:
+                res_stats = self.resource_monitor.get_summary_stats()
+                status['resources'] = {
+                    'available': res_stats.get('available', False),
+                    'running': res_stats.get('running', False),
+                    'samples_collected': res_stats.get('samples_collected', 0),
+                    'alerts_total': res_stats.get('alerts_total', 0),
+                }
+                if res_stats.get('current'):
+                    current = res_stats['current']
+                    fd_info = current.get('file_descriptors', {})
+                    status['resources']['fd_count'] = fd_info.get('count', 0)
+                    status['resources']['fd_limit'] = fd_info.get('limit', 0)
+                    status['resources']['fd_percent'] = fd_info.get('percent_used', 0)
+                    status['resources']['thread_count'] = current.get('threads', {}).get('count', 0)
+                    status['resources']['cpu_percent'] = current.get('cpu', {}).get('percent', 0)
+                    status['resources']['connection_count'] = current.get('connections', {}).get('count', 0)
+                if res_stats.get('fd_growth'):
+                    status['resources']['fd_growth'] = res_stats['fd_growth']
+                if res_stats.get('thread_growth'):
+                    status['resources']['thread_growth'] = res_stats['thread_growth']
+            except Exception as e:
+                status['resources'] = {'error': str(e)}
 
         # Add privilege/enforcement status (SECURITY: Addresses silent failure issue)
         if self.privilege_manager:
