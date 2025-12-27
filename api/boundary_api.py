@@ -13,7 +13,11 @@ import json
 import os
 import socket
 import threading
-from typing import Optional, Dict, Any
+import time
+from typing import Optional, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from daemon.telemetry import TelemetryManager
 
 from daemon.policy_engine import BoundaryMode, Operator, MemoryClass
 from daemon.auth.api_auth import (
@@ -46,6 +50,7 @@ class BoundaryAPIServer:
         require_auth: bool = True,
         rate_limit_window: int = 60,
         rate_limit_max_requests: int = 100,
+        telemetry_manager: Optional['TelemetryManager'] = None,
     ):
         """
         Initialize API server.
@@ -57,6 +62,7 @@ class BoundaryAPIServer:
             require_auth: Whether authentication is required
             rate_limit_window: Rate limit window in seconds
             rate_limit_max_requests: Max requests per window
+            telemetry_manager: TelemetryManager for latency recording (optional)
         """
         self.daemon = daemon
         self.socket_path = socket_path
@@ -64,6 +70,9 @@ class BoundaryAPIServer:
         self._running = False
         self._server_thread: Optional[threading.Thread] = None
         self._socket: Optional[socket.socket] = None
+
+        # Telemetry integration for API latency monitoring (Plan 11)
+        self._telemetry_manager: Optional['TelemetryManager'] = telemetry_manager
 
         # Initialize authentication
         # Get event logger from daemon if available
@@ -116,6 +125,38 @@ class BoundaryAPIServer:
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
 
+    def set_telemetry_manager(self, telemetry_manager: 'TelemetryManager'):
+        """
+        Set the telemetry manager for API latency recording.
+
+        This allows setting telemetry after initialization, useful when
+        the telemetry system is initialized after the API server.
+
+        Args:
+            telemetry_manager: TelemetryManager instance for recording latency
+        """
+        self._telemetry_manager = telemetry_manager
+
+    def _record_latency(self, command: str, latency_ms: float, success: bool):
+        """
+        Record API call latency to telemetry.
+
+        Args:
+            command: The API command that was executed
+            latency_ms: Time taken in milliseconds
+            success: Whether the request was successful
+        """
+        if self._telemetry_manager:
+            try:
+                self._telemetry_manager.record_api_latency(
+                    endpoint=command or 'unknown',
+                    method='UNIX_SOCKET',
+                    latency_ms=latency_ms,
+                    success=success,
+                )
+            except Exception:
+                pass  # Don't fail requests due to telemetry errors
+
     def _server_loop(self):
         """Main server loop"""
         try:
@@ -155,7 +196,11 @@ class BoundaryAPIServer:
                 self._socket.close()
 
     def _handle_client(self, conn: socket.socket):
-        """Handle a client connection"""
+        """Handle a client connection with latency tracking"""
+        start_time = time.monotonic()
+        command = None
+        success = False
+
         try:
             # Read request (max 4KB)
             data = conn.recv(4096)
@@ -165,13 +210,18 @@ class BoundaryAPIServer:
             # Parse JSON request
             try:
                 request = json.loads(data.decode('utf-8'))
+                command = request.get('command', 'unknown')
             except json.JSONDecodeError:
+                command = 'invalid_json'
                 response = {'error': 'Invalid JSON'}
                 conn.sendall(json.dumps(response).encode('utf-8'))
                 return
 
             # Process request
             response = self._process_request(request)
+
+            # Check if request was successful
+            success = response.get('success', False) or 'error' not in response
 
             # Send response
             conn.sendall(json.dumps(response).encode('utf-8'))
@@ -183,6 +233,9 @@ class BoundaryAPIServer:
             except:
                 pass
         finally:
+            # Record latency (Plan 11: API Latency Monitoring)
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            self._record_latency(command, elapsed_ms, success)
             conn.close()
 
     def _process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
