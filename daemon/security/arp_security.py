@@ -34,8 +34,21 @@ from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from enum import Enum
 from collections import defaultdict
+import sys
 
 logger = logging.getLogger(__name__)
+
+# Cross-platform privilege detection
+def _is_elevated() -> bool:
+    """Check if running with elevated privileges (cross-platform)."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            return False
+    else:
+        return os.geteuid() == 0
 
 
 class ARPSecurityAlert(Enum):
@@ -211,8 +224,8 @@ class ARPSecurityMonitor:
         self._running = False
         self._monitor_thread: Optional[threading.Thread] = None
 
-        # Check enforcement capabilities
-        self._has_root = os.geteuid() == 0
+        # Check enforcement capabilities (cross-platform)
+        self._has_root = _is_elevated()
         self._has_iptables = shutil.which('iptables') is not None
         self._has_arp = shutil.which('arp') is not None
         self._has_ip = shutil.which('ip') is not None

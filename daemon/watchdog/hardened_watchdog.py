@@ -54,6 +54,10 @@ import tempfile
 
 logger = logging.getLogger(__name__)
 
+# Cross-platform socket support
+IS_WINDOWS = sys.platform == 'win32'
+HAS_UNIX_SOCKETS = hasattr(socket, 'AF_UNIX')
+
 
 # Linux prctl constants
 PR_SET_DUMPABLE = 4
@@ -329,6 +333,9 @@ class SystemdWatchdog:
             return
 
         try:
+            # systemd notifications only work on Linux with Unix sockets
+            if not HAS_UNIX_SOCKETS or IS_WINDOWS:
+                return
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             if notify_socket.startswith('@'):
                 # Abstract namespace
@@ -436,9 +443,15 @@ class WatchdogPeer:
         challenge = self.protocol.generate_challenge()
 
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(2.0)
-            sock.connect(self.socket_path)
+            # Cross-platform socket creation
+            if HAS_UNIX_SOCKETS and not IS_WINDOWS:
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(2.0)
+                sock.connect(self.socket_path)
+            else:
+                # On Windows, skip Unix socket-based peer checks
+                logger.debug(f"Peer check skipped on Windows: {self.peer_id}")
+                return False
 
             # Send challenge
             sock.sendall(challenge.serialize())
@@ -555,6 +568,11 @@ class HardenedWatchdog:
 
     def _start_server(self):
         """Start socket server for receiving challenges"""
+        # Skip on Windows - Unix socket server not available
+        if IS_WINDOWS or not HAS_UNIX_SOCKETS:
+            logger.info("Watchdog server not available on Windows")
+            return
+
         self._ensure_run_dir()
 
         # Remove old socket
@@ -602,6 +620,10 @@ class HardenedWatchdog:
 
     def _check_daemon(self) -> bool:
         """Send challenge to daemon and verify response"""
+        # Skip on Windows - Unix socket not available
+        if IS_WINDOWS or not HAS_UNIX_SOCKETS:
+            return True  # Assume daemon is OK on Windows
+
         challenge = self.protocol.generate_challenge()
 
         try:
@@ -897,6 +919,11 @@ class DaemonWatchdogEndpoint:
     def start(self):
         """Start the endpoint"""
         if self._running:
+            return
+
+        # Skip on Windows - Unix socket not available
+        if IS_WINDOWS or not HAS_UNIX_SOCKETS:
+            logger.warning("Hardened watchdog endpoint not available on Windows")
             return
 
         # Ensure directory exists
