@@ -61,6 +61,11 @@ python -m PyInstaller ^
     %ICON_PATH% ^
     --add-data "daemon;daemon" ^
     --add-data "api;api" ^
+    --hidden-import=cffi ^
+    --hidden-import=_cffi_backend ^
+    --hidden-import=nacl ^
+    --hidden-import=nacl.bindings ^
+    --hidden-import=nacl.signing ^
     --hidden-import=daemon.memory_monitor ^
     --hidden-import=daemon.resource_monitor ^
     --hidden-import=daemon.health_monitor ^
@@ -74,6 +79,8 @@ python -m PyInstaller ^
     --hidden-import=api.boundary_api ^
     --collect-submodules=daemon ^
     --collect-submodules=api ^
+    --collect-submodules=nacl ^
+    --collect-submodules=cffi ^
     --noconfirm ^
     --clean ^
     %MAIN_SCRIPT%
