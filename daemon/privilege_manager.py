@@ -173,12 +173,21 @@ class PrivilegeManager:
     def _log_initial_status(self):
         """Log the initial privilege status."""
         if self._has_root:
-            logger.info("Privilege Manager: Running with root privileges (euid=0)")
+            if _is_windows():
+                logger.info("Privilege Manager: Running with Administrator privileges")
+            else:
+                logger.info("Privilege Manager: Running with root privileges (euid=0)")
         else:
-            logger.warning(
-                f"Privilege Manager: Running WITHOUT root (euid={self._effective_uid}). "
-                "Some enforcement features will be unavailable."
-            )
+            if _is_windows():
+                logger.warning(
+                    "Privilege Manager: Running WITHOUT Administrator privileges. "
+                    "Some enforcement features will be unavailable."
+                )
+            else:
+                logger.warning(
+                    f"Privilege Manager: Running WITHOUT root (euid={self._effective_uid}). "
+                    "Some enforcement features will be unavailable."
+                )
 
     def check_root(self) -> bool:
         """Check if running as root."""
@@ -300,10 +309,16 @@ class PrivilegeManager:
         # Log appropriately based on severity
         if alert_level == PrivilegeAlert.CRITICAL:
             self._critical_count += 1
-            logger.critical(
-                f"PRIVILEGE FAILURE [{boundary_mode}]: {module.value}/{operation} - "
-                f"Requires {required.value}, running as euid={self._effective_uid}"
-            )
+            if _is_windows():
+                logger.critical(
+                    f"PRIVILEGE FAILURE [{boundary_mode}]: {module.value}/{operation} - "
+                    f"Requires {required.value}, not running as Administrator"
+                )
+            else:
+                logger.critical(
+                    f"PRIVILEGE FAILURE [{boundary_mode}]: {module.value}/{operation} - "
+                    f"Requires {required.value}, running as euid={self._effective_uid}"
+                )
             if self._event_logger:
                 try:
                     self._event_logger.log(
@@ -470,9 +485,14 @@ class PrivilegeManager:
         if self._has_root:
             return True
 
-        print(f"\n  WARNING: '{operation}' requires root privileges.")
-        print(f"  Running as euid={self._effective_uid}. Some features will be unavailable.")
-        print(f"  To fix: Run with sudo or as root.\n")
+        if _is_windows():
+            print(f"\n  WARNING: '{operation}' requires Administrator privileges.")
+            print(f"  Not running as Administrator. Some features will be unavailable.")
+            print(f"  To fix: Run as Administrator.\n")
+        else:
+            print(f"\n  WARNING: '{operation}' requires root privileges.")
+            print(f"  Running as euid={self._effective_uid}. Some features will be unavailable.")
+            print(f"  To fix: Run with sudo or as root.\n")
 
         return False
 

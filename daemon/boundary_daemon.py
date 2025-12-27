@@ -15,6 +15,9 @@ import threading
 from datetime import datetime
 from typing import Optional, Tuple
 
+# Cross-platform detection
+IS_WINDOWS = sys.platform == 'win32'
+
 # Import core components
 from .state_monitor import StateMonitor, EnvironmentState, NetworkState
 from .policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision, Operator, MemoryClass
@@ -374,8 +377,8 @@ class BoundaryDaemon:
         else:
             print("Daemon integrity protection: not available")
 
-        self.log_dir = log_dir
-        os.makedirs(log_dir, exist_ok=True)
+        self.log_dir = os.path.normpath(log_dir)
+        os.makedirs(self.log_dir, exist_ok=True)
 
         # Initialize core components
         print("Initializing Boundary Daemon (Agent Smith)...")
@@ -434,9 +437,12 @@ class BoundaryDaemon:
             # Check root status early with clear warning
             if not self.privilege_manager.check_root():
                 print("\n" + "!" * 70)
-                print("  SECURITY WARNING: Running without root privileges")
+                print("  SECURITY WARNING: Running without elevated privileges")
                 print("  Some enforcement features will be UNAVAILABLE.")
-                print("  For full security enforcement, run as: sudo boundary-daemon")
+                if IS_WINDOWS:
+                    print("  For full security enforcement, run as: Administrator")
+                else:
+                    print("  For full security enforcement, run as: sudo boundary-daemon")
                 print("!" * 70 + "\n")
         else:
             print("Privilege manager not available - enforcement status may not be tracked")
@@ -1193,7 +1199,10 @@ class BoundaryDaemon:
         print(f"  Operation: {issue.operation}")
         print(f"  Message:   {issue.message}")
         print(f"\n  Security enforcement is DEGRADED.")
-        print(f"  To fix: Run daemon as root (sudo boundary-daemon)")
+        if IS_WINDOWS:
+            print(f"  To fix: Run daemon as Administrator")
+        else:
+            print(f"  To fix: Run daemon as root (sudo boundary-daemon)")
         print(f"{'!'*70}\n")
 
         # Log to event logger
@@ -1527,7 +1536,9 @@ class BoundaryDaemon:
         if self.watchdog_endpoint and self.hardened_watchdog_enabled:
             try:
                 self.watchdog_endpoint.start()
-                print(f"Hardened watchdog endpoint started (socket: {self.watchdog_endpoint.socket_path})")
+                # Check if it actually started (returns early on Windows)
+                if getattr(self.watchdog_endpoint, '_running', False):
+                    print(f"Hardened watchdog endpoint started (socket: {self.watchdog_endpoint.socket_path})")
             except Exception as e:
                 print(f"Warning: Hardened watchdog endpoint failed to start: {e}")
 
@@ -1586,7 +1597,10 @@ class BoundaryDaemon:
             except Exception as e:
                 print(f"Warning: Queue monitor failed to start: {e}")
 
-        print("Boundary Daemon running. Press Ctrl+C to stop.")
+        if IS_WINDOWS:
+            print("Boundary Daemon running. Close this window or press Ctrl+Break to stop.")
+        else:
+            print("Boundary Daemon running. Press Ctrl+C to stop.")
         print("=" * 70)
 
     def stop(self):
