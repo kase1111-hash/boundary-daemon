@@ -84,6 +84,12 @@ def build_executable(onefile=True, debug=False, noconfirm=True):
         "--console",
         f"--add-data=daemon{separator}daemon",
         f"--add-data=api{separator}api",
+        # C extension modules for cryptography
+        "--hidden-import=cffi",
+        "--hidden-import=_cffi_backend",
+        "--hidden-import=nacl",
+        "--hidden-import=nacl.bindings",
+        "--hidden-import=nacl.signing",
         # Hidden imports for all monitoring modules
         "--hidden-import=daemon.memory_monitor",
         "--hidden-import=daemon.resource_monitor",
@@ -98,6 +104,8 @@ def build_executable(onefile=True, debug=False, noconfirm=True):
         "--hidden-import=api.boundary_api",
         "--collect-submodules=daemon",
         "--collect-submodules=api",
+        "--collect-submodules=nacl",
+        "--collect-submodules=cffi",
     ]
 
     if onefile:
