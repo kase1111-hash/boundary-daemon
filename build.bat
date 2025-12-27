@@ -22,7 +22,7 @@ REM Check if PyInstaller is installed
 python -c "import PyInstaller" >nul 2>&1
 if errorlevel 1 (
     echo PyInstaller not found. Installing...
-    pip install pyinstaller
+    pip install -v pyinstaller
     if errorlevel 1 (
         echo ERROR: Failed to install PyInstaller
         pause
@@ -32,14 +32,19 @@ if errorlevel 1 (
 
 REM Install required dependencies from requirements.txt
 echo.
+echo ========================================
 echo Installing dependencies from requirements.txt...
-pip install -r requirements.txt
+echo ========================================
+pip install -v -r requirements.txt
 if errorlevel 1 (
     echo ERROR: Failed to install dependencies
     pause
     exit /b 1
 )
+echo.
+echo ========================================
 echo Dependencies installed successfully.
+echo ========================================
 
 REM Create dist directory if it doesn't exist
 if not exist "dist" mkdir dist

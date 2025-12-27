@@ -36,8 +36,21 @@ from typing import Dict, List, Optional, Set, Tuple, Callable
 from enum import Enum
 from collections import defaultdict
 import hashlib
+import sys
 
 logger = logging.getLogger(__name__)
+
+# Cross-platform privilege detection
+def _is_elevated() -> bool:
+    """Check if running with elevated privileges (cross-platform)."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            return False
+    else:
+        return os.geteuid() == 0
 
 # Import native DNS resolver (SECURITY: replaces external tool usage)
 try:
@@ -260,8 +273,8 @@ class DNSSecurityMonitor:
         self._running = False
         self._monitor_thread: Optional[threading.Thread] = None
 
-        # Check enforcement capabilities
-        self._has_root = os.geteuid() == 0
+        # Check enforcement capabilities (cross-platform)
+        self._has_root = _is_elevated()
         self._has_iptables = shutil.which('iptables') is not None
         self._has_nftables = shutil.which('nft') is not None
 

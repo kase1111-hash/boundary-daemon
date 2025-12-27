@@ -12,9 +12,14 @@ Security Features:
 import json
 import os
 import socket
+import sys
 import threading
 import time
 from typing import Optional, Dict, Any, TYPE_CHECKING
+
+# Cross-platform socket support
+IS_WINDOWS = sys.platform == 'win32'
+HAS_UNIX_SOCKETS = hasattr(socket, 'AF_UNIX')
 
 if TYPE_CHECKING:
     from daemon.telemetry import TelemetryManager
@@ -92,9 +97,10 @@ class BoundaryAPIServer:
         # Ensure directory exists
         os.makedirs(os.path.dirname(socket_path), exist_ok=True)
 
-        # Remove stale socket
-        if os.path.exists(socket_path):
-            os.unlink(socket_path)
+        # Remove stale socket (Unix only)
+        if HAS_UNIX_SOCKETS and not IS_WINDOWS:
+            if os.path.exists(socket_path):
+                os.unlink(socket_path)
 
     def start(self):
         """Start the API server"""
@@ -121,9 +127,10 @@ class BoundaryAPIServer:
         if self._server_thread:
             self._server_thread.join(timeout=5.0)
 
-        # Remove socket file
-        if os.path.exists(self.socket_path):
-            os.unlink(self.socket_path)
+        # Remove socket file (Unix only)
+        if HAS_UNIX_SOCKETS and not IS_WINDOWS:
+            if os.path.exists(self.socket_path):
+                os.unlink(self.socket_path)
 
     def set_telemetry_manager(self, telemetry_manager: 'TelemetryManager'):
         """
@@ -160,13 +167,22 @@ class BoundaryAPIServer:
     def _server_loop(self):
         """Main server loop"""
         try:
-            # Create Unix socket
-            self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self._socket.bind(self.socket_path)
-            self._socket.listen(5)
-
-            # Set permissions (owner only)
-            os.chmod(self.socket_path, 0o600)
+            # Create socket (cross-platform)
+            if HAS_UNIX_SOCKETS and not IS_WINDOWS:
+                # Unix domain socket (Linux/macOS)
+                self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self._socket.bind(self.socket_path)
+                self._socket.listen(5)
+                # Set permissions (owner only)
+                os.chmod(self.socket_path, 0o600)
+            else:
+                # TCP socket on localhost (Windows)
+                self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # Use port 19847 for the API (configurable via socket_path parsing)
+                self._tcp_port = 19847
+                self._socket.bind(('127.0.0.1', self._tcp_port))
+                self._socket.listen(5)
 
             while self._running:
                 try:

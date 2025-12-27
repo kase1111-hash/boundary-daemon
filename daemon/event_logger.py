@@ -39,6 +39,8 @@ class EventType(Enum):
     PII_DETECTED = "pii_detected"  # PII detected in content
     PII_BLOCKED = "pii_blocked"  # Content blocked due to PII
     PII_REDACTED = "pii_redacted"  # PII redacted from content
+    ALERT = "alert"  # System alert (critical/warning)
+    INFO = "info"  # Informational event
 
 
 @dataclass
