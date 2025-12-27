@@ -30,7 +30,7 @@ pip3 install -r requirements.txt 2>/dev/null || true
 mkdir -p dist build
 
 # Set build options
-MAIN_SCRIPT="daemon/boundary_daemon.py"
+MAIN_SCRIPT="run_daemon.py"
 APP_NAME="boundary-daemon"
 
 echo
