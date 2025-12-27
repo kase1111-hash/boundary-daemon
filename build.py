@@ -71,7 +71,7 @@ def build_executable(onefile=True, debug=False, noconfirm=True):
     # Determine platform-specific settings
     separator = ";" if sys.platform == "win32" else ":"
     app_name = "boundary-daemon"
-    main_script = Path("daemon") / "boundary_daemon.py"
+    main_script = Path("run_daemon.py")
 
     if not main_script.exists():
         print(f"ERROR: Main script not found: {main_script}")

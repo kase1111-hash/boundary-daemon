@@ -39,7 +39,7 @@ if not exist "dist" mkdir dist
 if not exist "build" mkdir build
 
 REM Set build options
-set MAIN_SCRIPT=daemon\boundary_daemon.py
+set MAIN_SCRIPT=run_daemon.py
 set APP_NAME=boundary-daemon
 set ICON_PATH=
 set EXTRA_DATA=--add-data "config;config"
