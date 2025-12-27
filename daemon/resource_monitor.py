@@ -154,6 +154,11 @@ class ResourceMonitorConfig:
     # Connection thresholds
     connection_warning: int = 500
     connection_critical: int = 1000
+    connection_spike_threshold: int = 50     # New connections in one interval
+    connection_close_wait_warning: int = 20  # CLOSE_WAIT connections indicate leak
+    connection_time_wait_warning: int = 100  # Excessive TIME_WAIT
+    connection_established_warning: int = 200  # Many established connections
+    connection_growth_window: int = 6        # Samples for growth detection (1 min)
 
     def to_dict(self) -> Dict:
         return {
@@ -174,6 +179,11 @@ class ResourceMonitorConfig:
             'disk_paths': self.disk_paths,
             'connection_warning': self.connection_warning,
             'connection_critical': self.connection_critical,
+            'connection_spike_threshold': self.connection_spike_threshold,
+            'connection_close_wait_warning': self.connection_close_wait_warning,
+            'connection_time_wait_warning': self.connection_time_wait_warning,
+            'connection_established_warning': self.connection_established_warning,
+            'connection_growth_window': self.connection_growth_window,
         }
 
 
@@ -234,6 +244,12 @@ class ResourceMonitor:
         self._sample_count: int = 0              # Total samples taken
         self._previous_cpu_percent: float = 0.0  # For spike detection
         self._cpu_was_sustained: bool = False    # Track if we need to send recovery alert
+
+        # Enhanced connection tracking for anomaly detection
+        self._previous_connection_count: int = 0
+        self._connection_state_history: deque = deque(maxlen=60)  # 10 min of state snapshots
+        self._last_connection_alert: Dict[str, int] = {}  # alert_type -> sample_count
+        self._connection_alert_cooldown: int = 12  # 2 min between same type alerts
 
         # Process handle
         self._process: Optional[Any] = None
@@ -308,6 +324,9 @@ class ResourceMonitor:
                 # Detect leaks
                 self._detect_fd_leak()
                 self._detect_thread_leak()
+
+                # Detect connection anomalies
+                self._detect_connection_anomalies(snapshot)
 
                 # Export metrics
                 self._export_metrics(snapshot)
@@ -598,6 +617,169 @@ class ResourceMonitor:
                 metadata={'by_status': snapshot.connections_by_status},
             )
 
+    def _detect_connection_anomalies(self, snapshot: ResourceSnapshot):
+        """
+        Detect connection anomalies including:
+        - Connection spikes (sudden increase)
+        - Connection state imbalances (too many CLOSE_WAIT, TIME_WAIT)
+        - Connection growth trends (possible leak)
+        - Unusual connection patterns
+        """
+        states = snapshot.connections_by_status
+        current_count = snapshot.connection_count
+
+        # Store connection state for history analysis
+        with self._lock:
+            self._connection_state_history.append({
+                'timestamp': snapshot.timestamp,
+                'count': current_count,
+                'states': dict(states),
+            })
+
+        # Helper to check alert cooldown
+        def can_alert(alert_type: str) -> bool:
+            last_sample = self._last_connection_alert.get(alert_type, 0)
+            return (self._sample_count - last_sample) >= self._connection_alert_cooldown
+
+        def record_alert(alert_type: str):
+            self._last_connection_alert[alert_type] = self._sample_count
+
+        # 1. Connection spike detection
+        if self._sample_count > 1:
+            connection_delta = current_count - self._previous_connection_count
+            if connection_delta >= self.config.connection_spike_threshold and can_alert('connection_spike'):
+                self._raise_alert(
+                    ResourceAlertLevel.WARNING,
+                    ResourceType.CONNECTIONS,
+                    "connection_spike",
+                    f"Connection spike: +{connection_delta} connections in one interval "
+                    f"({self._previous_connection_count} -> {current_count})",
+                    connection_delta,
+                    self.config.connection_spike_threshold,
+                    metadata={
+                        'previous': self._previous_connection_count,
+                        'current': current_count,
+                        'by_status': states,
+                    },
+                )
+                record_alert('connection_spike')
+
+        self._previous_connection_count = current_count
+
+        # 2. CLOSE_WAIT detection (indicates server-side connection leak)
+        close_wait = states.get('CLOSE_WAIT', 0)
+        if close_wait >= self.config.connection_close_wait_warning and can_alert('close_wait'):
+            self._raise_alert(
+                ResourceAlertLevel.WARNING,
+                ResourceType.CONNECTIONS,
+                "connection_close_wait",
+                f"High CLOSE_WAIT connections: {close_wait} (server may not be closing connections properly)",
+                close_wait,
+                self.config.connection_close_wait_warning,
+                metadata={
+                    'close_wait_count': close_wait,
+                    'total_connections': current_count,
+                    'all_states': states,
+                },
+            )
+            record_alert('close_wait')
+
+        # 3. TIME_WAIT detection (many recently closed connections)
+        time_wait = states.get('TIME_WAIT', 0)
+        if time_wait >= self.config.connection_time_wait_warning and can_alert('time_wait'):
+            self._raise_alert(
+                ResourceAlertLevel.INFO,
+                ResourceType.CONNECTIONS,
+                "connection_time_wait",
+                f"High TIME_WAIT connections: {time_wait} (many connections recently closed, "
+                f"may indicate high connection churn)",
+                time_wait,
+                self.config.connection_time_wait_warning,
+                metadata={
+                    'time_wait_count': time_wait,
+                    'total_connections': current_count,
+                },
+            )
+            record_alert('time_wait')
+
+        # 4. ESTABLISHED connections warning
+        established = states.get('ESTABLISHED', 0)
+        if established >= self.config.connection_established_warning and can_alert('established_high'):
+            self._raise_alert(
+                ResourceAlertLevel.WARNING,
+                ResourceType.CONNECTIONS,
+                "connection_established_high",
+                f"High ESTABLISHED connections: {established}",
+                established,
+                self.config.connection_established_warning,
+                metadata={
+                    'established_count': established,
+                    'total_connections': current_count,
+                },
+            )
+            record_alert('established_high')
+
+        # 5. Connection growth detection (possible connection leak)
+        with self._lock:
+            if len(self._connection_state_history) >= self.config.connection_growth_window:
+                history = list(self._connection_state_history)[-self.config.connection_growth_window:]
+                start_count = history[0]['count']
+                end_count = history[-1]['count']
+                growth = end_count - start_count
+                growth_rate = growth / len(history)  # Connections per sample
+
+                # Sustained growth indicates leak
+                if growth_rate > 2.0 and can_alert('connection_growth'):  # >2 new connections per sample avg
+                    window_seconds = len(history) * self.config.sample_interval
+                    self._raise_alert(
+                        ResourceAlertLevel.WARNING,
+                        ResourceType.CONNECTIONS,
+                        "connection_growth",
+                        f"Sustained connection growth: +{growth} over {window_seconds:.0f}s "
+                        f"({growth_rate:.1f}/sample)",
+                        growth,
+                        self.config.connection_growth_window,
+                        metadata={
+                            'start_count': start_count,
+                            'end_count': end_count,
+                            'growth_rate': growth_rate,
+                            'window_samples': len(history),
+                        },
+                    )
+                    record_alert('connection_growth')
+
+        # 6. Connection state ratio anomaly (detect imbalanced states)
+        if current_count > 10:  # Only check if we have enough connections
+            listen_count = states.get('LISTEN', 0)
+            syn_sent = states.get('SYN_SENT', 0)
+            syn_recv = states.get('SYN_RECV', 0)
+
+            # Many SYN_SENT could indicate connection issues to remote
+            if syn_sent > 10 and can_alert('syn_sent_high'):
+                self._raise_alert(
+                    ResourceAlertLevel.WARNING,
+                    ResourceType.CONNECTIONS,
+                    "connection_syn_sent_high",
+                    f"High SYN_SENT connections: {syn_sent} (may indicate connection timeouts)",
+                    syn_sent,
+                    10,
+                    metadata={'syn_sent': syn_sent, 'all_states': states},
+                )
+                record_alert('syn_sent_high')
+
+            # Many SYN_RECV could indicate SYN flood or connection issues
+            if syn_recv > 20 and can_alert('syn_recv_high'):
+                self._raise_alert(
+                    ResourceAlertLevel.WARNING,
+                    ResourceType.CONNECTIONS,
+                    "connection_syn_recv_high",
+                    f"High SYN_RECV connections: {syn_recv} (may indicate connection backlog or SYN flood)",
+                    syn_recv,
+                    20,
+                    metadata={'syn_recv': syn_recv, 'all_states': states},
+                )
+                record_alert('syn_recv_high')
+
     def _detect_fd_leak(self):
         """Detect file descriptor leaks through growth analysis"""
         with self._lock:
@@ -731,6 +913,12 @@ class ResourceMonitor:
             # Connections
             self._telemetry_manager.set_gauge("resource.connection_count", snapshot.connection_count)
 
+            # Connection states (key states for anomaly detection)
+            states = snapshot.connections_by_status
+            self._telemetry_manager.set_gauge("resource.conn_established", states.get('ESTABLISHED', 0))
+            self._telemetry_manager.set_gauge("resource.conn_close_wait", states.get('CLOSE_WAIT', 0))
+            self._telemetry_manager.set_gauge("resource.conn_time_wait", states.get('TIME_WAIT', 0))
+
             # Disk (primary path only to avoid metric explosion)
             if snapshot.disk_usage:
                 primary_path = list(snapshot.disk_usage.keys())[0]
@@ -804,6 +992,18 @@ class ResourceMonitor:
             stats['cpu_monitoring']['sustained_duration'] = time.time() - self._cpu_sustained_start
             stats['cpu_monitoring']['peak_during_sustained'] = self._cpu_peak_during_sustained
 
+        # Add connection monitoring info
+        if current:
+            states = current.connections_by_status
+            stats['connection_monitoring'] = {
+                'total': current.connection_count,
+                'established': states.get('ESTABLISHED', 0),
+                'close_wait': states.get('CLOSE_WAIT', 0),
+                'time_wait': states.get('TIME_WAIT', 0),
+                'anomalies_detected': len(self._last_connection_alert),
+                'history_samples': len(self._connection_state_history),
+            }
+
         return stats
 
     def get_cpu_stats(self) -> Dict:
@@ -841,6 +1041,82 @@ class ResourceMonitor:
         if self._cpu_sustained_start:
             stats['sustained_high']['duration_seconds'] = time.time() - self._cpu_sustained_start
             stats['sustained_high']['peak'] = self._cpu_peak_during_sustained
+
+        return stats
+
+    def get_connection_stats(self) -> Dict:
+        """
+        Get detailed connection statistics and anomaly detection state.
+
+        Returns:
+            Dictionary with connection monitoring state, history, and anomaly info
+        """
+        with self._lock:
+            current = self._current_snapshot
+            conn_history = list(self._connection_state_history)
+
+        if not current:
+            return {'available': False, 'message': 'No samples collected yet'}
+
+        # Current state
+        stats = {
+            'current': {
+                'total': current.connection_count,
+                'by_status': current.connections_by_status,
+            },
+            'history_samples': len(conn_history),
+        }
+
+        # Calculate connection trends from history
+        if conn_history:
+            counts = [h['count'] for h in conn_history]
+            recent_counts = counts[-min(6, len(counts)):]
+
+            stats['trends'] = {
+                'average_1min': sum(recent_counts) / len(recent_counts) if recent_counts else 0,
+                'average_all': sum(counts) / len(counts) if counts else 0,
+                'min': min(counts) if counts else 0,
+                'max': max(counts) if counts else 0,
+            }
+
+            # Growth calculation
+            if len(counts) >= 2:
+                growth = counts[-1] - counts[0]
+                stats['trends']['total_growth'] = growth
+                stats['trends']['growth_rate'] = growth / len(counts)
+
+            # State distribution over time
+            state_totals: Dict[str, int] = {}
+            for h in conn_history:
+                for state, count in h.get('states', {}).items():
+                    state_totals[state] = state_totals.get(state, 0) + count
+
+            if conn_history:
+                stats['average_by_status'] = {
+                    state: round(total / len(conn_history), 1)
+                    for state, total in state_totals.items()
+                }
+
+        # Anomaly detection state
+        stats['anomaly_detection'] = {
+            'spike_threshold': self.config.connection_spike_threshold,
+            'close_wait_threshold': self.config.connection_close_wait_warning,
+            'time_wait_threshold': self.config.connection_time_wait_warning,
+            'established_threshold': self.config.connection_established_warning,
+            'last_alerts': {
+                alert_type: self._sample_count - sample
+                for alert_type, sample in self._last_connection_alert.items()
+            },
+        }
+
+        # Current anomaly indicators
+        states = current.connections_by_status
+        stats['current_anomalies'] = {
+            'close_wait_high': states.get('CLOSE_WAIT', 0) >= self.config.connection_close_wait_warning,
+            'time_wait_high': states.get('TIME_WAIT', 0) >= self.config.connection_time_wait_warning,
+            'established_high': states.get('ESTABLISHED', 0) >= self.config.connection_established_warning,
+            'total_high': current.connection_count >= self.config.connection_warning,
+        }
 
         return stats
 
