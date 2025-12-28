@@ -629,6 +629,15 @@ Please answer the question based on the daemon state shown above."""
 
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
+        if answer is None:
+            return {
+                'success': False,
+                'error': 'Failed to generate response from Ollama',
+                'question': question,
+                'answer': None,
+                'response_time_ms': elapsed_ms,
+            }
+
         return {
             'success': True,
             'question': question,
