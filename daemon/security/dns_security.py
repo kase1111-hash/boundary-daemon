@@ -266,8 +266,8 @@ class DNSSecurityMonitor:
         self._block_reasons: Dict[str, str] = {}  # domain -> reason
         self._block_timestamps: Dict[str, datetime] = {}  # domain -> when blocked
 
-        # Thread safety
-        self._lock = threading.Lock()
+        # Thread safety - use RLock for reentrant locking (get_status calls helpers that also lock)
+        self._lock = threading.RLock()
 
         # Monitoring state
         self._running = False
