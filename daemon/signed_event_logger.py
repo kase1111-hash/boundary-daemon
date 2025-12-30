@@ -8,10 +8,13 @@ import nacl.encoding
 import os
 import json
 import threading
+import logging
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 
 from .event_logger import EventLogger, EventType, BoundaryEvent
+
+logger = logging.getLogger(__name__)
 
 
 class SignedEventLogger(EventLogger):
@@ -52,11 +55,11 @@ class SignedEventLogger(EventLogger):
                 with open(self.signing_key_path, 'rb') as f:
                     key_bytes = f.read()
                 signing_key = nacl.signing.SigningKey(key_bytes)
-                print(f"Loaded signing key from {self.signing_key_path}")
+                logger.info(f"Loaded signing key from {self.signing_key_path}")
                 return signing_key
             except Exception as e:
-                print(f"Error loading signing key: {e}")
-                print("Generating new key...")
+                logger.error(f"Error loading signing key: {e}")
+                logger.info("Generating new key...")
 
         # Create new key
         signing_key = nacl.signing.SigningKey.generate()
@@ -72,10 +75,10 @@ class SignedEventLogger(EventLogger):
                 f.write(bytes(signing_key))
             # Set restrictive permissions (owner read/write only)
             os.chmod(self.signing_key_path, 0o600)
-            print(f"Generated new signing key at {self.signing_key_path}")
-            print(f"Public key (for verification): {signing_key.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()}")
+            logger.info(f"Generated new signing key at {self.signing_key_path}")
+            logger.info(f"Public key (for verification): {signing_key.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()}")
         except Exception as e:
-            print(f"Warning: Failed to save signing key: {e}")
+            logger.warning(f"Failed to save signing key: {e}")
 
         return signing_key
 
@@ -126,7 +129,7 @@ class SignedEventLogger(EventLogger):
                     f.flush()
                     os.fsync(f.fileno())
             except Exception as e:
-                print(f"CRITICAL: Failed to write signature: {e}")
+                logger.critical(f"Failed to write signature: {e}")
                 raise
 
     def verify_signatures(self) -> Tuple[bool, Optional[str]]:
@@ -242,10 +245,10 @@ class SignedEventLogger(EventLogger):
                 f.write(f"# This key can be used to verify the authenticity of event log signatures\n")
                 f.write(f"# Generated: {__import__('datetime').datetime.utcnow().isoformat()}Z\n\n")
                 f.write(self.get_public_key_hex() + '\n')
-            print(f"Public key exported to {output_path}")
+            logger.info(f"Public key exported to {output_path}")
             return True
         except Exception as e:
-            print(f"Error exporting public key: {e}")
+            logger.error(f"Error exporting public key: {e}")
             return False
 
 

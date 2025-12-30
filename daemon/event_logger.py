@@ -7,10 +7,13 @@ import hashlib
 import json
 import os
 import threading
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 class EventType(Enum):
@@ -132,7 +135,7 @@ class EventLogger:
                         self._last_hash = event.compute_hash()
                         self._event_count = len(lines)
         except Exception as e:
-            print(f"Warning: Error loading existing log: {e}")
+            logger.warning(f"Error loading existing log: {e}")
             # Continue with genesis hash
 
     def log_event(self, event_type: EventType, details: str, metadata: Optional[Dict] = None) -> BoundaryEvent:
@@ -174,7 +177,7 @@ class EventLogger:
                 f.flush()
                 os.fsync(f.fileno())  # Ensure written to disk
         except Exception as e:
-            print(f"CRITICAL: Failed to write to event log: {e}")
+            logger.critical(f"Failed to write to event log: {e}")
             raise
 
     def _generate_event_id(self) -> str:
@@ -279,7 +282,7 @@ class EventLogger:
             return list(reversed(events))
 
         except Exception as e:
-            print(f"Error reading recent events: {e}")
+            logger.error(f"Error reading recent events: {e}")
             return []
 
     def get_events_by_type(self, event_type: EventType, limit: int = 100) -> List[BoundaryEvent]:
@@ -325,7 +328,7 @@ class EventLogger:
             return events
 
         except Exception as e:
-            print(f"Error reading events by type: {e}")
+            logger.error(f"Error reading events by type: {e}")
             return []
 
     def export_log(self, output_path: str) -> bool:
@@ -343,7 +346,7 @@ class EventLogger:
             shutil.copy2(self.log_file_path, output_path)
             return True
         except Exception as e:
-            print(f"Error exporting log: {e}")
+            logger.error(f"Error exporting log: {e}")
             return False
 
 
