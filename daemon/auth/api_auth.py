@@ -15,6 +15,7 @@ bypass via daemon restart. This addresses the vulnerability:
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import threading
@@ -24,6 +25,8 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Import persistent rate limiter (SECURITY: survives restarts)
 try:
@@ -386,7 +389,7 @@ class TokenManager:
                 self._tokens[token.token_hash] = token
 
         except Exception as e:
-            print(f"Warning: Failed to load tokens: {e}")
+            logger.warning(f"Failed to load tokens: {e}")
 
     def _save_tokens(self):
         """Save tokens to storage file."""
@@ -411,7 +414,7 @@ class TokenManager:
             temp_file.rename(self.token_file)
 
         except Exception as e:
-            print(f"Warning: Failed to save tokens: {e}")
+            logger.warning(f"Failed to save tokens: {e}")
 
     def _create_bootstrap_token(self) -> str:
         """
@@ -442,8 +445,8 @@ class TokenManager:
             )
 
             if success:
-                print(f"[AUTH] Bootstrap admin token created (ENCRYPTED): {bootstrap_file}")
-                print(f"[AUTH] To retrieve: authctl decrypt {bootstrap_file}")
+                logger.info(f"Bootstrap admin token created (ENCRYPTED): {bootstrap_file}")
+                logger.info(f"To retrieve: authctl decrypt {bootstrap_file}")
             else:
                 # Fallback to secure-ish plaintext with strong warnings
                 self._write_bootstrap_fallback(token, bootstrap_file.with_suffix('.txt'))
@@ -474,8 +477,8 @@ class TokenManager:
             f.write(f"{token}\n")
         os.chmod(bootstrap_file, 0o600)
 
-        print(f"[AUTH] WARNING: Bootstrap token created as PLAINTEXT: {bootstrap_file}")
-        print(f"[AUTH] Delete this file after retrieving the token!")
+        logger.warning(f"Bootstrap token created as PLAINTEXT: {bootstrap_file}")
+        logger.warning("Delete this file after retrieving the token!")
 
     def create_token(
         self,

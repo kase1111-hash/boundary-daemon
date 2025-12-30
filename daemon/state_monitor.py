@@ -9,10 +9,13 @@ import socket
 import subprocess
 import threading
 import time
+import logging
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional, Set
 from enum import Enum
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class NetworkState(Enum):
@@ -416,11 +419,11 @@ class StateMonitor:
                         try:
                             callback(old_state, new_state)
                         except Exception as e:
-                            print(f"Error in state change callback: {e}")
+                            logger.error(f"Error in state change callback: {e}")
 
                 time.sleep(self.poll_interval)
             except Exception as e:
-                print(f"Error in monitoring loop: {e}")
+                logger.error(f"Error in monitoring loop: {e}")
                 time.sleep(self.poll_interval)
 
     def _sample_environment(self) -> EnvironmentState:
@@ -659,7 +662,7 @@ class StateMonitor:
                         if iface_type == NetworkType.VPN:
                             vpn_active = True
         except Exception as e:
-            print(f"Error checking network interfaces: {e}")
+            logger.error(f"Error checking network interfaces: {e}")
 
         # Test for internet connectivity
         try:
@@ -745,7 +748,7 @@ class StateMonitor:
             status = dns_monitor.get_status()
             return status.alerts
         except Exception as e:
-            print(f"Error checking DNS security: {e}")
+            logger.error(f"Error checking DNS security: {e}")
             return []
 
     def _check_arp_security(self) -> List[str]:
@@ -763,7 +766,7 @@ class StateMonitor:
             status = arp_monitor.get_status()
             return status.alerts
         except Exception as e:
-            print(f"Error checking ARP security: {e}")
+            logger.error(f"Error checking ARP security: {e}")
             return []
 
     def _check_wifi_security(self) -> List[str]:
@@ -786,7 +789,7 @@ class StateMonitor:
             ]
             return alert_messages
         except Exception as e:
-            print(f"Error checking WiFi security: {e}")
+            logger.error(f"Error checking WiFi security: {e}")
             return []
 
     def _check_threat_intel(self) -> List[str]:
@@ -803,7 +806,7 @@ class StateMonitor:
             status = threat_monitor.get_status()
             return status.alerts
         except Exception as e:
-            print(f"Error checking threat intelligence: {e}")
+            logger.error(f"Error checking threat intelligence: {e}")
             return []
 
     def _check_file_integrity(self) -> List[str]:
@@ -820,7 +823,7 @@ class StateMonitor:
             status = fim_monitor.get_status()
             return status.alerts
         except Exception as e:
-            print(f"Error checking file integrity: {e}")
+            logger.error(f"Error checking file integrity: {e}")
             return []
 
     def _check_traffic_anomaly(self) -> List[str]:
@@ -837,7 +840,7 @@ class StateMonitor:
             status = traffic_monitor.get_status()
             return status.alerts
         except Exception as e:
-            print(f"Error checking traffic anomaly: {e}")
+            logger.error(f"Error checking traffic anomaly: {e}")
             return []
 
     def _check_process_security(self) -> List[str]:
@@ -854,7 +857,7 @@ class StateMonitor:
             status = process_monitor.get_status()
             return status.alerts
         except Exception as e:
-            print(f"Error checking process security: {e}")
+            logger.error(f"Error checking process security: {e}")
             return []
 
     def _detect_lora_devices(self) -> List[str]:
@@ -905,7 +908,7 @@ class StateMonitor:
                         devices.append(f"Interface: {iface}")
 
         except Exception as e:
-            print(f"Error detecting LoRa devices: {e}")
+            logger.error(f"Error detecting LoRa devices: {e}")
 
         return devices
 
@@ -964,7 +967,7 @@ class StateMonitor:
                 pass
 
         except Exception as e:
-            print(f"Error detecting Thread devices: {e}")
+            logger.error(f"Error detecting Thread devices: {e}")
 
         return devices
 
@@ -1000,7 +1003,7 @@ class StateMonitor:
                         pass
 
         except Exception as e:
-            print(f"Error detecting WiMAX interfaces: {e}")
+            logger.error(f"Error detecting WiMAX interfaces: {e}")
 
         return interfaces
 
@@ -1052,7 +1055,7 @@ class StateMonitor:
                 pass
 
         except Exception as e:
-            print(f"Error detecting IrDA devices: {e}")
+            logger.error(f"Error detecting IrDA devices: {e}")
 
         return devices
 
@@ -1122,7 +1125,7 @@ class StateMonitor:
                 pass
 
         except Exception as e:
-            print(f"Error detecting ANT+ devices: {e}")
+            logger.error(f"Error detecting ANT+ devices: {e}")
 
         return devices
 
@@ -1194,7 +1197,7 @@ class StateMonitor:
                     alerts.append(f"{CellularSecurityAlert.TOWER_CHANGE.value}: Unexpected LAC: {lac}")
 
         except Exception as e:
-            print(f"Error detecting cellular security threats: {e}")
+            logger.error(f"Error detecting cellular security threats: {e}")
 
         return alerts
 
@@ -1295,7 +1298,7 @@ class StateMonitor:
             return info if info else None
 
         except Exception as e:
-            print(f"Error getting cellular info: {e}")
+            logger.error(f"Error getting cellular info: {e}")
             return None
 
     def _check_hardware(self) -> Dict:
@@ -1314,14 +1317,14 @@ class StateMonitor:
                         continue
                     usb_devices.add(device)
         except Exception as e:
-            print(f"Error checking USB devices: {e}")
+            logger.error(f"Error checking USB devices: {e}")
 
         # Check block devices
         try:
             for partition in psutil.disk_partitions(all=True):
                 block_devices.add(partition.device)
         except Exception as e:
-            print(f"Error checking block devices: {e}")
+            logger.error(f"Error checking block devices: {e}")
 
         # Check for camera devices
         try:
@@ -1388,7 +1391,7 @@ class StateMonitor:
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
         except Exception as e:
-            print(f"Error checking processes: {e}")
+            logger.error(f"Error checking processes: {e}")
 
         return {
             'external_endpoints': external_endpoints,
@@ -1415,7 +1418,7 @@ class StateMonitor:
                 last_activity = datetime.fromtimestamp(users[0].started).isoformat()
                 keyboard_active = True
         except Exception as e:
-            print(f"Error checking human presence: {e}")
+            logger.error(f"Error checking human presence: {e}")
 
         return {
             'keyboard_active': keyboard_active,

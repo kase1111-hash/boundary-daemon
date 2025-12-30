@@ -112,6 +112,12 @@ class SecureConfigOptions:
     # Key derivation settings
     kdf_iterations: int = 480000  # OWASP recommended
 
+    # SECURITY: Boot ID inclusion in key derivation
+    # WARNING: If True, encrypted configs become unreadable after reboot!
+    # Set to False for persistent config encryption across reboots.
+    # Set to True only if you need forward secrecy and accept data loss on reboot.
+    use_boot_id: bool = False  # Default to False to prevent data loss
+
     # File permissions
     file_mode: int = 0o600
 
@@ -222,12 +228,19 @@ class SecureConfigStorage:
                 pass
 
         # Boot ID (changes on reboot - provides some forward secrecy)
-        boot_id_path = Path("/proc/sys/kernel/random/boot_id")
-        if boot_id_path.exists():
-            try:
-                machine_data.append(boot_id_path.read_text().strip())
-            except Exception:
-                pass
+        # SECURITY WARNING: Including boot_id means configs are unreadable after reboot!
+        if self.options.use_boot_id:
+            boot_id_path = Path("/proc/sys/kernel/random/boot_id")
+            if boot_id_path.exists():
+                try:
+                    machine_data.append(boot_id_path.read_text().strip())
+                    logger.warning(
+                        "SECURITY: Boot ID is included in key derivation. "
+                        "Encrypted configs will be UNREADABLE after system reboot. "
+                        "Set use_boot_id=False if you need persistent encryption."
+                    )
+                except Exception:
+                    pass
 
         # Installation-specific salt
         salt_path = Path("/etc/boundary-daemon/.config_salt")

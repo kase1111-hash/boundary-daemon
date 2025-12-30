@@ -401,15 +401,15 @@ class PrivilegeManager:
         )
 
         logger.critical(message)
-        print(f"\n{'='*70}")
-        print(f"  CRITICAL SECURITY WARNING")
-        print(f"{'='*70}")
-        print(f"  Cannot enforce {mode} mode - missing enforcement capabilities:")
+        logger.critical("=" * 70)
+        logger.critical("  CRITICAL SECURITY WARNING")
+        logger.critical("=" * 70)
+        logger.critical(f"  Cannot enforce {mode} mode - missing enforcement capabilities:")
         for m in missing:
-            print(f"    - {m}")
-        print(f"\n  The system will operate in DEGRADED SECURITY mode.")
-        print(f"  To fix: Run the daemon as root (sudo) or with required capabilities.")
-        print(f"{'='*70}\n")
+            logger.critical(f"    - {m}")
+        logger.critical("  The system will operate in DEGRADED SECURITY mode.")
+        logger.critical("  To fix: Run the daemon as root (sudo) or with required capabilities.")
+        logger.critical("=" * 70)
 
         if self._event_logger:
             try:
@@ -456,28 +456,28 @@ class PrivilegeManager:
         return self._critical_count
 
     def print_security_status(self):
-        """Print a security status report to stdout."""
+        """Log a security status report."""
         status = self.get_status()
 
-        print(f"\n{'='*60}")
-        print("  SECURITY ENFORCEMENT STATUS")
-        print(f"{'='*60}")
-        print(f"  Effective UID:     {status.effective_uid} {'(root)' if status.has_root else '(NOT ROOT)'}")
-        print(f"  Effective GID:     {status.effective_gid}")
-        print(f"  Can enforce AIRGAP:   {'YES' if status.can_enforce_airgap else 'NO - DEGRADED'}")
-        print(f"  Can enforce LOCKDOWN: {'YES' if status.can_enforce_lockdown else 'NO - DEGRADED'}")
+        logger.info("=" * 60)
+        logger.info("  SECURITY ENFORCEMENT STATUS")
+        logger.info("=" * 60)
+        logger.info(f"  Effective UID:     {status.effective_uid} {'(root)' if status.has_root else '(NOT ROOT)'}")
+        logger.info(f"  Effective GID:     {status.effective_gid}")
+        logger.info(f"  Can enforce AIRGAP:   {'YES' if status.can_enforce_airgap else 'NO - DEGRADED'}")
+        logger.info(f"  Can enforce LOCKDOWN: {'YES' if status.can_enforce_lockdown else 'NO - DEGRADED'}")
 
-        print(f"\n  Module Status:")
+        logger.info("  Module Status:")
         for module, available in status.modules_available.items():
             status_str = "AVAILABLE" if available else f"UNAVAILABLE ({status.modules_degraded.get(module, 'unknown')})"
-            print(f"    {module:<20} {status_str}")
+            logger.info(f"    {module:<20} {status_str}")
 
         if status.critical_issues:
-            print(f"\n  CRITICAL ISSUES ({len(status.critical_issues)}):")
+            logger.warning(f"  CRITICAL ISSUES ({len(status.critical_issues)}):")
             for issue in status.critical_issues[:5]:  # Show first 5
-                print(f"    - {issue.module.value}: {issue.message}")
+                logger.warning(f"    - {issue.module.value}: {issue.message}")
 
-        print(f"{'='*60}\n")
+        logger.info("=" * 60)
 
     def require_root_or_warn(self, operation: str) -> bool:
         """
@@ -493,13 +493,13 @@ class PrivilegeManager:
             return True
 
         if _is_windows():
-            print(f"\n  WARNING: '{operation}' requires Administrator privileges.")
-            print(f"  Not running as Administrator. Some features will be unavailable.")
-            print(f"  To fix: Run as Administrator.\n")
+            logger.warning(f"'{operation}' requires Administrator privileges.")
+            logger.warning("Not running as Administrator. Some features will be unavailable.")
+            logger.warning("To fix: Run as Administrator.")
         else:
-            print(f"\n  WARNING: '{operation}' requires root privileges.")
-            print(f"  Running as euid={self._effective_uid}. Some features will be unavailable.")
-            print(f"  To fix: Run with sudo or as root.\n")
+            logger.warning(f"'{operation}' requires root privileges.")
+            logger.warning(f"Running as euid={self._effective_uid}. Some features will be unavailable.")
+            logger.warning("To fix: Run with sudo or as root.")
 
         return False
 

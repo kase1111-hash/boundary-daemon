@@ -14,6 +14,9 @@ import time
 import threading
 from datetime import datetime
 from typing import Optional, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Cross-platform detection
 IS_WINDOWS = sys.platform == 'win32'
@@ -346,7 +349,7 @@ class BoundaryDaemon:
         self._integrity_verified = False
 
         if not skip_integrity_check and DAEMON_INTEGRITY_AVAILABLE:
-            print("Verifying daemon integrity...")
+            logger.info("Verifying daemon integrity...")
             self._integrity_protector = DaemonIntegrityProtector(
                 config=IntegrityConfig(
                     # In production, use restrictive settings:
@@ -360,28 +363,28 @@ class BoundaryDaemon:
             should_continue, message = self._integrity_protector.verify_startup()
 
             if not should_continue:
-                print(f"FATAL: Daemon integrity check failed: {message}")
-                print("Refusing to start - daemon files may have been tampered with!")
+                logger.critical(f"Daemon integrity check failed: {message}")
+                logger.critical("Refusing to start - daemon files may have been tampered with!")
                 raise RuntimeError(f"Daemon integrity verification failed: {message}")
 
             if "LOCKDOWN" in message:
-                print(f"WARNING: Starting in lockdown mode: {message}")
+                logger.warning(f"Starting in lockdown mode: {message}")
                 initial_mode = BoundaryMode.AIRGAP  # Force most restrictive mode
             elif "WARNING" in message:
-                print(f"SECURITY WARNING: {message}")
+                logger.warning(f"SECURITY: {message}")
             else:
-                print(f"Integrity verified: {message}")
+                logger.info(f"Integrity verified: {message}")
                 self._integrity_verified = True
         elif skip_integrity_check:
-            print("WARNING: Daemon integrity check SKIPPED - this is insecure!")
+            logger.warning("Daemon integrity check SKIPPED - this is insecure!")
         else:
-            print("Daemon integrity protection: not available")
+            logger.info("Daemon integrity protection: not available")
 
         self.log_dir = os.path.normpath(log_dir)
         os.makedirs(self.log_dir, exist_ok=True)
 
         # Initialize core components
-        print("Initializing Boundary Daemon (Agent Smith)...")
+        logger.info("Initializing Boundary Daemon (Agent Smith)...")
 
         # Initialize event logger (Plan 3: Cryptographic Log Signing)
         log_file = os.path.join(self.log_dir, 'boundary_chain.log')
@@ -394,14 +397,14 @@ class BoundaryDaemon:
                 signing_key_path = os.path.join(self.log_dir, 'signing.key')
                 self.event_logger = SignedEventLogger(log_file, signing_key_path)
                 self.signed_logging = True
-                print(f"Signed event logging enabled (key: {signing_key_path})")
-                print(f"Public verification key: {self.event_logger.get_public_key_hex()[:32]}...")
+                logger.info(f"Signed event logging enabled (key: {signing_key_path})")
+                logger.info(f"Public verification key: {self.event_logger.get_public_key_hex()[:32]}...")
             except Exception as e:
-                print(f"Warning: Signed logging failed, falling back to basic logging: {e}")
+                logger.warning(f"Signed logging failed, falling back to basic logging: {e}")
                 self.event_logger = EventLogger(log_file)
         else:
             self.event_logger = EventLogger(log_file)
-            print("Signed event logging: not available (pynacl not installed)")
+            logger.info("Signed event logging: not available (pynacl not installed)")
 
         # Initialize redundant logger (SECURITY: Addresses single logger dependency)
         if REDUNDANT_LOGGING_AVAILABLE and create_redundant_logger:
@@ -413,11 +416,11 @@ class BoundaryDaemon:
                 )
                 self.redundant_logging = True
                 healthy_count = self._redundant_logger.get_healthy_backend_count()
-                print(f"Redundant logging enabled ({healthy_count} backends available)")
+                logger.info(f"Redundant logging enabled ({healthy_count} backends available)")
             except Exception as e:
-                print(f"Warning: Redundant logging failed: {e}")
+                logger.warning(f"Redundant logging failed: {e}")
         else:
-            print("Redundant logging: not available")
+            logger.info("Redundant logging: not available")
 
         self.state_monitor = StateMonitor(poll_interval=1.0)
         self.policy_engine = PolicyEngine(initial_mode=initial_mode)
@@ -436,16 +439,16 @@ class BoundaryDaemon:
 
             # Check root status early with clear warning
             if not self.privilege_manager.check_root():
-                print("\n" + "!" * 70)
-                print("  SECURITY WARNING: Running without elevated privileges")
-                print("  Some enforcement features will be UNAVAILABLE.")
+                logger.warning("!" * 70)
+                logger.warning("  SECURITY WARNING: Running without elevated privileges")
+                logger.warning("  Some enforcement features will be UNAVAILABLE.")
                 if IS_WINDOWS:
-                    print("  For full security enforcement, run as: Administrator")
+                    logger.warning("  For full security enforcement, run as: Administrator")
                 else:
-                    print("  For full security enforcement, run as: sudo boundary-daemon")
-                print("!" * 70 + "\n")
+                    logger.warning("  For full security enforcement, run as: sudo boundary-daemon")
+                logger.warning("!" * 70)
         else:
-            print("Privilege manager not available - enforcement status may not be tracked")
+            logger.info("Privilege manager not available - enforcement status may not be tracked")
 
         # Initialize network enforcer (Plan 1 Phase 1: Network Enforcement)
         self.network_enforcer = None
@@ -455,13 +458,13 @@ class BoundaryDaemon:
                 event_logger=self.event_logger
             )
             if self.network_enforcer.is_available:
-                print(f"Network enforcement available (backend: {self.network_enforcer.backend.value})")
+                logger.info(f"Network enforcement available (backend: {self.network_enforcer.backend.value})")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.NETWORK, True
                     )
             else:
-                print("Network enforcement: NOT AVAILABLE (requires root and iptables/nftables)")
+                logger.warning("Network enforcement: NOT AVAILABLE (requires root and iptables/nftables)")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.NETWORK, False,
@@ -469,13 +472,13 @@ class BoundaryDaemon:
                     )
         else:
             if IS_WINDOWS:
-                print("Network enforcement: Windows mode (iptables/nftables not available)")
+                logger.info("Network enforcement: Windows mode (iptables/nftables not available)")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.NETWORK, False, "Linux-only (uses iptables/nftables)"
                     )
             else:
-                print("Network enforcement module not loaded")
+                logger.info("Network enforcement module not loaded")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.NETWORK, False, "Module not loaded"
@@ -489,13 +492,13 @@ class BoundaryDaemon:
                 event_logger=self.event_logger
             )
             if self.usb_enforcer.is_available:
-                print(f"USB enforcement available (udev rules at {self.usb_enforcer.UDEV_RULE_PATH})")
+                logger.info(f"USB enforcement available (udev rules at {self.usb_enforcer.UDEV_RULE_PATH})")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.USB, True
                     )
             else:
-                print("USB enforcement: NOT AVAILABLE (requires root and udev)")
+                logger.warning("USB enforcement: NOT AVAILABLE (requires root and udev)")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.USB, False,
@@ -503,13 +506,13 @@ class BoundaryDaemon:
                     )
         else:
             if IS_WINDOWS:
-                print("USB enforcement: Windows mode (udev not available)")
+                logger.info("USB enforcement: Windows mode (udev not available)")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.USB, False, "Linux-only (uses udev)"
                     )
             else:
-                print("USB enforcement module not loaded")
+                logger.info("USB enforcement module not loaded")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.USB, False, "Module not loaded"
@@ -524,13 +527,13 @@ class BoundaryDaemon:
             )
             if self.process_enforcer.is_available:
                 runtime = self.process_enforcer.container_runtime.value
-                print(f"Process enforcement available (seccomp + container: {runtime})")
+                logger.info(f"Process enforcement available (seccomp + container: {runtime})")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.PROCESS, True
                     )
             else:
-                print("Process enforcement: NOT AVAILABLE (requires root)")
+                logger.warning("Process enforcement: NOT AVAILABLE (requires root)")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.PROCESS, False,
@@ -538,13 +541,13 @@ class BoundaryDaemon:
                     )
         else:
             if IS_WINDOWS:
-                print("Process enforcement: Windows mode (seccomp not available)")
+                logger.info("Process enforcement: Windows mode (seccomp not available)")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.PROCESS, False, "Linux-only (uses seccomp)"
                     )
             else:
-                print("Process enforcement module not loaded")
+                logger.info("Process enforcement module not loaded")
                 if self.privilege_manager:
                     self.privilege_manager.register_module(
                         EnforcementModule.PROCESS, False, "Module not loaded"
@@ -559,12 +562,12 @@ class BoundaryDaemon:
                     cleanup_policy=CleanupPolicy.EXPLICIT_ONLY,
                     event_logger=self.event_logger,
                 )
-                print("Protection persistence enabled (protections survive restarts)")
+                logger.info("Protection persistence enabled (protections survive restarts)")
 
                 # Check for orphaned protections from crashed daemon
                 orphaned = self.protection_persistence.check_orphaned_protections()
                 if orphaned:
-                    print(f"  Found {len(orphaned)} orphaned protections from previous daemon")
+                    logger.info(f"  Found {len(orphaned)} orphaned protections from previous daemon")
 
                 # Mark daemon started
                 self.protection_persistence.mark_daemon_started()
@@ -579,11 +582,11 @@ class BoundaryDaemon:
                 self._reapply_persisted_protections()
 
             except Exception as e:
-                print(f"Warning: Protection persistence failed to initialize: {e}")
-                print("  Protections will NOT survive daemon restarts!")
+                logger.warning(f"Protection persistence failed to initialize: {e}")
+                logger.warning("  Protections will NOT survive daemon restarts!")
         else:
-            print("Protection persistence: not available")
-            print("  WARNING: Protections will be removed on daemon shutdown!")
+            logger.info("Protection persistence: not available")
+            logger.warning("  Protections will be removed on daemon shutdown!")
 
         # Initialize TPM manager (Plan 2: TPM Integration)
         self.tpm_manager = None
@@ -593,11 +596,11 @@ class BoundaryDaemon:
                 event_logger=self.event_logger
             )
             if self.tpm_manager.is_available:
-                print(f"TPM integration available (backend: {self.tpm_manager.backend.value})")
+                logger.info(f"TPM integration available (backend: {self.tpm_manager.backend.value})")
             else:
-                print("TPM integration: not available (no TPM hardware or tools)")
+                logger.info("TPM integration: not available (no TPM hardware or tools)")
         else:
-            print("TPM integration module not loaded")
+            logger.info("TPM integration module not loaded")
 
         # Initialize cluster manager (Plan 4: Distributed Deployment)
         self.cluster_manager = None
@@ -613,13 +616,13 @@ class BoundaryDaemon:
                         coordinator=coordinator
                     )
                     self.cluster_enabled = True
-                    print(f"Cluster coordination available (node: {self.cluster_manager.node_id})")
+                    logger.info(f"Cluster coordination available (node: {self.cluster_manager.node_id})")
                 except Exception as e:
-                    print(f"Warning: Cluster coordination failed to initialize: {e}")
+                    logger.warning(f"Cluster coordination failed to initialize: {e}")
             else:
-                print("Cluster coordination: not enabled (set BOUNDARY_CLUSTER_DIR to enable)")
+                logger.info("Cluster coordination: not enabled (set BOUNDARY_CLUSTER_DIR to enable)")
         else:
-            print("Cluster coordination module not loaded")
+            logger.info("Cluster coordination module not loaded")
 
         # Initialize custom policy engine (Plan 5: Custom Policy Language)
         self.custom_policy_engine = None
@@ -632,13 +635,13 @@ class BoundaryDaemon:
                     self.custom_policy_engine = CustomPolicyEngine(policy_dir)
                     self.custom_policy_enabled = True
                     policy_count = len(self.custom_policy_engine.get_enabled_policies())
-                    print(f"Custom policy engine available ({policy_count} policies from {policy_dir})")
+                    logger.info(f"Custom policy engine available ({policy_count} policies from {policy_dir})")
                 except Exception as e:
-                    print(f"Warning: Custom policy engine failed to initialize: {e}")
+                    logger.warning(f"Custom policy engine failed to initialize: {e}")
             else:
-                print("Custom policy engine: not enabled (set BOUNDARY_POLICY_DIR to enable)")
+                logger.info("Custom policy engine: not enabled (set BOUNDARY_POLICY_DIR to enable)")
         else:
-            print("Custom policy engine module not loaded")
+            logger.info("Custom policy engine module not loaded")
 
         # Initialize biometric authentication (Plan 6: Biometric Authentication)
         self.biometric_verifier = None
@@ -665,15 +668,15 @@ class BoundaryDaemon:
                     )
                     self.biometric_enabled = True
                     caps = self.biometric_verifier.get_capabilities()
-                    print(f"Biometric authentication available ({caps['enrolled_count']} templates enrolled)")
-                    print(f"  Fingerprint: {'Available' if caps['fingerprint_available'] else 'Not available'}")
-                    print(f"  Face: {'Available' if caps['face_available'] else 'Not available'}")
+                    logger.info(f"Biometric authentication available ({caps['enrolled_count']} templates enrolled)")
+                    logger.info(f"  Fingerprint: {'Available' if caps['fingerprint_available'] else 'Not available'}")
+                    logger.info(f"  Face: {'Available' if caps['face_available'] else 'Not available'}")
                 except Exception as e:
-                    print(f"Warning: Biometric authentication failed to initialize: {e}")
+                    logger.warning(f"Biometric authentication failed to initialize: {e}")
             else:
-                print("Biometric authentication: not enabled (set BOUNDARY_BIOMETRIC_DIR to enable)")
+                logger.info("Biometric authentication: not enabled (set BOUNDARY_BIOMETRIC_DIR to enable)")
         else:
-            print("Biometric authentication module not loaded")
+            logger.info("Biometric authentication module not loaded")
 
         # Initialize code vulnerability advisor (Plan 7: LLM-Powered Security)
         self.security_advisor = None
@@ -691,15 +694,15 @@ class BoundaryDaemon:
                     )
                     self.security_advisor_enabled = True
                     stats = self.security_advisor.get_summary_stats()
-                    print(f"Security advisor available (model: {self.security_advisor.model})")
-                    print(f"  Ollama: {'Available' if self.security_advisor.is_available() else 'Not available'}")
-                    print(f"  Stored advisories: {stats['total']}")
+                    logger.info(f"Security advisor available (model: {self.security_advisor.model})")
+                    logger.info(f"  Ollama: {'Available' if self.security_advisor.is_available() else 'Not available'}")
+                    logger.info(f"  Stored advisories: {stats['total']}")
                 except Exception as e:
-                    print(f"Warning: Security advisor failed to initialize: {e}")
+                    logger.warning(f"Security advisor failed to initialize: {e}")
             else:
-                print("Security advisor: not enabled (set BOUNDARY_SECURITY_DIR to enable)")
+                logger.info("Security advisor: not enabled (set BOUNDARY_SECURITY_DIR to enable)")
         else:
-            print("Security advisor module not loaded")
+            logger.info("Security advisor module not loaded")
 
         # Initialize log watchdog (Plan 8: Log Watchdog Agent)
         self.log_watchdog = None
@@ -726,16 +729,16 @@ class BoundaryDaemon:
                     )
                     self.watchdog_enabled = True
                     stats = self.log_watchdog.get_summary_stats()
-                    print(f"Log watchdog available (model: {self.log_watchdog.model})")
-                    print(f"  Ollama: {'Available' if self.log_watchdog.is_available() else 'Not available'}")
-                    print(f"  Monitoring: {len(log_paths)} log file(s)")
-                    print(f"  Stored alerts: {stats['total']}")
+                    logger.info(f"Log watchdog available (model: {self.log_watchdog.model})")
+                    logger.info(f"  Ollama: {'Available' if self.log_watchdog.is_available() else 'Not available'}")
+                    logger.info(f"  Monitoring: {len(log_paths)} log file(s)")
+                    logger.info(f"  Stored alerts: {stats['total']}")
                 except Exception as e:
-                    print(f"Warning: Log watchdog failed to initialize: {e}")
+                    logger.warning(f"Log watchdog failed to initialize: {e}")
             else:
-                print("Log watchdog: not enabled (set BOUNDARY_WATCHDOG_DIR to enable)")
+                logger.info("Log watchdog: not enabled (set BOUNDARY_WATCHDOG_DIR to enable)")
         else:
-            print("Log watchdog module not loaded")
+            logger.info("Log watchdog module not loaded")
 
         # Initialize telemetry (Plan 9: OpenTelemetry Integration)
         self.telemetry_manager = None
@@ -753,18 +756,18 @@ class BoundaryDaemon:
                     if self.telemetry_manager.initialize():
                         self.telemetry_enabled = True
                         stats = self.telemetry_manager.get_summary_stats()
-                        print(f"Telemetry available (OTel: {stats['otel_available']}, OTLP: {stats['otlp_available']})")
-                        print(f"  Export mode: {stats['export_mode']}")
-                        print(f"  Instance ID: {stats['instance_id']}")
+                        logger.info(f"Telemetry available (OTel: {stats['otel_available']}, OTLP: {stats['otlp_available']})")
+                        logger.info(f"  Export mode: {stats['export_mode']}")
+                        logger.info(f"  Instance ID: {stats['instance_id']}")
                     else:
-                        print("Telemetry: initialized in fallback mode")
+                        logger.info("Telemetry: initialized in fallback mode")
                         self.telemetry_enabled = True
                 except Exception as e:
-                    print(f"Warning: Telemetry failed to initialize: {e}")
+                    logger.warning(f"Telemetry failed to initialize: {e}")
             else:
-                print("Telemetry: not enabled (set BOUNDARY_TELEMETRY_DIR to enable)")
+                logger.info("Telemetry: not enabled (set BOUNDARY_TELEMETRY_DIR to enable)")
         else:
-            print("Telemetry module not loaded")
+            logger.info("Telemetry module not loaded")
 
         # Initialize memory monitor (Plan 11: Memory Leak Monitoring)
         self.memory_monitor = None
@@ -802,18 +805,18 @@ class BoundaryDaemon:
 
                 self.memory_monitor_enabled = self.memory_monitor.is_available
                 if self.memory_monitor_enabled:
-                    print(f"Memory monitor available (interval: {sample_interval}s)")
-                    print(f"  RSS warning: {rss_warning_mb} MB, critical: {rss_critical_mb} MB")
-                    print(f"  Leak detection: {'enabled' if leak_detection else 'disabled'}")
+                    logger.info(f"Memory monitor available (interval: {sample_interval}s)")
+                    logger.info(f"  RSS warning: {rss_warning_mb} MB, critical: {rss_critical_mb} MB")
+                    logger.info(f"  Leak detection: {'enabled' if leak_detection else 'disabled'}")
                     if debug_enabled:
-                        print(f"  DEBUG MODE: enabled (auto-disable: {debug_auto_disable}s)")
-                        print(f"  WARNING: tracemalloc causes performance overhead")
+                        logger.info(f"  DEBUG MODE: enabled (auto-disable: {debug_auto_disable}s)")
+                        logger.warning("  tracemalloc causes performance overhead")
                 else:
-                    print("Memory monitor: psutil not available")
+                    logger.info("Memory monitor: psutil not available")
             except Exception as e:
-                print(f"Warning: Memory monitor failed to initialize: {e}")
+                logger.warning(f"Memory monitor failed to initialize: {e}")
         else:
-            print("Memory monitor module not loaded")
+            logger.info("Memory monitor module not loaded")
 
         # Initialize resource monitor (Plan 11: Resource Monitoring - FD, Threads, Disk, CPU)
         self.resource_monitor = None
@@ -846,14 +849,14 @@ class BoundaryDaemon:
 
                 self.resource_monitor_enabled = self.resource_monitor.is_available
                 if self.resource_monitor_enabled:
-                    print(f"Resource monitor available (interval: {sample_interval}s)")
-                    print(f"  FD warning: {fd_warning}%, Disk warning: {disk_warning}%")
+                    logger.info(f"Resource monitor available (interval: {sample_interval}s)")
+                    logger.info(f"  FD warning: {fd_warning}%, Disk warning: {disk_warning}%")
                 else:
-                    print("Resource monitor: psutil not available")
+                    logger.info("Resource monitor: psutil not available")
             except Exception as e:
-                print(f"Warning: Resource monitor failed to initialize: {e}")
+                logger.warning(f"Resource monitor failed to initialize: {e}")
         else:
-            print("Resource monitor module not loaded")
+            logger.info("Resource monitor module not loaded")
 
         # Initialize health monitor (Plan 11: Health Monitoring)
         self.health_monitor = None
@@ -879,12 +882,12 @@ class BoundaryDaemon:
                     self.health_monitor.set_telemetry_manager(self.telemetry_manager)
 
                 self.health_monitor_enabled = True
-                print(f"Health monitor available (check interval: {check_interval}s)")
-                print(f"  Heartbeat timeout: {heartbeat_timeout}s")
+                logger.info(f"Health monitor available (check interval: {check_interval}s)")
+                logger.info(f"  Heartbeat timeout: {heartbeat_timeout}s")
             except Exception as e:
-                print(f"Warning: Health monitor failed to initialize: {e}")
+                logger.warning(f"Health monitor failed to initialize: {e}")
         else:
-            print("Health monitor module not loaded")
+            logger.info("Health monitor module not loaded")
 
         # Initialize queue monitor (Plan 11: Queue Monitoring)
         self.queue_monitor = None
@@ -912,12 +915,12 @@ class BoundaryDaemon:
                     self.queue_monitor.set_telemetry_manager(self.telemetry_manager)
 
                 self.queue_monitor_enabled = True
-                print(f"Queue monitor available (sample interval: {sample_interval}s)")
-                print(f"  Warning depth: {warning_depth}, Critical depth: {critical_depth}")
+                logger.info(f"Queue monitor available (sample interval: {sample_interval}s)")
+                logger.info(f"  Warning depth: {warning_depth}, Critical depth: {critical_depth}")
             except Exception as e:
-                print(f"Warning: Queue monitor failed to initialize: {e}")
+                logger.warning(f"Queue monitor failed to initialize: {e}")
         else:
-            print("Queue monitor module not loaded")
+            logger.info("Queue monitor module not loaded")
 
         # Initialize report generator (Plan 11: Report Generation with Ollama)
         self.report_generator = None
@@ -936,11 +939,11 @@ class BoundaryDaemon:
                     daemon=self,
                     ollama_config=ollama_config,
                 )
-                print(f"Report generator available (Ollama: {ollama_endpoint}, model: {ollama_model})")
+                logger.info(f"Report generator available (Ollama: {ollama_endpoint}, model: {ollama_model})")
             except Exception as e:
-                print(f"Warning: Report generator failed to initialize: {e}")
+                logger.warning(f"Report generator failed to initialize: {e}")
         else:
-            print("Report generator module not loaded")
+            logger.info("Report generator module not loaded")
 
         # Initialize message checker (Plan 10: Message Checking for NatLangChain/Agent-OS)
         self.message_checker = None
@@ -952,13 +955,13 @@ class BoundaryDaemon:
                 self.message_checker = MessageChecker(daemon=self, strict_mode=strict_mode)
                 self.message_checker_enabled = True
                 mode_str = "strict" if strict_mode else "permissive"
-                print(f"Message checker available (mode: {mode_str})")
-                print(f"  NatLangChain: Enabled")
-                print(f"  Agent-OS: Enabled")
+                logger.info(f"Message checker available (mode: {mode_str})")
+                logger.info(f"  NatLangChain: Enabled")
+                logger.info(f"  Agent-OS: Enabled")
             except Exception as e:
-                print(f"Warning: Message checker failed to initialize: {e}")
+                logger.warning(f"Message checker failed to initialize: {e}")
         else:
-            print("Message checker module not loaded")
+            logger.info("Message checker module not loaded")
 
         # Initialize clock monitor (Clock Drift Protection)
         self.clock_monitor = None
@@ -972,11 +975,11 @@ class BoundaryDaemon:
                     on_manipulation=self._on_clock_manipulation,
                 )
                 self.clock_monitor_enabled = True
-                print("Clock monitor available")
+                logger.info("Clock monitor available")
             except Exception as e:
-                print(f"Warning: Clock monitor failed to initialize: {e}")
+                logger.warning(f"Clock monitor failed to initialize: {e}")
         else:
-            print("Clock monitor module not loaded")
+            logger.info("Clock monitor module not loaded")
 
         # Initialize hardened watchdog endpoint (SECURITY: Resilient Daemon Monitoring)
         # This addresses Critical Finding #6: "External Watchdog Can Be Killed"
@@ -1001,13 +1004,13 @@ class BoundaryDaemon:
                     health_checker=daemon_health_check,
                 )
                 self.hardened_watchdog_enabled = True
-                print("Hardened watchdog endpoint available")
-                print("  SECURITY: External watchdogs can now monitor daemon health")
-                print("  Run 'boundary-watchdog' as a separate service for protection")
+                logger.info("Hardened watchdog endpoint available")
+                logger.info("  SECURITY: External watchdogs can now monitor daemon health")
+                logger.info("  Run 'boundary-watchdog' as a separate service for protection")
             except Exception as e:
-                print(f"Warning: Hardened watchdog endpoint failed to initialize: {e}")
+                logger.warning(f"Hardened watchdog endpoint failed to initialize: {e}")
         else:
-            print("Hardened watchdog: not available (watchdog module not loaded)")
+            logger.info("Hardened watchdog: not available (watchdog module not loaded)")
 
         # Daemon state
         self._running = False
@@ -1024,9 +1027,9 @@ class BoundaryDaemon:
             if self.telemetry_manager:
                 self.api_server.set_telemetry_manager(self.telemetry_manager)
 
-            print(f"API server initialized (socket: {socket_path})")
+            logger.info(f"API server initialized (socket: {socket_path})")
         else:
-            print("API server: not available")
+            logger.info("API server: not available")
 
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -1042,7 +1045,7 @@ class BoundaryDaemon:
             metadata={'initial_mode': initial_mode.name}
         )
 
-        print(f"Boundary Daemon initialized in {initial_mode.name} mode")
+        logger.info(f"Boundary Daemon initialized in {initial_mode.name} mode")
 
         # Print security enforcement status (SECURITY: No more silent failures)
         if self.privilege_manager:
@@ -1090,7 +1093,7 @@ class BoundaryDaemon:
                     'reason': reason
                 }
             )
-            print(f"Mode transition: {old_mode.name} → {new_mode.name} ({operator.value})")
+            logger.info(f"Mode transition: {old_mode.name} → {new_mode.name} ({operator.value})")
 
             # SECURITY: Check if we can properly enforce security-critical modes
             # Addresses Critical Finding: "Root Privilege Required = Silent Failure"
@@ -1113,11 +1116,11 @@ class BoundaryDaemon:
                 try:
                     success, msg = self.network_enforcer.enforce_mode(new_mode, reason)
                     if success:
-                        print(f"Network enforcement applied: {msg}")
+                        logger.info(f"Network enforcement applied: {msg}")
                     else:
-                        print(f"Network enforcement warning: {msg}")
+                        logger.warning(f"Network enforcement warning: {msg}")
                 except Exception as e:
-                    print(f"Network enforcement error: {e}")
+                    logger.error(f"Network enforcement error: {e}")
                     # On enforcement failure, trigger lockdown (fail-closed)
                     if new_mode != BoundaryMode.LOCKDOWN:
                         self.event_logger.log_event(
@@ -1131,11 +1134,11 @@ class BoundaryDaemon:
                 try:
                     success, msg = self.usb_enforcer.enforce_mode(new_mode, reason)
                     if success:
-                        print(f"USB enforcement applied: {msg}")
+                        logger.info(f"USB enforcement applied: {msg}")
                     else:
-                        print(f"USB enforcement warning: {msg}")
+                        logger.warning(f"USB enforcement warning: {msg}")
                 except Exception as e:
-                    print(f"USB enforcement error: {e}")
+                    logger.error(f"USB enforcement error: {e}")
                     # On enforcement failure, trigger lockdown (fail-closed)
                     if new_mode != BoundaryMode.LOCKDOWN:
                         self.event_logger.log_event(
@@ -1149,11 +1152,11 @@ class BoundaryDaemon:
                 try:
                     success, msg = self.process_enforcer.enforce_mode(new_mode, reason)
                     if success:
-                        print(f"Process enforcement applied: {msg}")
+                        logger.info(f"Process enforcement applied: {msg}")
                     else:
-                        print(f"Process enforcement warning: {msg}")
+                        logger.warning(f"Process enforcement warning: {msg}")
                 except Exception as e:
-                    print(f"Process enforcement error: {e}")
+                    logger.error(f"Process enforcement error: {e}")
                     # On enforcement failure, trigger lockdown (fail-closed)
                     if new_mode != BoundaryMode.LOCKDOWN:
                         self.event_logger.log_event(
@@ -1166,9 +1169,9 @@ class BoundaryDaemon:
             if self.tpm_manager and self.tpm_manager.is_available:
                 try:
                     attestation = self.tpm_manager.bind_mode_to_tpm(new_mode, reason)
-                    print(f"TPM attestation recorded: mode {new_mode.name} bound to PCR {attestation.pcr_index}")
+                    logger.info(f"TPM attestation recorded: mode {new_mode.name} bound to PCR {attestation.pcr_index}")
                 except Exception as e:
-                    print(f"TPM attestation warning: {e}")
+                    logger.warning(f"TPM attestation warning: {e}")
                     # TPM attestation failure is non-critical, continue operation
 
         self.policy_engine.register_transition_callback(on_mode_transition)
@@ -1198,10 +1201,10 @@ class BoundaryDaemon:
 
     def _handle_violation(self, violation: TripwireViolation):
         """Handle a tripwire violation"""
-        print(f"\n*** SECURITY VIOLATION DETECTED ***")
-        print(f"Type: {violation.violation_type.value}")
-        print(f"Details: {violation.details}")
-        print(f"System entering LOCKDOWN mode\n")
+        logger.critical("*** SECURITY VIOLATION DETECTED ***")
+        logger.critical(f"Type: {violation.violation_type.value}")
+        logger.critical(f"Details: {violation.details}")
+        logger.critical("System entering LOCKDOWN mode")
 
     def _on_privilege_critical(self, issue):
         """
@@ -1213,18 +1216,18 @@ class BoundaryDaemon:
 
         Addresses Critical Finding: "Root Privilege Required = Silent Failure"
         """
-        print(f"\n{'!'*70}")
-        print(f"  CRITICAL PRIVILEGE ISSUE")
-        print(f"{'!'*70}")
-        print(f"  Module:    {issue.module.value}")
-        print(f"  Operation: {issue.operation}")
-        print(f"  Message:   {issue.message}")
-        print(f"\n  Security enforcement is DEGRADED.")
+        logger.critical("!" * 70)
+        logger.critical("  CRITICAL PRIVILEGE ISSUE")
+        logger.critical("!" * 70)
+        logger.critical(f"  Module:    {issue.module.value}")
+        logger.critical(f"  Operation: {issue.operation}")
+        logger.critical(f"  Message:   {issue.message}")
+        logger.critical("  Security enforcement is DEGRADED.")
         if IS_WINDOWS:
-            print(f"  To fix: Run daemon as Administrator")
+            logger.critical("  To fix: Run daemon as Administrator")
         else:
-            print(f"  To fix: Run daemon as root (sudo boundary-daemon)")
-        print(f"{'!'*70}\n")
+            logger.critical("  To fix: Run daemon as root (sudo boundary-daemon)")
+        logger.critical("!" * 70)
 
         # Log to event logger
         self.event_logger.log_event(
@@ -1248,7 +1251,7 @@ class BoundaryDaemon:
         if not self.protection_persistence:
             return
 
-        print("Checking for persisted protections...")
+        logger.info("Checking for persisted protections...")
 
         reapplied = []
 
@@ -1265,16 +1268,16 @@ class BoundaryDaemon:
                 reapplied.append(f"USB: {mode}")
 
         if reapplied:
-            print(f"  Re-applied {len(reapplied)} persisted protections:")
+            logger.info(f"  Re-applied {len(reapplied)} persisted protections:")
             for prot in reapplied:
-                print(f"    - {prot}")
+                logger.info(f"    - {prot}")
             self.event_logger.log_event(
                 EventType.DAEMON_START,
                 f"Re-applied {len(reapplied)} persisted protections from previous run",
                 metadata={'protections': reapplied}
             )
         else:
-            print("  No persisted protections to re-apply")
+            logger.info("  No persisted protections to re-apply")
 
     def request_cleanup_all(self, token: str, force: bool = False) -> Tuple[bool, str]:
         """
@@ -1324,11 +1327,11 @@ class BoundaryDaemon:
 
         # High severity jumps may indicate attack - consider lockdown
         if event.severity in ("HIGH", "CRITICAL"):
-            print(f"\n*** TIME MANIPULATION DETECTED ***")
-            print(f"Direction: {direction}")
-            print(f"Jump: {abs(event.jump_seconds):.1f} seconds")
-            print(f"Severity: {event.severity}")
-            print(f"This may indicate an attempt to bypass time-based security controls.\n")
+            logger.warning("*** TIME MANIPULATION DETECTED ***")
+            logger.warning(f"Direction: {direction}")
+            logger.warning(f"Jump: {abs(event.jump_seconds):.1f} seconds")
+            logger.warning(f"Severity: {event.severity}")
+            logger.warning("This may indicate an attempt to bypass time-based security controls.")
 
     def _on_ntp_lost(self):
         """Handle NTP synchronization loss."""
@@ -1337,7 +1340,7 @@ class BoundaryDaemon:
             "NTP synchronization lost - system clock may drift",
             metadata={'timestamp': datetime.utcnow().isoformat()}
         )
-        print("[CLOCK] Warning: NTP synchronization lost")
+        logger.warning("[CLOCK] NTP synchronization lost")
 
     def _on_clock_manipulation(self, reason: str):
         """Handle confirmed clock manipulation."""
@@ -1350,7 +1353,7 @@ class BoundaryDaemon:
                 'action': 'logged',
             }
         )
-        print(f"[CLOCK] MANIPULATION: {reason}")
+        logger.warning(f"[CLOCK] MANIPULATION: {reason}")
 
     def _on_memory_alert(self, alert):
         """Handle memory alert from memory monitor."""
@@ -1377,18 +1380,18 @@ class BoundaryDaemon:
                 threshold=alert.threshold,
             )
 
-        # Print to console
-        level_prefix = {
-            'info': '[MEMORY]',
-            'warning': '[MEMORY] WARNING:',
-            'critical': '[MEMORY] CRITICAL:',
-        }.get(alert.level.value, '[MEMORY]')
-        print(f"{level_prefix} {alert.message}")
+        # Log to console
+        if alert.level.value == 'critical':
+            logger.critical(f"[MEMORY] {alert.message}")
+        elif alert.level.value == 'warning':
+            logger.warning(f"[MEMORY] {alert.message}")
+        else:
+            logger.info(f"[MEMORY] {alert.message}")
 
         # For critical memory alerts (confirmed leaks or very high usage),
         # consider taking action
         if alert.level.value == 'critical' and 'confirmed' in alert.alert_type:
-            print("[MEMORY] Confirmed memory leak detected - consider restarting daemon")
+            logger.critical("[MEMORY] Confirmed memory leak detected - consider restarting daemon")
 
     def _on_resource_alert(self, alert):
         """Handle resource alert from resource monitor."""
@@ -1416,13 +1419,13 @@ class BoundaryDaemon:
                 current_value=alert.current_value,
             )
 
-        # Print to console
-        level_prefix = {
-            'info': '[RESOURCE]',
-            'warning': '[RESOURCE] WARNING:',
-            'critical': '[RESOURCE] CRITICAL:',
-        }.get(alert.level.value, '[RESOURCE]')
-        print(f"{level_prefix} {alert.message}")
+        # Log to console
+        if alert.level.value == 'critical':
+            logger.critical(f"[RESOURCE] {alert.message}")
+        elif alert.level.value == 'warning':
+            logger.warning(f"[RESOURCE] {alert.message}")
+        else:
+            logger.info(f"[RESOURCE] {alert.message}")
 
     def _on_health_alert(self, alert):
         """Handle health alert from health monitor."""
@@ -1437,11 +1440,11 @@ class BoundaryDaemon:
             }
         )
 
-        # Print to console
+        # Log to console
         if alert.new_status.value in ('error', 'unresponsive'):
-            print(f"[HEALTH] ALERT: {alert.component} - {alert.message}")
+            logger.error(f"[HEALTH] ALERT: {alert.component} - {alert.message}")
         else:
-            print(f"[HEALTH] {alert.component} - {alert.message}")
+            logger.info(f"[HEALTH] {alert.component} - {alert.message}")
 
     def _on_queue_alert(self, alert):
         """Handle alert from queue monitor."""
@@ -1458,21 +1461,21 @@ class BoundaryDaemon:
             }
         )
 
-        # Print to console
-        level_prefix = {
-            'info': '[QUEUE]',
-            'warning': '[QUEUE] WARNING:',
-            'critical': '[QUEUE] CRITICAL:',
-        }.get(alert.level.value, '[QUEUE]')
-        print(f"{level_prefix} {alert.queue_name} - {alert.message}")
+        # Log to console
+        if alert.level.value == 'critical':
+            logger.critical(f"[QUEUE] {alert.queue_name} - {alert.message}")
+        elif alert.level.value == 'warning':
+            logger.warning(f"[QUEUE] {alert.queue_name} - {alert.message}")
+        else:
+            logger.info(f"[QUEUE] {alert.queue_name} - {alert.message}")
 
     def start(self):
         """Start the boundary daemon"""
         if self._running:
-            print("Daemon already running")
+            logger.warning("Daemon already running")
             return
 
-        print("Starting Boundary Daemon...")
+        logger.info("Starting Boundary Daemon...")
         self._running = True
 
         # Apply initial enforcement (Plan 1)
@@ -1486,11 +1489,11 @@ class BoundaryDaemon:
                     reason="Initial enforcement on daemon start"
                 )
                 if success:
-                    print(f"Initial network enforcement applied for {current_mode.name} mode")
+                    logger.info(f"Initial network enforcement applied for {current_mode.name} mode")
                 else:
-                    print(f"Warning: {msg}")
+                    logger.warning(f"{msg}")
             except Exception as e:
-                print(f"Warning: Initial network enforcement failed: {e}")
+                logger.warning(f"Initial network enforcement failed: {e}")
 
         # USB enforcement (Phase 2)
         if self.usb_enforcer and self.usb_enforcer.is_available:
@@ -1500,11 +1503,11 @@ class BoundaryDaemon:
                     reason="Initial enforcement on daemon start"
                 )
                 if success:
-                    print(f"Initial USB enforcement applied for {current_mode.name} mode")
+                    logger.info(f"Initial USB enforcement applied for {current_mode.name} mode")
                 else:
-                    print(f"Warning: {msg}")
+                    logger.warning(f"{msg}")
             except Exception as e:
-                print(f"Warning: Initial USB enforcement failed: {e}")
+                logger.warning(f"Initial USB enforcement failed: {e}")
 
         # Process enforcement (Phase 3)
         if self.process_enforcer and self.process_enforcer.is_available:
@@ -1514,11 +1517,11 @@ class BoundaryDaemon:
                     reason="Initial enforcement on daemon start"
                 )
                 if success:
-                    print(f"Initial process enforcement applied for {current_mode.name} mode")
+                    logger.info(f"Initial process enforcement applied for {current_mode.name} mode")
                 else:
-                    print(f"Warning: {msg}")
+                    logger.warning(f"{msg}")
             except Exception as e:
-                print(f"Warning: Initial process enforcement failed: {e}")
+                logger.warning(f"Initial process enforcement failed: {e}")
 
         # Start state monitoring
         self.state_monitor.start()
@@ -1531,17 +1534,17 @@ class BoundaryDaemon:
         if self.cluster_manager and self.cluster_enabled:
             try:
                 self.cluster_manager.start()
-                print(f"Cluster coordination started (node: {self.cluster_manager.node_id})")
+                logger.info(f"Cluster coordination started (node: {self.cluster_manager.node_id})")
             except Exception as e:
-                print(f"Warning: Cluster coordination failed to start: {e}")
+                logger.warning(f"Cluster coordination failed to start: {e}")
 
         # Start log watchdog (Plan 8)
         if self.log_watchdog and self.watchdog_enabled:
             try:
                 self.log_watchdog.start()
-                print(f"Log watchdog started (monitoring {len(self.log_watchdog.log_paths)} file(s))")
+                logger.info(f"Log watchdog started (monitoring {len(self.log_watchdog.log_paths)} file(s))")
             except Exception as e:
-                print(f"Warning: Log watchdog failed to start: {e}")
+                logger.warning(f"Log watchdog failed to start: {e}")
 
         # Start clock monitor (Clock Drift Protection)
         if self.clock_monitor and self.clock_monitor_enabled:
@@ -1549,9 +1552,9 @@ class BoundaryDaemon:
                 self.clock_monitor.start()
                 state = self.clock_monitor.get_state()
                 ntp_status = "synced" if state['is_ntp_synced'] else "not synced"
-                print(f"Clock monitor started (NTP: {ntp_status})")
+                logger.info(f"Clock monitor started (NTP: {ntp_status})")
             except Exception as e:
-                print(f"Warning: Clock monitor failed to start: {e}")
+                logger.warning(f"Clock monitor failed to start: {e}")
 
         # Start hardened watchdog endpoint (SECURITY: Resilient Monitoring)
         if self.watchdog_endpoint and self.hardened_watchdog_enabled:
@@ -1559,77 +1562,77 @@ class BoundaryDaemon:
                 self.watchdog_endpoint.start()
                 # Check if it actually started (returns early on Windows)
                 if getattr(self.watchdog_endpoint, '_running', False):
-                    print(f"Hardened watchdog endpoint started (socket: {self.watchdog_endpoint.socket_path})")
+                    logger.info(f"Hardened watchdog endpoint started (socket: {self.watchdog_endpoint.socket_path})")
             except Exception as e:
-                print(f"Warning: Hardened watchdog endpoint failed to start: {e}")
+                logger.warning(f"Hardened watchdog endpoint failed to start: {e}")
 
         # Start API server for CLI tools
         if self.api_server:
             try:
                 self.api_server.start()
             except Exception as e:
-                print(f"Warning: Failed to start API server: {e}")
+                logger.warning(f"Failed to start API server: {e}")
 
         # Start daemon integrity runtime monitoring (SECURITY: Continuous protection)
         if self._integrity_protector:
             try:
                 self._integrity_protector.start_monitoring()
-                print("Daemon integrity monitoring started")
+                logger.info("Daemon integrity monitoring started")
             except Exception as e:
-                print(f"Warning: Daemon integrity monitoring failed to start: {e}")
+                logger.warning(f"Daemon integrity monitoring failed to start: {e}")
 
         # Start redundant logger health monitoring (SECURITY: Logging redundancy)
         if self._redundant_logger and self.redundant_logging:
             try:
                 self._redundant_logger.start_health_monitoring()
-                print("Redundant logger health monitoring started")
+                logger.info("Redundant logger health monitoring started")
             except Exception as e:
-                print(f"Warning: Redundant logger health monitoring failed: {e}")
+                logger.warning(f"Redundant logger health monitoring failed: {e}")
 
         # Start memory monitor (Plan 11: Memory Leak Monitoring)
         if self.memory_monitor and self.memory_monitor_enabled:
             try:
                 self.memory_monitor.start()
-                print("Memory monitor started")
+                logger.info("Memory monitor started")
             except Exception as e:
-                print(f"Warning: Memory monitor failed to start: {e}")
+                logger.warning(f"Memory monitor failed to start: {e}")
 
         # Start resource monitor (Plan 11: Resource Monitoring)
         if self.resource_monitor and self.resource_monitor_enabled:
             try:
                 self.resource_monitor.start()
-                print("Resource monitor started")
+                logger.info("Resource monitor started")
             except Exception as e:
-                print(f"Warning: Resource monitor failed to start: {e}")
+                logger.warning(f"Resource monitor failed to start: {e}")
 
         # Start health monitor (Plan 11: Health Monitoring)
         if self.health_monitor and self.health_monitor_enabled:
             try:
                 self.health_monitor.start()
-                print("Health monitor started")
+                logger.info("Health monitor started")
             except Exception as e:
-                print(f"Warning: Health monitor failed to start: {e}")
+                logger.warning(f"Health monitor failed to start: {e}")
 
         # Start queue monitor (Plan 11: Queue Monitoring)
         if self.queue_monitor and self.queue_monitor_enabled:
             try:
                 self.queue_monitor.start()
-                print("Queue monitor started")
+                logger.info("Queue monitor started")
             except Exception as e:
-                print(f"Warning: Queue monitor failed to start: {e}")
+                logger.warning(f"Queue monitor failed to start: {e}")
 
         if IS_WINDOWS:
-            print("Boundary Daemon running. Close this window or press Ctrl+Break to stop.")
+            logger.info("Boundary Daemon running. Close this window or press Ctrl+Break to stop.")
         else:
-            print("Boundary Daemon running. Press Ctrl+C to stop.")
-        print("=" * 70)
+            logger.info("Boundary Daemon running. Press Ctrl+C to stop.")
+        logger.info("=" * 70)
 
     def stop(self):
         """Stop the boundary daemon"""
         if not self._running:
             return
 
-        print("\nStopping Boundary Daemon...")
+        logger.info("Stopping Boundary Daemon...")
         self._running = False
         self._shutdown_event.set()
 
@@ -1640,25 +1643,25 @@ class BoundaryDaemon:
         if self.api_server:
             try:
                 self.api_server.stop()
-                print("API server stopped")
+                logger.info("API server stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop API server: {e}")
+                logger.warning(f"Failed to stop API server: {e}")
 
         # Stop daemon integrity monitoring
         if self._integrity_protector:
             try:
                 self._integrity_protector.stop_monitoring()
-                print("Daemon integrity monitoring stopped")
+                logger.info("Daemon integrity monitoring stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop integrity monitoring: {e}")
+                logger.warning(f"Failed to stop integrity monitoring: {e}")
 
         # Stop redundant logger health monitoring
         if self._redundant_logger and self.redundant_logging:
             try:
                 self._redundant_logger.stop_health_monitoring()
-                print("Redundant logger health monitoring stopped")
+                logger.info("Redundant logger health monitoring stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop redundant logger: {e}")
+                logger.warning(f"Failed to stop redundant logger: {e}")
 
         # Stop memory monitor (Plan 11: Memory Leak Monitoring)
         if self.memory_monitor and self.memory_monitor_enabled:
@@ -1667,12 +1670,12 @@ class BoundaryDaemon:
                 stats = self.memory_monitor.get_summary_stats()
                 if stats.get('current'):
                     current = stats['current']
-                    print(f"Memory at shutdown: RSS={current['rss_mb']:.1f} MB, "
-                          f"Leak indicator={stats.get('leak_indicator', 'none')}")
+                    logger.info(f"Memory at shutdown: RSS={current['rss_mb']:.1f} MB, "
+                                f"Leak indicator={stats.get('leak_indicator', 'none')}")
                 self.memory_monitor.stop()
-                print("Memory monitor stopped")
+                logger.info("Memory monitor stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop memory monitor: {e}")
+                logger.warning(f"Failed to stop memory monitor: {e}")
 
         # Stop resource monitor (Plan 11: Resource Monitoring)
         if self.resource_monitor and self.resource_monitor_enabled:
@@ -1682,52 +1685,52 @@ class BoundaryDaemon:
                 if stats.get('current'):
                     current = stats['current']
                     fd_info = current.get('file_descriptors', {})
-                    print(f"Resources at shutdown: FD={fd_info.get('count', 0)}, "
-                          f"Threads={current.get('threads', {}).get('count', 0)}")
+                    logger.info(f"Resources at shutdown: FD={fd_info.get('count', 0)}, "
+                                f"Threads={current.get('threads', {}).get('count', 0)}")
                 self.resource_monitor.stop()
-                print("Resource monitor stopped")
+                logger.info("Resource monitor stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop resource monitor: {e}")
+                logger.warning(f"Failed to stop resource monitor: {e}")
 
         # Stop health monitor (Plan 11: Health Monitoring)
         if self.health_monitor and self.health_monitor_enabled:
             try:
                 # Log final health status
                 summary = self.health_monitor.get_summary()
-                print(f"Health at shutdown: {summary['status']}, "
-                      f"Uptime: {summary['uptime_formatted']}")
+                logger.info(f"Health at shutdown: {summary['status']}, "
+                            f"Uptime: {summary['uptime_formatted']}")
                 self.health_monitor.stop()
-                print("Health monitor stopped")
+                logger.info("Health monitor stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop health monitor: {e}")
+                logger.warning(f"Failed to stop health monitor: {e}")
 
         # Stop queue monitor (Plan 11: Queue Monitoring)
         if self.queue_monitor and self.queue_monitor_enabled:
             try:
                 # Log final queue status
                 summary = self.queue_monitor.get_summary()
-                print(f"Queues at shutdown: {summary['queue_count']} monitored, "
-                      f"total depth: {summary['total_depth']}")
+                logger.info(f"Queues at shutdown: {summary['queue_count']} monitored, "
+                            f"total depth: {summary['total_depth']}")
                 self.queue_monitor.stop()
-                print("Queue monitor stopped")
+                logger.info("Queue monitor stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop queue monitor: {e}")
+                logger.warning(f"Failed to stop queue monitor: {e}")
 
         # Stop hardened watchdog endpoint
         if self.watchdog_endpoint and self.hardened_watchdog_enabled:
             try:
                 self.watchdog_endpoint.stop()
-                print("Hardened watchdog endpoint stopped")
+                logger.info("Hardened watchdog endpoint stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop watchdog endpoint: {e}")
+                logger.warning(f"Failed to stop watchdog endpoint: {e}")
 
         # Stop clock monitor
         if self.clock_monitor and self.clock_monitor_enabled:
             try:
                 self.clock_monitor.stop()
-                print("Clock monitor stopped")
+                logger.info("Clock monitor stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop clock monitor: {e}")
+                logger.warning(f"Failed to stop clock monitor: {e}")
 
         # Wait for enforcement thread
         if self._enforcement_thread:
@@ -1743,65 +1746,65 @@ class BoundaryDaemon:
                 if cleanup_requested or not self.protection_persistence:
                     success, msg = self.network_enforcer.cleanup(graceful=True)
                     if success:
-                        print("Network enforcement rules cleaned up")
+                        logger.info("Network enforcement rules cleaned up")
                     else:
-                        print(f"Network rules preserved: {msg}")
+                        logger.info(f"Network rules preserved: {msg}")
                 else:
-                    print("Network enforcement rules PRESERVED (protection persistence enabled)")
+                    logger.info("Network enforcement rules PRESERVED (protection persistence enabled)")
             except Exception as e:
-                print(f"Warning: Failed to cleanup network rules: {e}")
+                logger.warning(f"Failed to cleanup network rules: {e}")
 
         if self.usb_enforcer and self.usb_enforcer.is_available:
             try:
                 if cleanup_requested or not self.protection_persistence:
                     success, msg = self.usb_enforcer.cleanup(graceful=True)
                     if success:
-                        print("USB enforcement rules cleaned up")
+                        logger.info("USB enforcement rules cleaned up")
                     else:
-                        print(f"USB rules preserved: {msg}")
+                        logger.info(f"USB rules preserved: {msg}")
                 else:
-                    print("USB enforcement rules PRESERVED (protection persistence enabled)")
+                    logger.info("USB enforcement rules PRESERVED (protection persistence enabled)")
             except Exception as e:
-                print(f"Warning: Failed to cleanup USB rules: {e}")
+                logger.warning(f"Failed to cleanup USB rules: {e}")
 
         if self.process_enforcer and self.process_enforcer.is_available:
             try:
                 self.process_enforcer.cleanup()
-                print("Process enforcement cleaned up")
+                logger.info("Process enforcement cleaned up")
             except Exception as e:
-                print(f"Warning: Failed to cleanup process enforcement: {e}")
+                logger.warning(f"Failed to cleanup process enforcement: {e}")
 
         # Cleanup TPM resources (Plan 2)
         if self.tpm_manager:
             try:
                 self.tpm_manager.cleanup()
-                print("TPM resources cleaned up")
+                logger.info("TPM resources cleaned up")
             except Exception as e:
-                print(f"Warning: Failed to cleanup TPM resources: {e}")
+                logger.warning(f"Failed to cleanup TPM resources: {e}")
 
         # Stop cluster coordination (Plan 4)
         if self.cluster_manager and self.cluster_enabled:
             try:
                 self.cluster_manager.stop()
-                print("Cluster coordination stopped")
+                logger.info("Cluster coordination stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop cluster coordination: {e}")
+                logger.warning(f"Failed to stop cluster coordination: {e}")
 
         # Stop log watchdog (Plan 8)
         if self.log_watchdog and self.watchdog_enabled:
             try:
                 self.log_watchdog.stop()
-                print("Log watchdog stopped")
+                logger.info("Log watchdog stopped")
             except Exception as e:
-                print(f"Warning: Failed to stop log watchdog: {e}")
+                logger.warning(f"Failed to stop log watchdog: {e}")
 
         # Shutdown telemetry (Plan 9)
         if self.telemetry_manager and self.telemetry_enabled:
             try:
                 self.telemetry_manager.shutdown()
-                print("Telemetry shutdown complete")
+                logger.info("Telemetry shutdown complete")
             except Exception as e:
-                print(f"Warning: Failed to shutdown telemetry: {e}")
+                logger.warning(f"Failed to shutdown telemetry: {e}")
 
         # Log daemon shutdown
         self.event_logger.log_event(
@@ -1810,7 +1813,7 @@ class BoundaryDaemon:
             metadata={}
         )
 
-        print("Boundary Daemon stopped.")
+        logger.info("Boundary Daemon stopped.")
 
     def _enforcement_loop(self):
         """Main enforcement loop - periodic health checks and monitoring"""
@@ -1835,7 +1838,7 @@ class BoundaryDaemon:
                 time.sleep(1.0)
 
             except Exception as e:
-                print(f"Error in enforcement loop: {e}")
+                logger.error(f"Error in enforcement loop: {e}")
                 # Log the error
                 self.event_logger.log_event(
                     EventType.HEALTH_CHECK,
@@ -1856,12 +1859,12 @@ class BoundaryDaemon:
                 "Daemon health check FAILED - possible tampering detected",
                 metadata={'healthy': False}
             )
-            print("\n*** WARNING: Daemon health check failed ***\n")
+            logger.warning("*** Daemon health check failed ***")
 
         # Verify event log integrity
         is_valid, error = self.event_logger.verify_chain()
         if not is_valid:
-            print(f"\n*** CRITICAL: Event log chain integrity violation: {error} ***\n")
+            logger.critical(f"*** Event log chain integrity violation: {error} ***")
             self.event_logger.log_event(
                 EventType.VIOLATION,
                 f"Event log chain integrity violated: {error}",
@@ -1870,7 +1873,7 @@ class BoundaryDaemon:
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
-        print(f"\nReceived signal {signum}")
+        logger.info(f"Received signal {signum}")
         self.stop()
         sys.exit(0)
 
@@ -2526,7 +2529,7 @@ class BoundaryDaemon:
         if self.signed_logging and hasattr(self.event_logger, 'export_public_key'):
             return self.event_logger.export_public_key(output_path)
         else:
-            print("Signed logging not available - no public key to export")
+            logger.info("Signed logging not available - no public key to export")
             return False
 
     def request_mode_change(self, new_mode: BoundaryMode, operator: Operator, reason: str = "") -> tuple[bool, str]:
@@ -2624,10 +2627,10 @@ class BoundaryDaemon:
             )
         else:
             # Fall back to basic keyboard ceremony
-            print(f"\nOverride ceremony for: {action}")
-            print(f"Reason: {reason}")
-            print("\nBiometric not available. Using keyboard ceremony.")
-            print("Type 'CONFIRM' to proceed:")
+            logger.info(f"Override ceremony for: {action}")
+            logger.info(f"Reason: {reason}")
+            logger.info("Biometric not available. Using keyboard ceremony.")
+            logger.info("Type 'CONFIRM' to proceed:")
             user_input = input("> ")
             if user_input == "CONFIRM":
                 self.event_logger.log_event(
@@ -2805,7 +2808,7 @@ class BoundaryDaemon:
                 for a in advisories
             ]
         except Exception as e:
-            print(f"Error loading advisories: {e}")
+            logger.error(f"Error loading advisories: {e}")
             return []
 
     def update_security_advisory(self, advisory_id: str, new_status: str,
@@ -2964,7 +2967,7 @@ class BoundaryDaemon:
             return [a.to_dict() for a in alerts]
 
         except Exception as e:
-            print(f"Error getting watchdog alerts: {e}")
+            logger.error(f"Error getting watchdog alerts: {e}")
             return []
 
     def acknowledge_watchdog_alert(self, alert_id: str) -> tuple[bool, str]:
@@ -3186,7 +3189,7 @@ class BoundaryDaemon:
         try:
             return self.telemetry_manager.get_recent_spans(limit)
         except Exception as e:
-            print(f"Error getting recent spans: {e}")
+            logger.error(f"Error getting recent spans: {e}")
             return []
 
     def get_telemetry_metrics(self) -> dict:
@@ -3202,7 +3205,7 @@ class BoundaryDaemon:
         try:
             return self.telemetry_manager.get_metrics_snapshot()
         except Exception as e:
-            print(f"Error getting metrics: {e}")
+            logger.error(f"Error getting metrics: {e}")
             return {}
 
 

@@ -10,12 +10,15 @@ Security Features:
 """
 
 import json
+import logging
 import os
 import socket
 import sys
 import threading
 import time
 from typing import Optional, Dict, Any, TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 # Cross-platform socket support
 IS_WINDOWS = sys.platform == 'win32'
@@ -203,10 +206,10 @@ class BoundaryAPIServer:
 
                 except Exception as e:
                     if self._running:
-                        print(f"Error in server loop: {e}")
+                        logger.error(f"Error in server loop: {e}")
 
         except Exception as e:
-            print(f"Fatal error in API server: {e}")
+            logger.critical(f"Fatal error in API server: {e}")
         finally:
             if self._socket:
                 self._socket.close()
@@ -1221,7 +1224,7 @@ class BoundaryAPIClient:
                         if line and not line.startswith('#'):
                             return line
             except Exception as e:
-                print(f"Warning: Could not read token file: {e}")
+                logger.warning(f"Could not read token file: {e}")
 
         # Try environment variable
         env_token = os.environ.get('BOUNDARY_API_TOKEN')
