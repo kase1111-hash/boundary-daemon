@@ -19,14 +19,8 @@ def cmd_verify_signatures(args):
     log_file = args.log_file
     key_file = args.key_file
 
-    if not os.path.exists(log_file):
-        print(f"Error: Log file not found: {log_file}")
-        return 1
-
-    if not os.path.exists(key_file):
-        print(f"Error: Key file not found: {key_file}")
-        return 1
-
+    # SECURITY: Avoid TOCTOU - don't check existence before open
+    # Instead, handle FileNotFoundError when actually using the files
     print(f"Verifying signatures for: {log_file}")
     print(f"Using key: {key_file}\n")
 
@@ -45,6 +39,9 @@ def cmd_verify_signatures(args):
             print(f"  Error: {error}")
             return 1
 
+    except FileNotFoundError as e:
+        print(f"Error: File not found: {e}")
+        return 1
     except Exception as e:
         print(f"Error during verification: {e}")
         return 1
@@ -55,14 +52,8 @@ def cmd_verify_full(args):
     log_file = args.log_file
     key_file = args.key_file
 
-    if not os.path.exists(log_file):
-        print(f"Error: Log file not found: {log_file}")
-        return 1
-
-    if not os.path.exists(key_file):
-        print(f"Error: Key file not found: {key_file}")
-        return 1
-
+    # SECURITY: Avoid TOCTOU - don't check existence before open
+    # Instead, handle FileNotFoundError when actually using the files
     print(f"Performing full integrity verification for: {log_file}")
     print(f"Using key: {key_file}\n")
 
@@ -83,6 +74,9 @@ def cmd_verify_full(args):
             print(f"  Error: {error}")
             return 1
 
+    except FileNotFoundError as e:
+        print(f"Error: File not found: {e}")
+        return 1
     except Exception as e:
         print(f"Error during verification: {e}")
         return 1
@@ -93,16 +87,15 @@ def cmd_export_public_key(args):
     key_file = args.key_file
     output_file = args.output
 
-    if not os.path.exists(key_file):
-        print(f"Error: Key file not found: {key_file}")
-        return 1
-
+    # SECURITY: Avoid TOCTOU - don't check existence before open
     print(f"Exporting public key from: {key_file}")
 
     try:
-        # Create a temporary logger just to access the key
+        # SECURITY: Use NamedTemporaryFile instead of mktemp to prevent symlink attacks
         import tempfile
-        temp_log = tempfile.mktemp()
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.log') as temp_file:
+            temp_log = temp_file.name
+
         logger = SignedEventLogger(temp_log, key_file)
 
         # Export public key
@@ -123,6 +116,9 @@ def cmd_export_public_key(args):
             print("✗ Failed to export public key")
             return 1
 
+    except FileNotFoundError as e:
+        print(f"Error: Key file not found: {e}")
+        return 1
     except Exception as e:
         print(f"Error exporting public key: {e}")
         return 1
@@ -132,14 +128,13 @@ def cmd_show_public_key(args):
     """Display public verification key"""
     key_file = args.key_file
 
-    if not os.path.exists(key_file):
-        print(f"Error: Key file not found: {key_file}")
-        return 1
-
+    # SECURITY: Avoid TOCTOU - don't check existence before open
     try:
-        # Create a temporary logger just to access the key
+        # SECURITY: Use NamedTemporaryFile instead of mktemp to prevent symlink attacks
         import tempfile
-        temp_log = tempfile.mktemp()
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.log') as temp_file:
+            temp_log = temp_file.name
+
         logger = SignedEventLogger(temp_log, key_file)
 
         # Cleanup temp log
@@ -154,6 +149,9 @@ def cmd_show_public_key(args):
         print("This key can be used to verify event log signatures externally.")
         return 0
 
+    except FileNotFoundError as e:
+        print(f"Error: Key file not found: {e}")
+        return 1
     except Exception as e:
         print(f"Error reading public key: {e}")
         return 1
