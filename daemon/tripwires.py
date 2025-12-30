@@ -413,7 +413,7 @@ class TripwireSystem:
             try:
                 callback(violation)
             except Exception as e:
-                print(f"Error in tripwire callback: {e}")
+                logger.error(f"Error in tripwire callback: {e}")
 
         return violation
 

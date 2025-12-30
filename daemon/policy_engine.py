@@ -3,6 +3,7 @@ Policy Engine - Boundary Mode and Policy Enforcement
 Manages boundary modes and evaluates policies for recall gating and tool restrictions.
 """
 
+import logging
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from enum import Enum, IntEnum
@@ -10,6 +11,8 @@ from typing import Optional, Dict, List, Tuple
 import threading
 
 from .state_monitor import NetworkState, HardwareTrust, EnvironmentState
+
+logger = logging.getLogger(__name__)
 
 
 class BoundaryMode(IntEnum):
@@ -149,7 +152,7 @@ class PolicyEngine:
                 try:
                     callback(old_mode, new_mode, operator, reason)
                 except Exception as e:
-                    print(f"Error in transition callback: {e}")
+                    logger.error(f"Error in transition callback: {e}")
 
             return (True, f"Transitioned from {old_mode.name} to {new_mode.name}")
 
