@@ -38,6 +38,9 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+# Platform detection
+IS_WINDOWS = sys.platform == 'win32'
+
 # Cross-platform privilege detection
 def _is_elevated() -> bool:
     """Check if running with elevated privileges (cross-platform)."""
@@ -875,42 +878,75 @@ class ARPSecurityMonitor:
         detected_ip = None
         detected_mac = None
 
-        try:
-            # Try to get default gateway from /proc/net/route
-            with open('/proc/net/route', 'r') as f:
-                for line in f.readlines()[1:]:  # Skip header
-                    parts = line.strip().split()
-                    if len(parts) >= 3:
-                        # Default route has destination 00000000
-                        if parts[1] == '00000000':
-                            # Gateway is in hex, little-endian
-                            gateway_hex = parts[2]
-                            # Convert hex to IP
-                            detected_ip = '.'.join([
-                                str(int(gateway_hex[i:i+2], 16))
-                                for i in range(6, -1, -2)
-                            ])
-                            # Get gateway MAC from ARP cache
-                            detected_mac = self._get_mac_for_ip(detected_ip)
-                            break
-        except Exception as e:
-            print(f"Error detecting gateway: {e}")
-
-        # Fallback: try ip route command
-        if not detected_ip:
+        if IS_WINDOWS:
+            # Windows: Use 'route print' or PowerShell to get default gateway
             try:
                 result = subprocess.run(
-                    ['ip', 'route', 'show', 'default'],
-                    capture_output=True, timeout=2
+                    ['powershell', '-Command',
+                     '(Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop'],
+                    capture_output=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW
                 )
                 if result.returncode == 0:
-                    output = result.stdout.decode()
-                    match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', output)
-                    if match:
-                        detected_ip = match.group(1)
+                    output = result.stdout.decode().strip()
+                    if re.match(r'\d+\.\d+\.\d+\.\d+', output):
+                        detected_ip = output
                         detected_mac = self._get_mac_for_ip(detected_ip)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"PowerShell gateway detection failed: {e}")
+
+            # Fallback: parse 'route print' output
+            if not detected_ip:
+                try:
+                    result = subprocess.run(
+                        ['route', 'print', '0.0.0.0'],
+                        capture_output=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    if result.returncode == 0:
+                        output = result.stdout.decode()
+                        # Look for default route line: 0.0.0.0  0.0.0.0  <gateway>
+                        match = re.search(r'0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)', output)
+                        if match:
+                            detected_ip = match.group(1)
+                            detected_mac = self._get_mac_for_ip(detected_ip)
+                except Exception as e:
+                    logger.debug(f"Route print gateway detection failed: {e}")
+        else:
+            # Linux: Try to get default gateway from /proc/net/route
+            try:
+                with open('/proc/net/route', 'r') as f:
+                    for line in f.readlines()[1:]:  # Skip header
+                        parts = line.strip().split()
+                        if len(parts) >= 3:
+                            # Default route has destination 00000000
+                            if parts[1] == '00000000':
+                                # Gateway is in hex, little-endian
+                                gateway_hex = parts[2]
+                                # Convert hex to IP
+                                detected_ip = '.'.join([
+                                    str(int(gateway_hex[i:i+2], 16))
+                                    for i in range(6, -1, -2)
+                                ])
+                                # Get gateway MAC from ARP cache
+                                detected_mac = self._get_mac_for_ip(detected_ip)
+                                break
+            except Exception as e:
+                logger.debug(f"Error detecting gateway from /proc/net/route: {e}")
+
+            # Fallback: try ip route command
+            if not detected_ip:
+                try:
+                    result = subprocess.run(
+                        ['ip', 'route', 'show', 'default'],
+                        capture_output=True, timeout=2
+                    )
+                    if result.returncode == 0:
+                        output = result.stdout.decode()
+                        match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', output)
+                        if match:
+                            detected_ip = match.group(1)
+                            detected_mac = self._get_mac_for_ip(detected_ip)
+                except Exception:
+                    pass
 
         # Thread-safe update of gateway state
         if detected_ip:
@@ -931,58 +967,121 @@ class ARPSecurityMonitor:
             if ip in self._arp_cache:
                 return self._arp_cache[ip].mac_address
 
-        # Try reading from /proc/net/arp (no lock needed - system file)
-        try:
-            with open('/proc/net/arp', 'r') as f:
-                for line in f.readlines()[1:]:  # Skip header
-                    parts = line.strip().split()
-                    if len(parts) >= 4 and parts[0] == ip:
-                        mac = parts[3].lower()
-                        if mac != '00:00:00:00:00:00':
-                            return mac
-        except Exception:
-            pass
+        if IS_WINDOWS:
+            # Windows: Use 'arp -a' command to get ARP table
+            try:
+                result = subprocess.run(
+                    ['arp', '-a', ip],
+                    capture_output=True, timeout=2,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                if result.returncode == 0:
+                    output = result.stdout.decode()
+                    # Windows arp output uses dashes: aa-bb-cc-dd-ee-ff
+                    mac_pattern = re.compile(r'([0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2})', re.I)
+                    match = mac_pattern.search(output)
+                    if match:
+                        # Convert to colon format for consistency
+                        return match.group(1).lower().replace('-', ':')
+            except Exception:
+                pass
+        else:
+            # Linux: Try reading from /proc/net/arp (no lock needed - system file)
+            try:
+                with open('/proc/net/arp', 'r') as f:
+                    for line in f.readlines()[1:]:  # Skip header
+                        parts = line.strip().split()
+                        if len(parts) >= 4 and parts[0] == ip:
+                            mac = parts[3].lower()
+                            if mac != '00:00:00:00:00:00':
+                                return mac
+            except Exception:
+                pass
 
-        # Try arp command (no lock needed - external command)
-        try:
-            result = subprocess.run(
-                ['arp', '-n', ip],
-                capture_output=True, timeout=2
-            )
-            if result.returncode == 0:
-                output = result.stdout.decode()
-                # Parse arp output for MAC
-                mac_pattern = re.compile(r'([0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2})', re.I)
-                match = mac_pattern.search(output)
-                if match:
-                    return match.group(1).lower()
-        except Exception:
-            pass
+            # Fallback: Try arp command (no lock needed - external command)
+            try:
+                result = subprocess.run(
+                    ['arp', '-n', ip],
+                    capture_output=True, timeout=2
+                )
+                if result.returncode == 0:
+                    output = result.stdout.decode()
+                    # Parse arp output for MAC
+                    mac_pattern = re.compile(r'([0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2})', re.I)
+                    match = mac_pattern.search(output)
+                    if match:
+                        return match.group(1).lower()
+            except Exception:
+                pass
 
         return None
 
     def _update_arp_table(self):
         """Update internal ARP table from system"""
-        try:
-            with open('/proc/net/arp', 'r') as f:
-                lines = f.readlines()[1:]  # Skip header
+        if IS_WINDOWS:
+            # Windows: Use 'arp -a' command to get ARP table
+            try:
+                result = subprocess.run(
+                    ['arp', '-a'],
+                    capture_output=True, timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                if result.returncode == 0:
+                    output = result.stdout.decode()
+                    # Parse Windows arp -a output
+                    # Format: Internet Address      Physical Address      Type
+                    #         192.168.1.1          aa-bb-cc-dd-ee-ff     dynamic
+                    current_interface = "unknown"
+                    for line in output.splitlines():
+                        line = line.strip()
+                        # Check for interface header
+                        if line.startswith('Interface:'):
+                            match = re.search(r'Interface:\s+(\d+\.\d+\.\d+\.\d+)', line)
+                            if match:
+                                current_interface = match.group(1)
+                            continue
 
-            for line in lines:
-                parts = line.strip().split()
-                if len(parts) >= 6:
-                    ip = parts[0]
-                    mac = parts[3].lower()
-                    interface = parts[5]
+                        # Parse ARP entry line
+                        match = re.match(
+                            r'(\d+\.\d+\.\d+\.\d+)\s+([0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2})\s+(\w+)',
+                            line, re.I
+                        )
+                        if match:
+                            ip = match.group(1)
+                            # Convert dash-separated MAC to colon-separated
+                            mac = match.group(2).lower().replace('-', ':')
+                            entry_type = match.group(3)
 
-                    # Skip incomplete entries
-                    if mac == '00:00:00:00:00:00':
-                        continue
+                            # Skip incomplete or invalid entries
+                            if mac == '00:00:00:00:00:00' or mac == 'ff:ff:ff:ff:ff:ff':
+                                continue
 
-                    # Analyze each entry
-                    self.analyze_arp_entry(ip, mac, interface)
+                            # Analyze each entry
+                            self.analyze_arp_entry(ip, mac, current_interface)
+            except Exception as e:
+                logger.debug(f"Error updating ARP table on Windows: {e}")
+        else:
+            # Linux: Read from /proc/net/arp
+            try:
+                with open('/proc/net/arp', 'r') as f:
+                    lines = f.readlines()[1:]  # Skip header
 
-        except Exception as e:
-            print(f"Error updating ARP table: {e}")
+                for line in lines:
+                    parts = line.strip().split()
+                    if len(parts) >= 6:
+                        ip = parts[0]
+                        mac = parts[3].lower()
+                        interface = parts[5]
+
+                        # Skip incomplete entries
+                        if mac == '00:00:00:00:00:00':
+                            continue
+
+                        # Analyze each entry
+                        self.analyze_arp_entry(ip, mac, interface)
+
+            except Exception as e:
+                logger.debug(f"Error updating ARP table: {e}")
 
     def _check_arp_flood(self) -> Optional[str]:
         """Check for ARP flood attack"""
