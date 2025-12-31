@@ -18,7 +18,7 @@ setup(
     description="Agent Smith - Trust Boundary Enforcement for Agent OS",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/boundary-daemon",
+    url="https://github.com/kase1111-hash/boundary-daemon-",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
