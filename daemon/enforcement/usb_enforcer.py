@@ -513,27 +513,113 @@ class USBEnforcer:
 
         return devices
 
-    def _read_sysfs(self, device_path: str, attr: str, default: Optional[str] = None) -> Optional[str]:
-        """Read a sysfs attribute"""
+    # SECURITY: Whitelist of allowed sysfs attributes to prevent path traversal
+    ALLOWED_SYSFS_ATTRS = frozenset({
+        'authorized', 'bDeviceClass', 'bDeviceSubClass', 'bDeviceProtocol',
+        'idVendor', 'idProduct', 'manufacturer', 'product', 'serial',
+        'busnum', 'devnum', 'speed', 'bNumConfigurations', 'bNumInterfaces',
+        'bMaxPower', 'removable', 'devpath', 'version',
+    })
+
+    # SECURITY: Allowed base directories for sysfs USB operations
+    ALLOWED_SYSFS_BASES = ('/sys/bus/usb/devices', '/sys/devices')
+
+    def _validate_sysfs_path(self, device_path: str, attr: str) -> Optional[str]:
+        """Validate sysfs path to prevent path traversal attacks.
+
+        SECURITY: Addresses CWE-22 (Path Traversal) by:
+        - Resolving symlinks with realpath
+        - Verifying path is within allowed sysfs directories
+        - Whitelisting allowed attribute names
+        - Rejecting paths with traversal sequences
+
+        Args:
+            device_path: The device path in sysfs
+            attr: The attribute name to access
+
+        Returns:
+            Validated absolute path, or None if validation fails
+        """
+        # Check attribute is in whitelist
+        if attr not in self.ALLOWED_SYSFS_ATTRS:
+            logger.warning(f"SECURITY: Blocked access to non-whitelisted sysfs attr: {attr}")
+            return None
+
+        # Reject obvious traversal attempts in attr
+        if '..' in attr or '/' in attr:
+            logger.warning(f"SECURITY: Blocked path traversal attempt in attr: {attr}")
+            return None
+
+        # Build and resolve the full path
         attr_path = os.path.join(device_path, attr)
+
         try:
-            if os.path.exists(attr_path):
-                with open(attr_path, 'r') as f:
+            # Resolve all symlinks to get real path
+            real_path = os.path.realpath(attr_path)
+            real_device_path = os.path.realpath(device_path)
+
+            # Verify device path is within allowed sysfs directories
+            path_valid = False
+            for allowed_base in self.ALLOWED_SYSFS_BASES:
+                if os.path.exists(allowed_base):
+                    real_base = os.path.realpath(allowed_base)
+                    if real_device_path.startswith(real_base + os.sep) or real_device_path == real_base:
+                        path_valid = True
+                        break
+
+            if not path_valid:
+                logger.warning(
+                    f"SECURITY: Blocked sysfs access outside allowed directories: {real_device_path}"
+                )
+                return None
+
+            # Verify the final attr path is still within the device directory
+            if not real_path.startswith(real_device_path + os.sep):
+                logger.warning(
+                    f"SECURITY: Blocked sysfs path traversal: {attr_path} -> {real_path}"
+                )
+                return None
+
+            return real_path
+
+        except (OSError, ValueError) as e:
+            logger.debug(f"Path validation failed for {attr_path}: {e}")
+            return None
+
+    def _read_sysfs(self, device_path: str, attr: str, default: Optional[str] = None) -> Optional[str]:
+        """Read a sysfs attribute with path validation.
+
+        SECURITY: Validates path before access to prevent traversal attacks.
+        """
+        validated_path = self._validate_sysfs_path(device_path, attr)
+        if validated_path is None:
+            return default
+
+        try:
+            if os.path.exists(validated_path):
+                with open(validated_path, 'r') as f:
                     return f.read().strip()
         except Exception:
             pass
         return default
 
     def _write_sysfs(self, device_path: str, attr: str, value: str) -> bool:
-        """Write a sysfs attribute"""
-        attr_path = os.path.join(device_path, attr)
+        """Write a sysfs attribute with path validation.
+
+        SECURITY: Validates path before access to prevent traversal attacks.
+        """
+        validated_path = self._validate_sysfs_path(device_path, attr)
+        if validated_path is None:
+            logger.warning(f"SECURITY: Blocked write to invalid sysfs path: {device_path}/{attr}")
+            return False
+
         try:
-            if os.path.exists(attr_path):
-                with open(attr_path, 'w') as f:
+            if os.path.exists(validated_path):
+                with open(validated_path, 'w') as f:
                     f.write(value)
                 return True
         except Exception as e:
-            logger.debug(f"Failed to write {attr_path}: {e}")
+            logger.debug(f"Failed to write {validated_path}: {e}")
         return False
 
     def _authorize_device(self, device_path: str) -> bool:

@@ -32,6 +32,91 @@ if TYPE_CHECKING:
     from ..event_logger import EventLogger
 
 
+class SecureTempFile:
+    """Context manager for secure temporary file handling.
+
+    SECURITY: Addresses CWE-377 (Insecure Temporary File) by:
+    - Creating files with restrictive permissions (0o600) atomically
+    - Using a private temp directory when possible
+    - Securely wiping file contents before deletion
+    - Ensuring cleanup happens even on exceptions
+    """
+
+    def __init__(self, suffix: str = '', prefix: str = 'tpm_'):
+        self.suffix = suffix
+        self.prefix = prefix
+        self.path: Optional[str] = None
+        self._fd: Optional[int] = None
+
+    def __enter__(self) -> str:
+        import stat
+
+        # Try to use /dev/shm (RAM-backed) for sensitive data, fall back to tempdir
+        secure_dirs = ['/dev/shm', tempfile.gettempdir()]
+        temp_dir = None
+        for d in secure_dirs:
+            if os.path.isdir(d) and os.access(d, os.W_OK):
+                temp_dir = d
+                break
+
+        if temp_dir is None:
+            raise TPMError("No writable temporary directory available")
+
+        # Create unique filename
+        import secrets
+        random_suffix = secrets.token_hex(8)
+        filename = f"{self.prefix}{random_suffix}{self.suffix}"
+        self.path = os.path.join(temp_dir, filename)
+
+        # SECURITY: Create file atomically with restrictive permissions
+        # O_EXCL ensures file doesn't exist (prevents symlink attacks)
+        # Mode 0o600 = owner read/write only
+        self._fd = os.open(
+            self.path,
+            os.O_RDWR | os.O_CREAT | os.O_EXCL,
+            stat.S_IRUSR | stat.S_IWUSR
+        )
+
+        return self.path
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._secure_cleanup()
+        return False
+
+    def _secure_cleanup(self):
+        """Securely wipe and delete the temporary file."""
+        if self.path and os.path.exists(self.path):
+            try:
+                # Overwrite with random data before deletion
+                file_size = os.path.getsize(self.path)
+                if file_size > 0:
+                    with open(self.path, 'r+b') as f:
+                        f.write(os.urandom(file_size))
+                        f.flush()
+                        os.fsync(f.fileno())
+            except Exception:
+                pass  # Best effort secure wipe
+
+            try:
+                os.unlink(self.path)
+            except Exception:
+                pass  # Will be cleaned up by OS eventually
+
+        if self._fd is not None:
+            try:
+                os.close(self._fd)
+            except Exception:
+                pass
+            self._fd = None
+
+    def write(self, data: bytes) -> None:
+        """Write data to the secure temp file."""
+        if self._fd is None:
+            raise TPMError("SecureTempFile not initialized")
+        os.write(self._fd, data)
+        os.lseek(self._fd, 0, os.SEEK_SET)  # Reset position for reading
+
+
 class TPMError(Exception):
     """Base exception for TPM operations"""
     pass
@@ -737,18 +822,42 @@ class TPMManager:
             raise TPMUnsealingError(f"Unsealing failed: {e}")
 
     def _seal_tpm2tools(self, secret: bytes, mode_hash: str) -> bytes:
-        """Seal using tpm2-tools"""
+        """Seal using tpm2-tools with secure temporary file handling.
+
+        SECURITY: Uses SecureTempFile for all temp files to ensure:
+        - Files created with 0600 permissions atomically
+        - Preferentially uses /dev/shm (RAM-backed) for secrets
+        - Files are securely wiped before deletion
+        """
+        # Track all temp files for cleanup
+        temp_files: List[SecureTempFile] = []
+
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as secret_file:
-                secret_file.write(secret)
-                secret_path = secret_file.name
+            # Create secure temp files
+            secret_tf = SecureTempFile(suffix='.secret')
+            temp_files.append(secret_tf)
+            secret_path = secret_tf.__enter__()
+            secret_tf.write(secret)
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.sealed') as sealed_file:
-                sealed_path = sealed_file.name
+            sealed_tf = SecureTempFile(suffix='.sealed')
+            temp_files.append(sealed_tf)
+            sealed_path = sealed_tf.__enter__()
 
-            # Create sealing policy based on PCR
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.policy') as policy_file:
-                policy_path = policy_file.name
+            policy_tf = SecureTempFile(suffix='.policy')
+            temp_files.append(policy_tf)
+            policy_path = policy_tf.__enter__()
+
+            ctx_tf = SecureTempFile(suffix='.ctx')
+            temp_files.append(ctx_tf)
+            ctx_path = ctx_tf.__enter__()
+
+            pub_tf = SecureTempFile(suffix='.pub')
+            temp_files.append(pub_tf)
+            pub_path = pub_tf.__enter__()
+
+            priv_tf = SecureTempFile(suffix='.priv')
+            temp_files.append(priv_tf)
+            priv_path = priv_tf.__enter__()
 
             # Create policy
             result = subprocess.run(
@@ -762,9 +871,6 @@ class TPMManager:
                 raise TPMSealingError(f"Policy creation failed: {result.stderr.decode()}")
 
             # Create primary key for sealing
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.ctx') as ctx_file:
-                ctx_path = ctx_file.name
-
             result = subprocess.run(
                 ['tpm2_createprimary', '-C', 'o', '-c', ctx_path],
                 capture_output=True,
@@ -776,8 +882,8 @@ class TPMManager:
             # Seal the secret
             result = subprocess.run(
                 ['tpm2_create', '-C', ctx_path, '-L', policy_path,
-                 '-i', secret_path, '-u', sealed_path + '.pub',
-                 '-r', sealed_path + '.priv'],
+                 '-i', secret_path, '-u', pub_path,
+                 '-r', priv_path],
                 capture_output=True,
                 timeout=10
             )
@@ -785,9 +891,9 @@ class TPMManager:
                 raise TPMSealingError(f"Sealing failed: {result.stderr.decode()}")
 
             # Read sealed blob (combine pub and priv)
-            with open(sealed_path + '.pub', 'rb') as f:
+            with open(pub_path, 'rb') as f:
                 pub_data = f.read()
-            with open(sealed_path + '.priv', 'rb') as f:
+            with open(priv_path, 'rb') as f:
                 priv_data = f.read()
 
             # Format: [4 bytes pub length][pub data][priv data]
@@ -796,35 +902,52 @@ class TPMManager:
             return sealed_blob
 
         finally:
-            # Cleanup temp files
-            for path in [secret_path, sealed_path, policy_path, ctx_path,
-                        sealed_path + '.pub', sealed_path + '.priv']:
+            # Secure cleanup of all temp files (in reverse order)
+            for tf in reversed(temp_files):
                 try:
-                    os.unlink(path)
-                except:
-                    pass
+                    tf.__exit__(None, None, None)
+                except Exception:
+                    pass  # Best effort cleanup
 
     def _unseal_tpm2tools(self, sealed_blob: bytes, mode_hash: str) -> bytes:
-        """Unseal using tpm2-tools"""
+        """Unseal using tpm2-tools with secure temporary file handling.
+
+        SECURITY: Uses SecureTempFile for all temp files to ensure:
+        - Files created with 0600 permissions atomically
+        - Preferentially uses /dev/shm (RAM-backed) for secrets
+        - Files are securely wiped before deletion
+        """
+        # Track all temp files for cleanup
+        temp_files: List[SecureTempFile] = []
+
         try:
             # Parse sealed blob
             pub_len = int.from_bytes(sealed_blob[:4], 'big')
             pub_data = sealed_blob[4:4+pub_len]
             priv_data = sealed_blob[4+pub_len:]
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pub') as pub_file:
-                pub_file.write(pub_data)
-                pub_path = pub_file.name
+            # Create secure temp files
+            pub_tf = SecureTempFile(suffix='.pub')
+            temp_files.append(pub_tf)
+            pub_path = pub_tf.__enter__()
+            pub_tf.write(pub_data)
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.priv') as priv_file:
-                priv_file.write(priv_data)
-                priv_path = priv_file.name
+            priv_tf = SecureTempFile(suffix='.priv')
+            temp_files.append(priv_tf)
+            priv_path = priv_tf.__enter__()
+            priv_tf.write(priv_data)
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.ctx') as ctx_file:
-                ctx_path = ctx_file.name
+            ctx_tf = SecureTempFile(suffix='.ctx')
+            temp_files.append(ctx_tf)
+            ctx_path = ctx_tf.__enter__()
 
-            with tempfile.NamedTemporaryFile(delete=False) as out_file:
-                out_path = out_file.name
+            out_tf = SecureTempFile(suffix='.out')
+            temp_files.append(out_tf)
+            out_path = out_tf.__enter__()
+
+            obj_tf = SecureTempFile(suffix='.obj')
+            temp_files.append(obj_tf)
+            obj_path = obj_tf.__enter__()
 
             # Create primary key
             result = subprocess.run(
@@ -836,9 +959,6 @@ class TPMManager:
                 raise TPMUnsealingError(f"Primary key creation failed: {result.stderr.decode()}")
 
             # Load sealed object
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.obj') as obj_file:
-                obj_path = obj_file.name
-
             result = subprocess.run(
                 ['tpm2_load', '-C', ctx_path, '-u', pub_path, '-r', priv_path, '-c', obj_path],
                 capture_output=True,
@@ -863,12 +983,12 @@ class TPMManager:
             return secret
 
         finally:
-            # Cleanup temp files
-            for path in [pub_path, priv_path, ctx_path, out_path, obj_path]:
+            # Secure cleanup of all temp files (in reverse order)
+            for tf in reversed(temp_files):
                 try:
-                    os.unlink(path)
-                except:
-                    pass
+                    tf.__exit__(None, None, None)
+                except Exception:
+                    pass  # Best effort cleanup
 
     def _seal_pytss(self, secret: bytes, mode_hash: str) -> bytes:
         """Seal using tpm2-pytss with AES-GCM encryption"""
