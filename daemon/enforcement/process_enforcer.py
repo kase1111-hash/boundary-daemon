@@ -715,6 +715,7 @@ class ProcessEnforcer:
 
             # Also check for processes running from suspicious locations
             # Use exact path matching, not pattern matching
+            # nosec B108 - detecting malicious processes, not writing to tmp
             suspicious_exe_prefixes = [
                 '/tmp/',
                 '/dev/shm/',

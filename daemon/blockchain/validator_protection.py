@@ -572,10 +572,12 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Create test protector
+    import tempfile
+    test_dir = tempfile.mkdtemp(prefix="validator_test_")
     protector = ValidatorKeyProtector(
         chain_type=ChainType.TENDERMINT,
         validator_address="cosmosvaloper1test123456789",
-        history_path="/tmp/test_validator_history.json",
+        history_path=f"{test_dir}/test_validator_history.json",
     )
 
     # Test double-sign prevention

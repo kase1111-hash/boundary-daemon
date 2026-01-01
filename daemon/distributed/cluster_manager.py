@@ -396,7 +396,9 @@ if __name__ == '__main__':
         tripwire_system = MockTripwireSystem()
 
     # Create coordinator
-    coordinator = FileCoordinator('/tmp/test-boundary-cluster')
+    import tempfile
+    test_dir = tempfile.mkdtemp(prefix="boundary-cluster-test-")
+    coordinator = FileCoordinator(test_dir)
 
     # Create cluster manager
     daemon = MockDaemon()
