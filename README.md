@@ -504,6 +504,48 @@ python api/boundary_api.py
 - **[ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md)** - Understanding the enforcement model
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and changes
 
+## Planned Features (TODO)
+
+### Tier 2: Cover Gaps (Without Losing Edge)
+
+#### SIEM Integration
+*Feed SIEMs, don't replace them*
+
+- [ ] CEF/LEEF export (Splunk/QRadar/ArcSight)
+- [ ] Kafka producer, S3/GCS log shipping
+- [ ] Signature verification API for SIEMs
+
+#### Identity Federation
+*External identity is advisory*
+
+- [ ] OIDC token validation → local capabilities
+- [ ] LDAP group mapping
+- [ ] PAM integration
+- [ ] Ceremonies still required for sensitive ops
+
+#### Compliance Automation
+
+- [ ] NIST 800-53 / ISO 27001 control mapping export
+- [ ] Self-contained evidence bundles for auditors
+- [ ] Access review ceremonies
+
+### Tier 3: Selective Enhancement
+
+#### Deterministic Threat Detection (No ML)
+
+- [ ] YARA rule engine
+- [ ] Sigma rule support
+- [ ] Signed IOC feeds
+- [ ] MITRE ATT&CK patterns as deterministic rules
+
+#### eBPF Observability (Optional Module)
+
+- [ ] Kernel visibility without kernel driver
+- [ ] Read-only observation for policy decisions
+- [ ] Graceful degradation on older kernels
+
+---
+
 ## Contributing
 
 This is a security-critical component. Contributions must:
