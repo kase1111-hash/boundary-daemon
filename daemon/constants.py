@@ -200,6 +200,15 @@ class Timeouts:
     CHALLENGE_MAX_AGE: float = 5.0      # Cryptographic challenge validity
     CEREMONY_COOLDOWN: float = 30.0     # Override ceremony cooldown
 
+    # Advanced ceremony timeouts
+    CEREMONY_COOLDOWN_EMERGENCY: float = 60.0   # Emergency access cooldown
+    CEREMONY_COOLDOWN_DATA_EXPORT: float = 45.0 # Data export cooldown
+    CEREMONY_COOLDOWN_LOCKDOWN: float = 90.0    # Lockdown release cooldown
+    CEREMONY_COOLDOWN_KEY_ROTATION: float = 60.0 # Key rotation cooldown
+    N_OF_M_EXPIRY_HOURS: float = 24.0           # N-of-M ceremony expiry
+    DEAD_MAN_CHECK_INTERVAL: float = 60.0       # Dead-man check interval
+    HARDWARE_TOKEN_TIMEOUT: float = 30.0        # Hardware token response timeout
+
     # Cleanup and persistence
     CLEANUP_TIMEOUT: float = 300.0      # 5 minutes for cleanup operations
     PROTECTION_TIMEOUT: float = 300.0   # 5 minutes for protection timeout
@@ -638,6 +647,10 @@ class Limits:
         "MAX_AUTH_ATTEMPTS", 5, int, min_value=1, max_value=20
     )
     MAX_DISABLE_ATTEMPTS: int = 3           # Tripwire disable attempts
+    MAX_CEREMONY_ATTEMPTS: int = 3          # Ceremony attempts before lockout
+    MAX_N_OF_M_APPROVERS: int = 10          # Maximum approvers for N-of-M
+    MAX_DEAD_MAN_TRIGGERS: int = 20         # Maximum dead-man triggers
+    MAX_HARDWARE_TOKENS: int = 10           # Maximum registered hardware tokens
 
     # Resource limits (with environment overrides)
     # Override with: BOUNDARY_MAX_LOG_FILES=20
