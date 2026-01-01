@@ -1,8 +1,8 @@
 # Boundary Daemon - Complete Technical Specification
 
-**Version:** 2.4
+**Version:** 2.5
 **Status:** Active Development
-**Last Updated:** 2025-12-22
+**Last Updated:** 2026-01-01
 
 ---
 
@@ -364,6 +364,71 @@ This daemon operates as **Layer 3** in a defense-in-depth architecture:
 - **Jump History**: Maintains history of detected time jumps
 - **Callback System**: Supports callbacks for time_jump, ntp_lost, manipulation events
 - **Daemon Integration**: BoundaryDaemon provides clock status in get_status()
+
+### ✅ AI/Agent Security Modules
+
+#### 21. Prompt Injection Detection (`daemon/security/prompt_injection.py`) ✅ NEW
+- **Jailbreak Detection**: Detects DAN, "ignore instructions", roleplay bypass attempts
+- **Instruction Injection**: Detects system prompt injection, developer mode claims
+- **Prompt Extraction**: Detects attempts to reveal system prompts or training data
+- **Delimiter Injection**: Detects XML tags, markdown, bracket injection patterns
+- **Encoding Bypass Detection**: Detects Base64, Unicode homographs, zero-width chars
+- **Authority Escalation**: Detects "I am the admin", false permission claims
+- **Tool Abuse Detection**: Detects recursive calls, hidden tool invocations
+- **Memory Poisoning**: Detects "remember this", fact injection attempts
+- **Sensitivity Levels**: Configurable LOW, MEDIUM, HIGH, PARANOID thresholds
+- **Mode Integration**: Policy engine integration for mode-aware decisions
+- **Callback System**: Subscribe to detection alerts for real-time response
+
+#### 22. Tool Output Validation (`daemon/security/tool_validator.py`) ✅ NEW
+- **Output Validation**: Validates tool outputs against security policies
+- **Size Limits**: Configurable max_output_size per tool
+- **Rate Limiting**: Per-tool rate limits (max_calls_per_minute)
+- **Chain Depth Control**: Prevents recursive tool chains beyond max depth
+- **PII Sanitization**: Automatic PII detection and redaction in outputs
+- **Command Injection Detection**: Detects shell commands in outputs
+- **Schema Validation**: Optional schema enforcement for structured outputs
+- **Sensitive Data Filtering**: Blocks passwords, tokens, secrets in outputs
+- **Call Tracking**: Tracks active tool calls with start/end lifecycle
+- **Policy Management**: Register per-tool validation policies
+
+#### 23. Response Guardrails (`daemon/security/response_guardrails.py`) ✅ NEW
+- **Content Safety**: Blocks harmful, violent, dangerous content categories
+- **Hallucination Detection**: Detects overconfidence, unsupported claims
+- **Citation Validation**: Verifies source citations when required
+- **Disclaimer Enforcement**: Requires disclaimers for sensitive topics
+- **PII Protection**: Prevents PII exposure in responses
+- **Bias Detection**: Flags potentially biased content
+- **Content Categories**: VIOLENCE, ILLEGAL, HARMFUL, DANGEROUS_INFO, etc.
+- **Mode-Specific Policies**: Different strictness levels per boundary mode
+- **Response Modification**: Can modify/sanitize responses before delivery
+- **Callback System**: Subscribe to guardrail violations for alerting
+
+#### 24. RAG Injection Detection (`daemon/security/rag_injection.py`) ✅ NEW
+- **Poisoned Document Detection**: Detects hidden instructions in retrieved documents
+- **Indirect Injection**: Detects prompt injection via retrieved context
+- **Context Manipulation**: Detects attempts to override/replace context
+- **Exfiltration Queries**: Detects data extraction via crafted queries
+- **Embedding Attacks**: Detects vector space manipulation
+- **Cross-Document Analysis**: Detects coordinated attacks across multiple documents
+- **Document Trust Levels**: VERIFIED, TRUSTED, UNKNOWN, SUSPICIOUS, BLOCKED
+- **Threat Severity**: INFO, LOW, MEDIUM, HIGH, CRITICAL classification
+- **Source Verification**: Tracks document provenance and trust sources
+- **Integration**: Works with prompt injection detector for multi-layer defense
+
+#### 25. Agent Attestation System (`daemon/security/agent_attestation.py`) ✅ NEW
+- **Cryptographic Identity**: Unique agent identities with public key hashes
+- **Identity Certificates**: Agent registration with capability grants
+- **Attestation Tokens**: Time-limited tokens with capability subsets
+- **Capability-Based Access Control**: 20+ capabilities (file, network, process, tool, data)
+- **Trust Levels**: 7-tier hierarchy (UNTRUSTED → SANDBOXED → LIMITED → STANDARD → ELEVATED → PRIVILEGED → SYSTEM)
+- **Delegation Chains**: Parent-child token delegation with max depth enforcement
+- **Token Verification**: Signature verification, expiration, revocation checks
+- **Action Binding**: Cryptographic binding of actions to agent identity
+- **Token Revocation**: Individual token and agent-wide revocation
+- **Mode-Aware Restrictions**: Capabilities automatically restricted based on boundary mode
+- **Persistent Storage**: State persistence for identities, tokens, revocations
+- **HMAC Signatures**: HMAC-SHA256 for token and action binding signatures
 
 ### ⚠️ Partially Implemented / Limited
 

@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **RAG Injection Detection** (`daemon/security/rag_injection.py`):
+  - Poisoned document detection in retrieved context
+  - Indirect prompt injection via retrieved documents
+  - Context window manipulation attack detection
+  - Data exfiltration query detection
+  - Cross-document attack correlation
+  - Embedding space attack detection
+  - Document integrity and trust level verification
+  - Configurable threat policies with severity levels
+- **Agent Attestation System** (`daemon/security/agent_attestation.py`):
+  - Cryptographic agent identity certificates
+  - Attestation token issuance and verification
+  - Capability-based access control (CBAC) with 20+ capabilities
+  - Delegation chain verification with max depth enforcement
+  - Action binding with cryptographic signatures
+  - Token revocation (individual and agent-wide)
+  - Trust level hierarchy (UNTRUSTED → SYSTEM, 7 levels)
+  - Mode-aware capability restrictions
+  - Persistent state storage
+- **End-to-End Security Stack Tests** (`tests/test_security_stack_e2e.py`):
+  - Comprehensive E2E tests for prompt injection, tool validation, response guardrails
+  - RAG injection and agent attestation integration tests
+  - Multi-layer security stack validation
 - GitHub Actions CI/CD workflow for automated testing
 - Comprehensive unit test suite (478 tests)
 - Test coverage for core modules (privilege_manager, state_monitor, tripwires, etc.)

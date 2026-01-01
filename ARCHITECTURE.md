@@ -546,6 +546,48 @@ Multi-layer security detection and monitoring:
 | `clock_monitor.py` | System clock verification and time attack detection |
 | `secure_memory.py` | Memory protection utilities |
 
+### AI/Agent Security (`daemon/security/`)
+
+Specialized security for AI agents and LLM systems:
+
+| Module | Purpose |
+|--------|---------|
+| `prompt_injection.py` | Jailbreak, instruction injection, and prompt manipulation detection |
+| `tool_validator.py` | Tool output validation, sanitization, and rate limiting |
+| `response_guardrails.py` | AI response safety, harmful content blocking, hallucination detection |
+| `rag_injection.py` | RAG poisoning detection, indirect injection via retrieved documents |
+| `agent_attestation.py` | Cryptographic agent identity, capability-based access control |
+
+**AI Security Flow:**
+```
+User Input → Prompt Injection Detector → Agent
+                                            ↓
+                                      Tool Invocation
+                                            ↓
+                            Tool Validator (input/output)
+                                            ↓
+                                      RAG Pipeline
+                                            ↓
+                            RAG Injection Detector (documents)
+                                            ↓
+                                      Agent Response
+                                            ↓
+                            Response Guardrails (safety/hallucination)
+                                            ↓
+                                       User Output
+```
+
+**Agent Attestation System:**
+```
+Agent Registration → Identity Certificate → Attestation Token
+                                                    ↓
+                                            Capability Verification
+                                                    ↓
+                                            Action Binding (signed)
+                                                    ↓
+                                            Delegation Chains
+```
+
 ### Storage (`daemon/storage/`)
 
 | Module | Purpose |
@@ -660,6 +702,12 @@ The following enhancement plans have been implemented:
 7. **Plan 7: Code Vulnerability Advisor** - Code scanning (`daemon/security/code_advisor.py`)
 8. **Plan 8: Log Watchdog Agent** - Log pattern monitoring (`daemon/watchdog/`)
 9. **Plan 9: OpenTelemetry Integration** - Observability (`daemon/telemetry/otel_setup.py`)
+10. **Plan 10: AI/Agent Security** - Comprehensive AI security stack:
+    - Prompt injection detection (`daemon/security/prompt_injection.py`)
+    - Tool output validation (`daemon/security/tool_validator.py`)
+    - Response guardrails (`daemon/security/response_guardrails.py`)
+    - RAG injection detection (`daemon/security/rag_injection.py`)
+    - Agent attestation system (`daemon/security/agent_attestation.py`)
 
 ## Future Enhancements
 
