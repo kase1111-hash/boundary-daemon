@@ -219,6 +219,8 @@ boundary-daemon/
 │  ├─ security/                   # Multi-layer security
 │  │  ├─ antivirus.py                 # Malware scanning
 │  │  ├─ prompt_injection.py          # AI jailbreak detection (New!)
+│  │  ├─ tool_validator.py            # Tool output validation (New!)
+│  │  ├─ response_guardrails.py       # Response safety/hallucination (New!)
 │  │  ├─ daemon_integrity.py          # Self-verification
 │  │  ├─ dns_security.py              # DNS monitoring
 │  │  ├─ arp_security.py              # ARP spoofing detection
@@ -540,6 +542,94 @@ if WINDOWS_FIREWALL_AVAILABLE:
 
     # Cleanup on shutdown
     enforcer.cleanup()
+```
+
+### Tool Output Validation
+
+Validate and sanitize AI tool outputs:
+
+```python
+from daemon.security import (
+    get_tool_validator,
+    ToolPolicy,
+    ValidationResult,
+)
+
+validator = get_tool_validator()
+
+# Register tool-specific policy
+validator.register_policy(ToolPolicy(
+    name="shell_tool",
+    max_output_size=100_000,
+    max_calls_per_minute=10,
+    max_chain_depth=3,
+    sanitize_pii=True,
+    sanitize_commands=True,
+))
+
+# Start tool call (tracks chain depth)
+call_id, violation = validator.start_tool_call(
+    tool_name="shell_tool",
+    tool_input={"command": "ls -la"},
+)
+
+if violation:
+    print(f"BLOCKED: {violation.description}")
+else:
+    # Execute tool...
+    output = "file1.txt\npassword=secret123\n"
+
+    # Validate output
+    result = validator.validate_output("shell_tool", output, call_id)
+
+    if result.result == ValidationResult.BLOCKED:
+        print("Output blocked due to security violations")
+    elif result.result == ValidationResult.SANITIZED:
+        print(f"Output sanitized: {result.sanitized_output}")
+
+    validator.end_tool_call(call_id)
+```
+
+### Response Guardrails
+
+Validate AI responses for safety and hallucinations:
+
+```python
+from daemon.security import (
+    get_response_guardrails,
+    GuardrailPolicy,
+    ContentCategory,
+)
+
+guardrails = get_response_guardrails()
+
+# Analyze AI response
+result = guardrails.analyze(ai_response)
+
+if not result.passed:
+    print(f"Response blocked: {result.action.value}")
+    for v in result.violations:
+        print(f"  - {v.category.value}: {v.description}")
+
+# Check for hallucinations
+for h in result.hallucinations:
+    print(f"Hallucination: {h.indicator_type.value} - {h.description}")
+
+# Use modified response if available
+safe_response = result.modified_response or result.response
+
+# Custom policy for high-security modes
+strict_policy = GuardrailPolicy(
+    name="strict",
+    blocked_categories={
+        ContentCategory.VIOLENCE,
+        ContentCategory.DANGEROUS_INFO,
+    },
+    check_hallucinations=True,
+    check_citations=True,
+    require_disclaimers=True,
+)
+result = guardrails.analyze(ai_response, policy=strict_policy)
 ```
 
 ### Sandbox → SIEM Event Streaming
@@ -879,6 +969,17 @@ python api/boundary_api.py
 - [x] Memory poisoning detection
 - [x] Configurable sensitivity levels (low, medium, high, paranoid)
 - [x] Policy engine integration for mode-aware decisions
+
+#### Tool & Response Validation (New!)
+
+- [x] Tool output validation (sanitization, size limits, schema)
+- [x] Recursive call chain detection and prevention
+- [x] Command injection detection in tool outputs
+- [x] Sensitive data leakage prevention
+- [x] Response guardrails (harmful content blocking)
+- [x] Hallucination detection (overconfidence, unsupported claims)
+- [x] Citation/source validation
+- [x] Mode-specific guardrail policies
 
 #### Windows Support (New!)
 

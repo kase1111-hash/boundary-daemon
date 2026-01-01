@@ -111,6 +111,64 @@ except ImportError:
     get_prompt_injection_detector = None
     configure_prompt_injection_detector = None
 
+# Tool output validation (SECURITY: AI tool response validation)
+try:
+    from .tool_validator import (
+        ToolOutputValidator,
+        ToolPolicy,
+        ToolCall,
+        ToolValidationResult,
+        ValidationResult,
+        ViolationType,
+        ValidationViolation,
+        SanitizationAction,
+        get_tool_validator,
+        configure_tool_validator,
+    )
+    TOOL_VALIDATOR_AVAILABLE = True
+except ImportError:
+    TOOL_VALIDATOR_AVAILABLE = False
+    ToolOutputValidator = None
+    ToolPolicy = None
+    ToolCall = None
+    ToolValidationResult = None
+    ValidationResult = None
+    ViolationType = None
+    ValidationViolation = None
+    SanitizationAction = None
+    get_tool_validator = None
+    configure_tool_validator = None
+
+# Response guardrails (SECURITY: AI response safety validation)
+try:
+    from .response_guardrails import (
+        ResponseGuardrails,
+        GuardrailPolicy,
+        GuardrailResult,
+        GuardrailViolation,
+        GuardrailSeverity,
+        GuardrailAction,
+        ContentCategory,
+        HallucinationIndicator,
+        HallucinationDetection,
+        get_response_guardrails,
+        configure_response_guardrails,
+    )
+    RESPONSE_GUARDRAILS_AVAILABLE = True
+except ImportError:
+    RESPONSE_GUARDRAILS_AVAILABLE = False
+    ResponseGuardrails = None
+    GuardrailPolicy = None
+    GuardrailResult = None
+    GuardrailViolation = None
+    GuardrailSeverity = None
+    GuardrailAction = None
+    ContentCategory = None
+    HallucinationIndicator = None
+    HallucinationDetection = None
+    get_response_guardrails = None
+    configure_response_guardrails = None
+
 __all__ = [
     # Code advisor
     'CodeVulnerabilityAdvisor',
@@ -162,4 +220,29 @@ __all__ = [
     'get_prompt_injection_detector',
     'configure_prompt_injection_detector',
     'PROMPT_INJECTION_AVAILABLE',
+    # Tool output validation (SECURITY: AI tool response validation)
+    'ToolOutputValidator',
+    'ToolPolicy',
+    'ToolCall',
+    'ToolValidationResult',
+    'ValidationResult',
+    'ViolationType',
+    'ValidationViolation',
+    'SanitizationAction',
+    'get_tool_validator',
+    'configure_tool_validator',
+    'TOOL_VALIDATOR_AVAILABLE',
+    # Response guardrails (SECURITY: AI response safety validation)
+    'ResponseGuardrails',
+    'GuardrailPolicy',
+    'GuardrailResult',
+    'GuardrailViolation',
+    'GuardrailSeverity',
+    'GuardrailAction',
+    'ContentCategory',
+    'HallucinationIndicator',
+    'HallucinationDetection',
+    'get_response_guardrails',
+    'configure_response_guardrails',
+    'RESPONSE_GUARDRAILS_AVAILABLE',
 ]
