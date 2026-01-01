@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Set, Tuple
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +164,8 @@ class PrivilegeManager:
         self._module_status: Dict[EnforcementModule, bool] = {}
         self._module_reasons: Dict[EnforcementModule, str] = {}
 
-        # Track all privilege issues
-        self._issues: List[PrivilegeIssue] = []
+        # Track all privilege issues (bounded to prevent memory leaks)
+        self._issues: deque = deque(maxlen=500)
         self._critical_count = 0
 
         # Log initial privilege status

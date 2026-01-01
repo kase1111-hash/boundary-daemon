@@ -15,6 +15,7 @@ from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional, Set
 from enum import Enum
 from datetime import datetime
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +225,8 @@ class StateMonitor:
 
         # Cellular security tracking (for IMSI catcher detection)
         self._last_cell_tower: Optional[str] = None
-        self._cell_tower_history: List[Dict] = []
-        self._signal_strength_history: List[int] = []
+        self._cell_tower_history: deque = deque(maxlen=100)  # Bounded history
+        self._signal_strength_history: deque = deque(maxlen=20)  # Bounded history
 
         # DNS security monitor (lazy initialization)
         self._dns_security_monitor = None
@@ -1220,8 +1221,7 @@ class StateMonitor:
                 signal = cell_info.get('signal_strength')
                 if signal is not None:
                     self._signal_strength_history.append(signal)
-                    if len(self._signal_strength_history) > 10:
-                        self._signal_strength_history = self._signal_strength_history[-20:]
+                    # deque with maxlen handles trimming automatically
 
                     # Sudden massive signal increase can indicate fake tower
                     if len(self._signal_strength_history) >= 2:
