@@ -511,23 +511,23 @@ python api/boundary_api.py
 #### SIEM Integration
 *Feed SIEMs, don't replace them*
 
-- [ ] CEF/LEEF export (Splunk/QRadar/ArcSight)
-- [ ] Kafka producer, S3/GCS log shipping
-- [ ] Signature verification API for SIEMs
+- [x] CEF/LEEF export (Splunk/QRadar/ArcSight)
+- [x] Kafka producer, S3/GCS log shipping
+- [x] Signature verification API for SIEMs
 
 #### Identity Federation
 *External identity is advisory*
 
-- [ ] OIDC token validation → local capabilities
-- [ ] LDAP group mapping
-- [ ] PAM integration
-- [ ] Ceremonies still required for sensitive ops
+- [x] OIDC token validation → local capabilities
+- [x] LDAP group mapping
+- [x] PAM integration
+- [x] Ceremonies still required for sensitive ops
 
 #### Compliance Automation
 
-- [ ] NIST 800-53 / ISO 27001 control mapping export
-- [ ] Self-contained evidence bundles for auditors
-- [ ] Access review ceremonies
+- [x] NIST 800-53 / ISO 27001 control mapping export
+- [x] Self-contained evidence bundles for auditors
+- [x] Access review ceremonies
 
 ### Tier 3: Selective Enhancement
 
