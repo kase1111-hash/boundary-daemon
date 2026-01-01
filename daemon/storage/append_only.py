@@ -339,6 +339,30 @@ class AppendOnlyStorage:
                     if config.tls_ca_cert:
                         context.load_verify_locations(config.tls_ca_cert)
                     if not config.tls_verify:
+                        # SECURITY WARNING: Disabling TLS verification is dangerous
+                        # and should only be used in development/testing environments.
+                        # This allows MITM attacks on log transmission.
+                        logger.warning(
+                            "SECURITY WARNING: TLS certificate verification disabled for syslog. "
+                            "This is insecure and should only be used in development. "
+                            "Enable tls_verify=True in production."
+                        )
+                        # Log this security event if event logger available
+                        try:
+                            from daemon.event_logger import EventType
+                            # Note: This requires event logger to be passed to config
+                            if hasattr(self, '_event_logger') and self._event_logger:
+                                self._event_logger.log_event(
+                                    event_type=EventType.SECURITY_VIOLATION,
+                                    data={
+                                        'violation_type': 'insecure_tls_config',
+                                        'host': config.host,
+                                        'port': config.port,
+                                        'warning': 'TLS verification disabled'
+                                    }
+                                )
+                        except Exception:
+                            pass
                         context.check_hostname = False
                         context.verify_mode = ssl.CERT_NONE
                     self._remote_socket = context.wrap_socket(
