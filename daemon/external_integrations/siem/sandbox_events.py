@@ -5,7 +5,7 @@ Provides real-time event streaming from sandbox operations to SIEM systems.
 Events are formatted in CEF/LEEF and shipped via configured transport.
 
 Usage:
-    from daemon.integrations.siem.sandbox_events import SandboxEventEmitter, get_sandbox_emitter
+    from daemon.external_integrations.siem.sandbox_events import SandboxEventEmitter, get_sandbox_emitter
 
     # Get global emitter (configured via environment)
     emitter = get_sandbox_emitter()
