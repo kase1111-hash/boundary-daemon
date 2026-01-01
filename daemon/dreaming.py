@@ -141,8 +141,11 @@ class DreamingReporter:
 
         # Current activity tracking
         self._current_phase = DreamPhase.AWAKENING
+        self._last_phase = DreamPhase.AWAKENING
         self._active_operations: Dict[str, float] = {}  # operation -> start_time
         self._completed_operations: deque = deque(maxlen=20)
+        self._last_activity_time: float = 0.0  # Track when we last had activity
+        self._last_print_time: float = 0.0  # Track when we last printed
 
         # Statistics (lightweight counters)
         self._stats = {
@@ -190,6 +193,7 @@ class DreamingReporter:
         """Record the start of an operation."""
         with self._lock:
             self._active_operations[operation] = time.time()
+            self._last_activity_time = time.time()
 
     def complete_operation(self, operation: str, success: bool = True) -> None:
         """Record completion of an operation."""
@@ -203,6 +207,7 @@ class DreamingReporter:
                     'success': success,
                     'time': time.time(),
                 })
+                self._last_activity_time = time.time()
 
     def record_event(self, phase: DreamPhase, message: str, details: Optional[Dict] = None) -> None:
         """Record an event for potential reporting."""
@@ -214,6 +219,7 @@ class DreamingReporter:
                 details=details,
             ))
             self._current_phase = phase
+            self._last_activity_time = time.time()
 
     def increment_stat(self, stat: str, amount: int = 1) -> None:
         """Increment a statistics counter."""
@@ -224,7 +230,10 @@ class DreamingReporter:
     def set_phase(self, phase: DreamPhase) -> None:
         """Set the current activity phase."""
         with self._lock:
-            self._current_phase = phase
+            if phase != self._current_phase:
+                self._last_phase = self._current_phase
+                self._current_phase = phase
+                self._last_activity_time = time.time()
 
     def start(self) -> None:
         """Start the dreaming reporter thread."""
@@ -262,10 +271,33 @@ class DreamingReporter:
             except Exception as e:
                 logger.debug(f"Dreaming error (non-fatal): {e}")
 
-    def _generate_status(self) -> str:
-        """Generate the status line to output."""
+    def _generate_status(self) -> Optional[str]:
+        """
+        Generate the status line to output.
+
+        Returns None if there's no recent activity to report.
+        Only prints when the system is actually doing something.
+        """
         with self._lock:
             now = time.time()
+
+            # Check if there's been any activity since last print
+            # Activity includes: phase changes, operation starts/completions, events
+            has_recent_activity = (now - self._last_activity_time) < self.interval
+
+            # Check for recent completions
+            recent_completions = [
+                op for op in self._completed_operations
+                if now - op['time'] < self.interval
+            ]
+
+            # Check for active operations
+            active_count = len(self._active_operations)
+
+            # Only print if there's something interesting happening
+            if not has_recent_activity and not recent_completions and active_count == 0:
+                return None  # Stay silent when idle
+
             timestamp = datetime.now().strftime("%H:%M:%S")
 
             # Get a dream phrase for current phase
@@ -293,17 +325,12 @@ class DreamingReporter:
             parts.append(self._color(phrase, phase_color))
 
             # Add recent completion if any
-            recent_completions = [
-                op for op in self._completed_operations
-                if now - op['time'] < self.interval
-            ]
             if recent_completions:
                 latest = recent_completions[-1]
                 status_icon = self._color("✓", 'green') if latest['success'] else self._color("✗", 'yellow')
                 parts.append(f"{status_icon} {latest['operation']}")
 
             # Add active operations count if any
-            active_count = len(self._active_operations)
             if active_count > 0:
                 parts.append(self._color(f"({active_count} active)", 'dim'))
 
@@ -316,6 +343,7 @@ class DreamingReporter:
                 except Exception:
                     pass  # Silent fail - don't interrupt dreaming
 
+            self._last_print_time = now
             return " ".join(parts)
 
     def get_stats(self) -> Dict[str, Any]:
