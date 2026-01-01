@@ -114,25 +114,14 @@ REM ============================================================================
 if %CLEAN_BUILD%==1 (
     echo.
     echo %YELLOW%[2/6] Cleaning previous build artifacts...%RESET%
-    if exist "build" (
-        rmdir /s /q "build" 2>nul
-        echo   Removed: build/
-    )
-    if exist "dist" (
-        rmdir /s /q "dist" 2>nul
-        echo   Removed: dist/
-    )
-    if exist "%APP_NAME%.spec" (
-        del /f /q "%APP_NAME%.spec" 2>nul
-        echo   Removed: %APP_NAME%.spec
-    )
-    for /d %%d in (*__pycache__*) do (
-        rmdir /s /q "%%d" 2>nul
-    )
+    if exist "build" rmdir /s /q "build" 2>nul && echo   Removed: build/
+    if exist "dist" rmdir /s /q "dist" 2>nul && echo   Removed: dist/
+    if exist "%APP_NAME%.spec" del /f /q "%APP_NAME%.spec" 2>nul && echo   Removed: %APP_NAME%.spec
+    for /d %%d in (*__pycache__*) do rmdir /s /q "%%d" 2>nul
     echo %GREEN%   Clean complete!%RESET%
 ) else (
     echo.
-    echo %YELLOW%[2/6] Skipping clean (use --clean to enable)%RESET%
+    echo %YELLOW%[2/6] Skipping clean ^(use --clean to enable^)%RESET%
 )
 
 REM ============================================================================
@@ -168,7 +157,7 @@ if %SKIP_DEPS%==0 (
         echo %YELLOW%   Warning: requirements.txt not found%RESET%
     )
 ) else (
-    echo %YELLOW%[3/6] Skipping dependency installation (--skip-deps)%RESET%
+    echo %YELLOW%[3/6] Skipping dependency installation ^(--skip-deps^)%RESET%
 )
 
 REM ============================================================================
