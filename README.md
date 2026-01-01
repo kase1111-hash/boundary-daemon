@@ -16,16 +16,19 @@
 > - ✅ Logs all security events with tamper-evident hash chains
 > - ✅ Detects violations and triggers alerts
 >
-> It does **NOT**:
+> It does **NOT** (by default):
 > - ❌ Block network connections at the OS level
 > - ❌ Prevent memory access or file operations
 > - ❌ Terminate processes or enforce lockdowns
-> - ❌ Act as a sandbox or isolation mechanism
 >
-> **External systems must voluntarily respect daemon decisions.** This is a policy coordination
-> layer, not a security enforcement mechanism. For actual enforcement, integrate with:
-> - Kernel-level controls (SELinux, AppArmor, seccomp-bpf)
-> - Container isolation (namespaces, cgroups)
+> **NEW: Sandbox Module** - The daemon now includes an optional sandbox module that CAN:
+> - ✅ Isolate processes via Linux namespaces (PID, network, mount)
+> - ✅ Filter syscalls via seccomp-bpf
+> - ✅ Enforce resource limits via cgroups v2
+> - ✅ Integrate sandbox restrictions with boundary modes
+>
+> **External systems must voluntarily respect daemon decisions.** For additional enforcement, integrate with:
+> - Kernel-level controls (SELinux, AppArmor)
 > - Network firewalls (iptables/nftables)
 > - Hardware controls
 >
@@ -151,6 +154,14 @@ python daemon/boundary_daemon.py --mode=airgap
 - Process isolation via containers (podman/docker)
 - AppArmor/SELinux profile management
 
+### Process Sandboxing (New!)
+- Linux namespace isolation (PID, network, mount, user, IPC)
+- Seccomp-bpf syscall filtering with boundary mode profiles
+- Cgroups v2 resource limits (CPU, memory, I/O, PIDs)
+- Automatic sandbox profile selection based on boundary mode
+- Ceremony integration for break-glass scenarios
+- Graceful degradation on systems without namespace support
+
 ### Advanced Security Features
 - Malware scanning (antivirus module)
 - DNS/ARP/WiFi security monitoring
@@ -224,6 +235,13 @@ boundary-daemon/
 │  │  ├─ detector.py                  # PII pattern detection
 │  │  ├─ bypass_resistant_detector.py # Advanced PII detection
 │  │  └─ filter.py                    # PII filtering/redaction
+│  │
+│  ├─ sandbox/                    # Process sandboxing
+│  │  ├─ __init__.py                  # Module exports
+│  │  ├─ namespace.py                 # Linux namespace isolation
+│  │  ├─ seccomp_filter.py            # Seccomp-bpf syscall filtering
+│  │  ├─ cgroups.py                   # Cgroups v2 resource limits
+│  │  └─ sandbox_manager.py           # Policy-integrated sandbox orchestration
 │  │
 │  ├─ hardware/                   # Hardware integration
 │  │  └─ tpm_manager.py               # TPM sealing & attestation
@@ -331,6 +349,34 @@ permitted, reason = tool_gate.check_tool(
 
 if not permitted:
     raise PermissionError(f"Tool execution denied: {reason}")
+```
+
+### Sandbox Integration
+
+```python
+from daemon.sandbox import SandboxManager, SandboxProfile
+from daemon.policy_engine import PolicyEngine, BoundaryMode
+
+# Initialize with policy engine
+policy_engine = PolicyEngine(initial_mode=BoundaryMode.RESTRICTED)
+sandbox_manager = SandboxManager(policy_engine)
+
+# Run untrusted code in policy-appropriate sandbox
+result = sandbox_manager.run_sandboxed(
+    command=["python3", "untrusted_script.py"],
+    timeout=30,
+)
+
+print(f"Exit code: {result.exit_code}")
+print(f"Output: {result.stdout}")
+
+# Or create a persistent sandbox with custom profile
+sandbox = sandbox_manager.create_sandbox(
+    name="worker-1",
+    profile=SandboxProfile.strict(),
+)
+sandbox.run(["./process_data.sh"])
+sandbox.terminate()
 ```
 
 ### Unix Socket API
@@ -543,6 +589,15 @@ python api/boundary_api.py
 - [x] Kernel visibility without kernel driver
 - [x] Read-only observation for policy decisions
 - [x] Graceful degradation on older kernels
+
+#### Process Sandboxing (New!)
+
+- [x] Linux namespace isolation (PID, network, mount, user, IPC, UTS)
+- [x] Seccomp-bpf syscall filtering with pre-built profiles
+- [x] Cgroups v2 resource limits (CPU, memory, I/O, PIDs)
+- [x] Boundary mode integration (profile auto-selection)
+- [x] Ceremony integration for break-glass scenarios
+- [x] Policy engine integration for sandbox decisions
 
 ---
 
