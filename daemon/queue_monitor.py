@@ -385,9 +385,8 @@ class QueueMonitor:
         # History per queue
         self._history: Dict[str, deque] = {}  # name -> deque of QueueSnapshot
 
-        # Alerts
-        self._alerts: List[QueueAlert] = []
-        self._alert_history_size = 50
+        # Alerts (bounded to prevent memory leaks)
+        self._alerts: deque = deque(maxlen=50)
         self._last_alert: Dict[str, int] = {}  # "queue:alert_type" -> sample_count
         self._sample_count = 0
 
@@ -474,6 +473,10 @@ class QueueMonitor:
             self._queue_configs.pop(name, None)
             self._history.pop(name, None)
             self._backpressure_state.pop(name, None)
+            # Clean up _last_alert entries for this queue to prevent memory leak
+            keys_to_remove = [k for k in self._last_alert if k.startswith(f"{name}:")]
+            for key in keys_to_remove:
+                del self._last_alert[key]
         logger.info(f"Unregistered queue: {name}")
 
     def set_telemetry_manager(self, telemetry_manager):
@@ -687,8 +690,7 @@ class QueueMonitor:
 
         with self._lock:
             self._alerts.append(alert)
-            if len(self._alerts) > self._alert_history_size:
-                self._alerts = self._alerts[-self._alert_history_size:]
+            # deque with maxlen handles trimming automatically
 
         log_level = {
             QueueAlertLevel.INFO: logging.INFO,

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Callable, Set, Tuple
+from collections import deque
 import threading
 import hashlib
 import secrets
@@ -67,7 +68,7 @@ class TripwireSystem:
     def __init__(self, event_logger=None):
         """Initialize tripwire system"""
         self._lock = threading.Lock()
-        self._violations: List[TripwireViolation] = []
+        self._violations: deque = deque(maxlen=1000)  # Bounded violation history
         self._callbacks: List[Callable] = []
         self._enabled = True
         self._event_logger = event_logger
@@ -76,7 +77,7 @@ class TripwireSystem:
         self._auth_token_hash: Optional[str] = None  # Hash of the auth token
         self._auth_required = True  # Require auth for critical ops (cannot be disabled)
         self._locked = False  # When True, cannot be disabled even with token
-        self._disable_attempts: List[dict] = []  # Track unauthorized attempts
+        self._disable_attempts: deque = deque(maxlen=100)  # Bounded attempt history
         self._max_disable_attempts = 3  # Lock after N failed attempts
         self._failed_attempts = 0
 

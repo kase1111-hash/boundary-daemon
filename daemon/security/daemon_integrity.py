@@ -276,6 +276,10 @@ class DaemonIntegrityProtector:
             'files_monitored': 0,
         }
 
+        # Rate limiting for log messages (prevent spam)
+        self._last_failure_log_time: float = 0.0
+        self._failure_log_cooldown: float = 600.0  # 10 minutes
+
     def _load_signing_key(self) -> Optional[bytes]:
         """Load the signing key for manifest verification.
 
@@ -463,7 +467,11 @@ class DaemonIntegrityProtector:
     def _verify_signature(self, manifest: IntegrityManifest) -> bool:
         """Verify manifest signature."""
         if not manifest.signature:
-            logger.warning("Manifest has no signature")
+            # Rate limit this warning to prevent log spam
+            current_time = time.time()
+            if current_time - self._last_failure_log_time >= self._failure_log_cooldown:
+                logger.warning("Manifest has no signature")
+                self._last_failure_log_time = current_time
             return False
 
         signing_key = self._load_signing_key()
@@ -698,12 +706,18 @@ class DaemonIntegrityProtector:
                 f"in {result.check_time:.2f}s"
             )
         else:
-            logger.error(
-                f"Integrity check FAILED: {result.status.value} - "
-                f"{result.error_message}"
-            )
+            # Rate limit failure messages to prevent log spam (once per 10 minutes)
+            current_time = time.time()
+            should_log = current_time - self._last_failure_log_time >= self._failure_log_cooldown
 
-            # Log to event logger if available
+            if should_log:
+                logger.error(
+                    f"Integrity check FAILED: {result.status.value} - "
+                    f"{result.error_message}"
+                )
+                self._last_failure_log_time = current_time
+
+            # Log to event logger if available (always log events, just rate limit console)
             if self._event_logger:
                 try:
                     self._event_logger.log_security_event(
@@ -839,12 +853,18 @@ class DaemonIntegrityProtector:
 
     def _handle_runtime_failure(self, result: IntegrityCheckResult):
         """Handle integrity failure detected at runtime."""
-        logger.critical(
-            f"RUNTIME INTEGRITY FAILURE: {result.status.value} - "
-            f"{result.error_message}"
-        )
+        # Rate limit log messages to prevent spam (once per 10 minutes)
+        current_time = time.time()
+        should_log = current_time - self._last_failure_log_time >= self._failure_log_cooldown
 
-        # Log critical security event
+        if should_log:
+            logger.critical(
+                f"RUNTIME INTEGRITY FAILURE: {result.status.value} - "
+                f"{result.error_message}"
+            )
+            self._last_failure_log_time = current_time
+
+        # Log critical security event (always log to event logger, just rate limit console)
         if self._event_logger:
             try:
                 self._event_logger.log_security_event(
@@ -857,7 +877,8 @@ class DaemonIntegrityProtector:
                 )
             except (AttributeError, IOError, OSError) as e:
                 # Event logging failure - don't mask the runtime failure
-                logger.debug(f"Failed to log runtime integrity failure: {e}")
+                if should_log:
+                    logger.debug(f"Failed to log runtime integrity failure: {e}")
 
         # For runtime failures, we could:
         # 1. Trigger immediate shutdown
