@@ -993,6 +993,7 @@ class BoundaryDaemon:
                 disk_warning = float(os.environ.get('BOUNDARY_DISK_WARNING_PERCENT', '90'))
 
                 # Get log directory for disk monitoring
+                # nosec B108 - monitoring paths, not writing to them
                 disk_paths = [log_dir, '/var/log', '/tmp']
 
                 config = ResourceMonitorConfig(

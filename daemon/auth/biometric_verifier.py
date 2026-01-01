@@ -562,7 +562,7 @@ class BiometricVerifier:
                 continue
 
             # Mock: simulate a match with random score
-            import random
+            import random  # nosec B311 - mock simulation only, not for crypto
             mock_score = random.uniform(0.65, 0.95)  # Simulate varying match quality
 
             if mock_score > best_match_score:

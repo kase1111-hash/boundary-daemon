@@ -9,7 +9,7 @@ like thoughts passing through a sleeping mind.
 """
 
 import logging
-import random
+import random  # nosec B311 - used for UI phrase variety, not security
 import threading
 import time
 from collections import deque

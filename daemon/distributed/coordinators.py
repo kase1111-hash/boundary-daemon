@@ -96,7 +96,7 @@ class FileCoordinator(Coordinator):
     WARNING: This is NOT suitable for production use. Use etcd/consul in production.
     """
 
-    def __init__(self, data_dir: str = '/tmp/boundary-cluster'):
+    def __init__(self, data_dir: str = '/tmp/boundary-cluster'):  # nosec B108 - dev default only
         """
         Initialize file coordinator.
 

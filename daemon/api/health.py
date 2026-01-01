@@ -436,7 +436,7 @@ class HealthCheckServer:
         self._port = 8080
         self._systemd_watchdog = False
 
-    def start(self, port: int = 8080, host: str = "0.0.0.0") -> bool:
+    def start(self, port: int = 8080, host: str = "0.0.0.0") -> bool:  # nosec B104 - health endpoint needs network access
         """Start the health check server."""
         if self._running:
             return True

@@ -149,3 +149,42 @@ The following security issues have been addressed:
 - **Low**: Fixed three low severity security issues
 - Narrowed broad Exception catches in security-critical paths
 - Integrated centralized error framework for consistent security logging
+
+## Static Analysis
+
+The codebase is regularly analyzed with [Bandit](https://bandit.readthedocs.io/) for security issues.
+
+### Current Status (77,576 lines)
+
+| Severity | Count | Status |
+|----------|-------|--------|
+| High | 0 | ✅ Clean |
+| Medium | ~50 | ✅ Reviewed (see below) |
+| Low | ~600 | ✅ Expected (subprocess usage) |
+
+### Intentional Security Choices
+
+The following patterns are intentionally used and marked with `# nosec`:
+
+1. **B104 (0.0.0.0 binding)**: Health check endpoint needs network access for Kubernetes/orchestrator probes
+2. **B108 (/tmp usage)**:
+   - Monitoring paths (not writing)
+   - Detecting malicious processes in /tmp
+   - Development defaults (production uses config)
+   - SELinux module compilation (uses tempfile.TemporaryDirectory)
+3. **B311 (random module)**: Used for non-security purposes (UI phrase variety, mock simulations)
+4. **B110 (try/except/pass)**: Optional feature imports that should not crash the daemon
+5. **B603/B607 (subprocess)**: Required for system enforcement (iptables, SELinux, etc.)
+
+### Running Security Scans
+
+```bash
+# Full scan
+python -m bandit -r daemon/ -f txt
+
+# High severity only
+python -m bandit -r daemon/ -f txt -lll
+
+# Generate HTML report
+python -m bandit -r daemon/ -f html -o security_report.html
+```

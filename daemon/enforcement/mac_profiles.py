@@ -444,14 +444,18 @@ profile {profile_name} {process_path} flags=(attach_disconnected) {{
                 return True, f"Profile installed: {profile_path}"
 
             elif self._mac_system == MACSystem.SELINUX:
-                # SELinux requires compilation
-                te_path = Path(f"/tmp/{name}.te")
-                te_path.write_text(profile)
+                # SELinux requires compilation - use secure temp directory
+                import tempfile
+                with tempfile.TemporaryDirectory(prefix="selinux_") as tmpdir:
+                    te_path = Path(f"{tmpdir}/{name}.te")
+                    te_path.write_text(profile)
 
-                # Compile module
-                subprocess.run(["checkmodule", "-M", "-m", "-o", f"/tmp/{name}.mod", str(te_path)])
-                subprocess.run(["semodule_package", "-o", f"/tmp/{name}.pp", "-m", f"/tmp/{name}.mod"])
-                result = subprocess.run(["semodule", "-i", f"/tmp/{name}.pp"], capture_output=True, text=True)
+                    # Compile module
+                    mod_path = f"{tmpdir}/{name}.mod"
+                    pp_path = f"{tmpdir}/{name}.pp"
+                    subprocess.run(["checkmodule", "-M", "-m", "-o", mod_path, str(te_path)])
+                    subprocess.run(["semodule_package", "-o", pp_path, "-m", mod_path])
+                    result = subprocess.run(["semodule", "-i", pp_path], capture_output=True, text=True)
 
                 if result.returncode != 0:
                     return False, f"Failed to install SELinux module: {result.stderr}"
