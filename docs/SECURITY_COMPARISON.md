@@ -196,6 +196,11 @@ The multi-step ceremony system with mandatory delays and biometric verification 
 | File integrity | SHA-256 baseline | Alert |
 | Process anomaly | Behavior analysis | Alert |
 | PII leakage | 30+ entity patterns | Redact/Block |
+| Prompt injection | Pattern matching | Alert/Block |
+| RAG poisoning | Document analysis | Block document |
+| Agent impersonation | Attestation verification | Deny access |
+| Tool abuse | Chain depth + rate limits | Block execution |
+| Response safety | Content analysis | Sanitize/Block |
 
 **vs EDR Platforms (CrowdStrike, SentinelOne, Microsoft Defender):**
 
@@ -286,6 +291,14 @@ Designed for offline operation with AIRGAP/COLDROOM modes. Enterprise tools ofte
 ### 6. Hash-Chained Audit
 Blockchain-style immutable logging with Ed25519 signatures. Exceeds many SIEM implementations.
 
+### 7. AI/Agent Security (NEW)
+Comprehensive security stack for AI agents and LLM systems that no traditional EDR provides:
+- **Prompt Injection Detection**: Pattern-based detection of jailbreaks, instruction injection, encoding bypasses
+- **RAG Injection Detection**: Detects poisoned documents and indirect injection in retrieval pipelines
+- **Agent Attestation**: Cryptographic identity and capability-based access control for agents
+- **Tool Output Validation**: Prevents tool abuse, recursive chains, and data exfiltration
+- **Response Guardrails**: Content safety, hallucination detection, and response sanitization
+
 ---
 
 ## 10. Gaps Requiring Attention
@@ -358,6 +371,12 @@ Blockchain-style immutable logging with Ed25519 signatures. Exceeds many SIEM im
 | Trust boundaries | ✓ | ✗ | ✗ | ✗ |
 | Air-gap modes | ✓ | ✗ | ✗ | ✗ |
 | Hash-chain logs | ✓ | ✗ | ✗ | ✗ |
+| **AI/Agent Security** |
+| Prompt injection detection | ✓ | ✗ | ✗ | ✗ |
+| RAG poisoning detection | ✓ | ✗ | ✗ | ✗ |
+| Agent attestation | ✓ | ✗ | ✗ | ✗ |
+| Tool output validation | ✓ | ✗ | ✗ | ✗ |
+| Response guardrails | ✓ | ✗ | ✗ | ✗ |
 
 ---
 

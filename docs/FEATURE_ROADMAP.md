@@ -270,22 +270,24 @@ These features would compromise core principles:
 
 ## Implementation Priority Matrix
 
-| Priority | Feature | Value | Effort | Dependencies |
-|----------|---------|-------|--------|--------------|
-| **P0** | Ceremony templates | High | Low | None |
-| **P0** | CEF/LEEF export | High | Low | None |
-| **P0** | Config linter | High | Low | None |
-| **P1** | Merkle tree proofs | High | Medium | None |
-| **P1** | OIDC token validation | High | Medium | None (optional) |
-| **P1** | YARA rule engine | High | Medium | yara-python |
-| **P1** | Query CLI | Medium | Low | None |
-| **P2** | N-of-M ceremonies | High | Medium | None |
-| **P2** | Hardware token ceremonies | High | Medium | fido2 |
-| **P2** | Control mapping export | Medium | Low | None |
-| **P2** | Terminal dashboard | Medium | Medium | rich |
-| **P3** | eBPF observability | Medium | High | bcc/libbpf |
-| **P3** | K8s admission webhook | Medium | Medium | None |
-| **P3** | Sigma rule support | Medium | Medium | None |
+| Priority | Feature | Value | Effort | Dependencies | Status |
+|----------|---------|-------|--------|--------------|--------|
+| **P0** | Ceremony templates | High | Low | None | Planned |
+| **P0** | CEF/LEEF export | High | Low | None | ✅ Complete |
+| **P0** | Config linter | High | Low | None | Planned |
+| **P1** | Merkle tree proofs | High | Medium | None | Planned |
+| **P1** | OIDC token validation | High | Medium | None (optional) | ✅ Complete |
+| **P1** | YARA rule engine | High | Medium | yara-python | ✅ Complete |
+| **P1** | Query CLI | Medium | Low | None | Planned |
+| **P2** | N-of-M ceremonies | High | Medium | None | Planned |
+| **P2** | Hardware token ceremonies | High | Medium | fido2 | Planned |
+| **P2** | Control mapping export | Medium | Low | None | ✅ Complete |
+| **P2** | Terminal dashboard | Medium | Medium | rich | Planned |
+| **P2** | RAG injection detection | High | Medium | None | ✅ Complete |
+| **P2** | Agent attestation | High | Medium | None | ✅ Complete |
+| **P3** | eBPF observability | Medium | High | bcc/libbpf | ✅ Complete |
+| **P3** | K8s admission webhook | Medium | Medium | None | Planned |
+| **P3** | Sigma rule support | Medium | Medium | None | ✅ Complete |
 
 ---
 
@@ -318,6 +320,30 @@ Current: ~4 core dependencies
 
 ---
 
+## Recently Completed Features
+
+The following major features have been implemented:
+
+### AI/Agent Security Stack ✅
+- **Prompt Injection Detection** - Jailbreak, instruction injection, encoding bypass detection
+- **Tool Output Validation** - Rate limiting, chain depth control, PII sanitization
+- **Response Guardrails** - Content safety, hallucination detection, response sanitization
+- **RAG Injection Detection** - Poisoned document detection, cross-document attack analysis
+- **Agent Attestation** - Cryptographic identity, capability-based access control, delegation chains
+
+### Threat Detection ✅
+- **YARA Rule Engine** - File/memory scanning with YARA rules
+- **Sigma Rule Support** - Sigma detection rule conversion
+- **eBPF Observability** - Kernel visibility without kernel driver
+- **MITRE ATT&CK Patterns** - Deterministic attack pattern matching
+
+### Enterprise Integration ✅
+- **CEF/LEEF Export** - Common Event Format for SIEM integration
+- **OIDC Token Validation** - External identity provider support
+- **Compliance Mapping** - NIST 800-53 / ISO 27001 control mapping
+
+---
+
 ## Summary
 
 This roadmap strengthens Boundary Daemon's unique position as:
@@ -326,5 +352,6 @@ This roadmap strengthens Boundary Daemon's unique position as:
 2. **The audit anchor** — Forensic-grade, cryptographically verifiable logs
 3. **The air-gap specialist** — Purpose-built for disconnected high-security
 4. **The policy coordinator** — Integrates with, not replaces, security stack
+5. **The AI security leader** — Comprehensive protection for AI agents and LLM systems
 
 By focusing on these strengths while adding strategic integrations (SIEM, IdP, compliance), Boundary Daemon becomes more deployable in enterprise environments without becoming another bloated security agent.
