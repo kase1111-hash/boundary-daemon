@@ -20,6 +20,24 @@ from typing import Optional, Dict, Any, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
+# Import error handling framework for consistent error management
+try:
+    from daemon.utils.error_handling import (
+        log_security_error,
+        log_auth_error,
+        log_network_error,
+        ErrorCategory,
+    )
+    ERROR_HANDLING_AVAILABLE = True
+except ImportError:
+    ERROR_HANDLING_AVAILABLE = False
+    def log_security_error(e, op, **ctx):
+        logger.error(f"SECURITY: {op}: {e}")
+    def log_auth_error(e, op, **ctx):
+        logger.error(f"AUTH: {op}: {e}")
+    def log_network_error(e, op, **ctx):
+        logger.error(f"NETWORK: {op}: {e}")
+
 # Cross-platform socket support
 IS_WINDOWS = sys.platform == 'win32'
 HAS_UNIX_SOCKETS = hasattr(socket, 'AF_UNIX')
@@ -205,11 +223,14 @@ class BoundaryAPIServer:
                     )
                     client_thread.start()
 
-                except Exception as e:
+                except (OSError, socket.error, ConnectionError) as e:
+                    # Socket-level errors during accept/client handling
                     if self._running:
-                        logger.error(f"Error in server loop: {e}")
+                        log_network_error(e, "api_server_loop", socket_path=self.socket_path)
 
-        except Exception as e:
+        except (OSError, socket.error, PermissionError) as e:
+            # Fatal socket binding/setup errors
+            log_network_error(e, "api_server_fatal", socket_path=self.socket_path)
             logger.critical(f"Fatal error in API server: {e}")
         finally:
             if self._socket:
@@ -446,7 +467,9 @@ class BoundaryAPIServer:
                 'expires_at': token_obj.expires_at.isoformat() if token_obj.expires_at else None,
                 'warning': 'Store this token securely - it cannot be retrieved again!',
             }
-        except Exception as e:
+        except (ValueError, TypeError, KeyError) as e:
+            # Invalid parameters or token creation errors
+            log_auth_error(e, "create_token", token_name=name)
             return {'success': False, 'error': str(e)}
 
     def _handle_revoke_token(self, params: Dict[str, Any], requesting_token) -> Dict[str, Any]:
@@ -471,7 +494,9 @@ class BoundaryAPIServer:
             )
 
             return {'success': success, 'message': message}
-        except Exception as e:
+        except (ValueError, KeyError, IOError, OSError) as e:
+            # Token lookup or persistence errors
+            log_auth_error(e, "revoke_token", token_id=token_id)
             return {'success': False, 'error': str(e)}
 
     def _handle_list_tokens(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -490,7 +515,9 @@ class BoundaryAPIServer:
                 'tokens': tokens,
                 'count': len(tokens),
             }
-        except Exception as e:
+        except (IOError, OSError, json.JSONDecodeError) as e:
+            # Token file access or parsing errors
+            log_auth_error(e, "list_tokens")
             return {'success': False, 'error': str(e)}
 
     def _handle_rate_limit_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -527,7 +554,8 @@ class BoundaryAPIServer:
                     'success': True,
                     'global_rate_limit': global_status,
                 }
-        except Exception as e:
+        except (KeyError, ValueError) as e:
+            # Rate limit lookup errors
             return {'success': False, 'error': str(e)}
 
     def _handle_status(self) -> Dict[str, Any]:
@@ -535,7 +563,8 @@ class BoundaryAPIServer:
         try:
             status = self.daemon.get_status()
             return {'success': True, 'status': status}
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Daemon not initialized or status unavailable
             return {'success': False, 'error': str(e)}
 
     def _handle_check_recall(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -559,7 +588,12 @@ class BoundaryAPIServer:
                 'reason': reason,
                 'memory_class': memory_class_value
             }
-        except Exception as e:
+        except ValueError as e:
+            # Invalid memory class value
+            return {'success': False, 'error': f'Invalid memory_class: {e}'}
+        except (AttributeError, RuntimeError) as e:
+            # Daemon/policy engine not available
+            log_security_error(e, "check_recall", memory_class=memory_class_value)
             return {'success': False, 'error': str(e)}
 
     def _handle_check_tool(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -594,7 +628,9 @@ class BoundaryAPIServer:
                 'reason': reason,
                 'tool_name': tool_name
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Daemon/policy engine not available
+            log_security_error(e, "check_tool", tool_name=tool_name)
             return {'success': False, 'error': str(e)}
 
     def _handle_set_mode(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -640,7 +676,12 @@ class BoundaryAPIServer:
                 'message': message,
                 'new_mode': mode_str
             }
-        except Exception as e:
+        except ValueError as e:
+            # Invalid mode or operator value
+            return {'success': False, 'error': f'Invalid parameter: {e}'}
+        except (AttributeError, RuntimeError) as e:
+            # Daemon not available or mode change failed
+            log_security_error(e, "set_mode", requested_mode=mode_str)
             return {'success': False, 'error': str(e)}
 
     def _handle_get_events(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -672,7 +713,11 @@ class BoundaryAPIServer:
                 'events': events_data,
                 'count': len(events_data)
             }
-        except Exception as e:
+        except ValueError as e:
+            # Invalid event type value
+            return {'success': False, 'error': f'Invalid event_type: {e}'}
+        except (AttributeError, IOError, OSError) as e:
+            # Event logger not available or file access error
             return {'success': False, 'error': str(e)}
 
     def _handle_verify_log(self) -> Dict[str, Any]:
@@ -684,7 +729,9 @@ class BoundaryAPIServer:
                 'valid': is_valid,
                 'error': error
             }
-        except Exception as e:
+        except (AttributeError, IOError, OSError, json.JSONDecodeError) as e:
+            # Event logger not available or log file access/parsing error
+            log_security_error(e, "verify_log")
             return {'success': False, 'error': str(e)}
 
     def _handle_check_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -717,7 +764,9 @@ class BoundaryAPIServer:
                 'source': source,
                 'result': result
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Message checker not available
+            log_security_error(e, "check_message", source=source)
             return {'success': False, 'error': str(e)}
 
     def _handle_check_natlangchain(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -768,7 +817,9 @@ class BoundaryAPIServer:
                 'author': author,
                 'result': result
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # NatLangChain checker not available
+            log_security_error(e, "check_natlangchain", author=author)
             return {'success': False, 'error': str(e)}
 
     def _handle_check_agentos(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -826,7 +877,9 @@ class BoundaryAPIServer:
                 'recipient_agent': recipient_agent,
                 'result': result
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Agent-OS checker not available
+            log_security_error(e, "check_agentos", sender=sender_agent, recipient=recipient_agent)
             return {'success': False, 'error': str(e)}
 
     # === Monitoring API Handlers (Plan 11) ===
@@ -849,7 +902,8 @@ class BoundaryAPIServer:
                 'success': True,
                 'memory_stats': stats,
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Memory monitor not available or failed to get stats
             return {'success': False, 'error': str(e)}
 
     def _handle_get_resource_stats(self) -> Dict[str, Any]:
@@ -892,7 +946,8 @@ class BoundaryAPIServer:
                     }
 
             return result
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Resource monitor not available or failed to get stats
             return {'success': False, 'error': str(e)}
 
     def _handle_get_health_stats(self) -> Dict[str, Any]:
@@ -913,7 +968,8 @@ class BoundaryAPIServer:
                 'success': True,
                 'health_stats': summary,
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Health monitor not available or failed to get stats
             return {'success': False, 'error': str(e)}
 
     def _handle_get_queue_stats(self) -> Dict[str, Any]:
@@ -934,7 +990,8 @@ class BoundaryAPIServer:
                 'success': True,
                 'queue_stats': summary,
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Queue monitor not available or failed to get stats
             return {'success': False, 'error': str(e)}
 
     def _handle_get_monitoring_summary(self) -> Dict[str, Any]:
@@ -957,7 +1014,7 @@ class BoundaryAPIServer:
                             'enabled': True,
                             'stats': self.daemon.memory_monitor.get_stats(),
                         }
-                    except Exception as e:
+                    except (AttributeError, RuntimeError) as e:
                         result['monitors']['memory'] = {'enabled': True, 'error': str(e)}
                 else:
                     result['monitors']['memory'] = {'enabled': False}
@@ -974,7 +1031,7 @@ class BoundaryAPIServer:
                         if hasattr(self.daemon.resource_monitor, 'get_connection_stats'):
                             resource_data['connections'] = self.daemon.resource_monitor.get_connection_stats()
                         result['monitors']['resource'] = resource_data
-                    except Exception as e:
+                    except (AttributeError, RuntimeError) as e:
                         result['monitors']['resource'] = {'enabled': True, 'error': str(e)}
                 else:
                     result['monitors']['resource'] = {'enabled': False}
@@ -989,7 +1046,7 @@ class BoundaryAPIServer:
                             'enabled': True,
                             'stats': self.daemon.health_monitor.get_summary(),
                         }
-                    except Exception as e:
+                    except (AttributeError, RuntimeError) as e:
                         result['monitors']['health'] = {'enabled': True, 'error': str(e)}
                 else:
                     result['monitors']['health'] = {'enabled': False}
@@ -1004,7 +1061,7 @@ class BoundaryAPIServer:
                             'enabled': True,
                             'stats': self.daemon.queue_monitor.get_summary(),
                         }
-                    except Exception as e:
+                    except (AttributeError, RuntimeError) as e:
                         result['monitors']['queue'] = {'enabled': True, 'error': str(e)}
                 else:
                     result['monitors']['queue'] = {'enabled': False}
@@ -1012,7 +1069,8 @@ class BoundaryAPIServer:
                 result['monitors']['queue'] = {'available': False}
 
             return result
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Daemon or monitors not available
             return {'success': False, 'error': str(e)}
 
     # === Report Generation Handlers (Plan 11) ===
@@ -1067,7 +1125,11 @@ class BoundaryAPIServer:
                 'success': True,
                 'report': report.to_dict(),
             }
-        except Exception as e:
+        except ImportError as e:
+            # Report module not available
+            return {'success': False, 'error': f'Report module not available: {e}'}
+        except (AttributeError, RuntimeError, ConnectionError, TimeoutError) as e:
+            # Report generator not available or Ollama connection failed
             return {'success': False, 'error': str(e)}
 
     def _handle_get_raw_report(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1098,7 +1160,11 @@ class BoundaryAPIServer:
                 'success': True,
                 'raw_report': raw_data,
             }
-        except Exception as e:
+        except ImportError as e:
+            # Report module not available
+            return {'success': False, 'error': f'Report module not available: {e}'}
+        except (AttributeError, RuntimeError) as e:
+            # Report generator not available
             return {'success': False, 'error': str(e)}
 
     def _handle_check_ollama_status(self) -> Dict[str, Any]:
@@ -1115,7 +1181,8 @@ class BoundaryAPIServer:
                 'success': True,
                 'ollama_status': status,
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError, ConnectionError, TimeoutError) as e:
+            # Report generator not available or Ollama connection failed
             return {'success': False, 'error': str(e)}
 
     def _handle_get_report_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1137,7 +1204,8 @@ class BoundaryAPIServer:
                 'history': history,
                 'count': len(history),
             }
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
+            # Report generator not available
             return {'success': False, 'error': str(e)}
 
     def _handle_query(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -1165,7 +1233,8 @@ class BoundaryAPIServer:
 
             return result
 
-        except Exception as e:
+        except (AttributeError, RuntimeError, ConnectionError, TimeoutError) as e:
+            # Report generator not available or Ollama connection failed
             return {'success': False, 'error': str(e)}
 
 
@@ -1226,7 +1295,8 @@ class BoundaryAPIClient:
                         line = line.strip()
                         if line and not line.startswith('#'):
                             return line
-            except Exception as e:
+            except (IOError, OSError, PermissionError) as e:
+                # Token file access errors
                 logger.warning(f"Could not read token file: {e}")
 
         # Try environment variable
