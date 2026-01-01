@@ -425,7 +425,11 @@ class NamespaceManager:
             config: Namespace configuration
 
         Returns:
-            Return value from function (via pickle through pipe)
+            Return value from function (via JSON through pipe for security)
+
+        Security Note:
+            Uses JSON serialization instead of pickle to prevent deserialization
+            attacks. Functions must return JSON-serializable data.
         """
         config = config or NamespaceConfig()
 
@@ -433,7 +437,7 @@ class NamespaceManager:
             logger.warning("Namespaces not available, running without isolation")
             return function()
 
-        import pickle
+        import json
 
         # Create pipe for result
         read_fd, write_fd = os.pipe()
@@ -461,11 +465,21 @@ class NamespaceManager:
                 # Run function
                 result = function()
 
-                # Send result back
-                os.write(write_fd, pickle.dumps(result))
+                # Send result back using JSON (safe serialization)
+                # Wrap result to handle None and preserve type info
+                wrapped_result = {
+                    '_namespace_result': True,
+                    'value': result,
+                    'type': type(result).__name__ if result is not None else 'NoneType'
+                }
+                os.write(write_fd, json.dumps(wrapped_result).encode('utf-8'))
                 os.close(write_fd)
                 os._exit(0)
 
+            except (TypeError, ValueError) as e:
+                # Result not JSON serializable - log error and exit
+                logger.error(f"Result not JSON serializable in isolated process: {e}")
+                os._exit(2)
             except Exception as e:
                 logger.error(f"Error in isolated process: {e}")
                 os._exit(1)
@@ -487,7 +501,15 @@ class NamespaceManager:
             os.close(read_fd)
 
             if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0 and result_data:
-                return pickle.loads(result_data)
+                try:
+                    # Parse JSON safely (no code execution risk)
+                    wrapped_result = json.loads(result_data.decode('utf-8'))
+                    if isinstance(wrapped_result, dict) and wrapped_result.get('_namespace_result'):
+                        return wrapped_result.get('value')
+                    return wrapped_result
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                    logger.error(f"Failed to deserialize namespace result: {e}")
+                    return None
 
             return None
 

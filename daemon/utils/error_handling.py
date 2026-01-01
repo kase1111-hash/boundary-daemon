@@ -675,6 +675,359 @@ def log_platform_error(
     )
 
 
+# === SIEM Integration ===
+
+# Optional SIEM integration - import only if available
+_siem_integration = None
+
+
+def set_siem_integration(siem):
+    """
+    Set the SIEM integration instance for automatic security event forwarding.
+
+    Args:
+        siem: SIEMIntegration instance from daemon.security.siem_integration
+    """
+    global _siem_integration
+    _siem_integration = siem
+
+
+def _forward_to_siem(context: ErrorContext):
+    """Forward error to SIEM if integration is configured."""
+    if _siem_integration is None:
+        return
+
+    try:
+        # Map error severity to SIEM severity
+        from daemon.security.siem_integration import SecurityEventSeverity
+
+        severity_map = {
+            ErrorSeverity.INFO: SecurityEventSeverity.LOW,
+            ErrorSeverity.WARNING: SecurityEventSeverity.MEDIUM,
+            ErrorSeverity.ERROR: SecurityEventSeverity.HIGH,
+            ErrorSeverity.CRITICAL: SecurityEventSeverity.CRITICAL,
+            ErrorSeverity.FATAL: SecurityEventSeverity.EMERGENCY,
+        }
+        siem_severity = severity_map.get(context.severity, SecurityEventSeverity.MEDIUM)
+
+        # Forward based on category
+        if context.category == ErrorCategory.SECURITY:
+            _siem_integration.log_security_error(
+                error_type=type(context.error).__name__,
+                error_message=str(context.error),
+                component=context.operation,
+                details=context.additional_context,
+            )
+        elif context.category == ErrorCategory.AUTH:
+            _siem_integration.log_authentication_failure(
+                reason=str(context.error),
+                details={
+                    'operation': context.operation,
+                    **context.additional_context,
+                },
+            )
+        elif context.severity in (ErrorSeverity.CRITICAL, ErrorSeverity.FATAL):
+            _siem_integration.log_security_error(
+                error_type=context.category.value,
+                error_message=str(context.error),
+                component=context.operation,
+                details=context.additional_context,
+            )
+    except ImportError:
+        pass  # SIEM module not available
+    except Exception as e:
+        # Don't let SIEM forwarding errors propagate
+        logger.debug(f"SIEM forwarding failed: {e}")
+
+
+# === Circuit Breaker Pattern ===
+
+class CircuitBreakerState(Enum):
+    """States for the circuit breaker."""
+    CLOSED = "closed"       # Normal operation
+    OPEN = "open"           # Failing, rejecting calls
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+
+class CircuitBreaker:
+    """
+    Circuit breaker pattern implementation for resilient service calls.
+
+    Prevents cascading failures by temporarily stopping calls to failing services.
+
+    Usage:
+        breaker = CircuitBreaker("external_service", failure_threshold=5)
+
+        @breaker.protect
+        def call_external_service():
+            ...
+
+        # Or manual usage
+        if breaker.can_execute():
+            try:
+                result = call_service()
+                breaker.record_success()
+            except Exception as e:
+                breaker.record_failure(e)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        failure_threshold: int = 5,
+        success_threshold: int = 2,
+        timeout: float = 60.0,
+        excluded_exceptions: Optional[Tuple[Type[Exception], ...]] = None,
+    ):
+        """
+        Initialize circuit breaker.
+
+        Args:
+            name: Name for logging/identification
+            failure_threshold: Failures before opening circuit
+            success_threshold: Successes needed to close from half-open
+            timeout: Seconds before half-open transition
+            excluded_exceptions: Exceptions that don't count as failures
+        """
+        self.name = name
+        self.failure_threshold = failure_threshold
+        self.success_threshold = success_threshold
+        self.timeout = timeout
+        self.excluded_exceptions = excluded_exceptions or ()
+
+        self._state = CircuitBreakerState.CLOSED
+        self._failure_count = 0
+        self._success_count = 0
+        self._last_failure_time: Optional[float] = None
+        self._lock = threading.Lock()
+
+    @property
+    def state(self) -> CircuitBreakerState:
+        """Get current circuit state."""
+        with self._lock:
+            self._check_state_transition()
+            return self._state
+
+    def _check_state_transition(self):
+        """Check if state should transition based on timeout."""
+        if self._state == CircuitBreakerState.OPEN:
+            if self._last_failure_time:
+                elapsed = time.time() - self._last_failure_time
+                if elapsed >= self.timeout:
+                    self._state = CircuitBreakerState.HALF_OPEN
+                    self._success_count = 0
+                    logger.info(f"Circuit breaker '{self.name}' -> HALF_OPEN")
+
+    def can_execute(self) -> bool:
+        """Check if execution is allowed."""
+        state = self.state
+        return state in (CircuitBreakerState.CLOSED, CircuitBreakerState.HALF_OPEN)
+
+    def record_success(self):
+        """Record a successful execution."""
+        with self._lock:
+            if self._state == CircuitBreakerState.HALF_OPEN:
+                self._success_count += 1
+                if self._success_count >= self.success_threshold:
+                    self._state = CircuitBreakerState.CLOSED
+                    self._failure_count = 0
+                    logger.info(f"Circuit breaker '{self.name}' -> CLOSED")
+            elif self._state == CircuitBreakerState.CLOSED:
+                # Reset failure count on success
+                self._failure_count = 0
+
+    def record_failure(self, error: Exception):
+        """Record a failed execution."""
+        # Check if this exception is excluded
+        if isinstance(error, self.excluded_exceptions):
+            return
+
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+
+            if self._state == CircuitBreakerState.HALF_OPEN:
+                # Single failure in half-open goes back to open
+                self._state = CircuitBreakerState.OPEN
+                logger.warning(f"Circuit breaker '{self.name}' -> OPEN (half-open failure)")
+            elif self._state == CircuitBreakerState.CLOSED:
+                if self._failure_count >= self.failure_threshold:
+                    self._state = CircuitBreakerState.OPEN
+                    logger.warning(
+                        f"Circuit breaker '{self.name}' -> OPEN "
+                        f"(threshold {self.failure_threshold} reached)"
+                    )
+
+    def protect(self, func: Callable[..., T]) -> Callable[..., T]:
+        """
+        Decorator to protect a function with this circuit breaker.
+
+        Raises:
+            CircuitBreakerOpenError: When circuit is open
+        """
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            if not self.can_execute():
+                raise CircuitBreakerOpenError(
+                    f"Circuit breaker '{self.name}' is OPEN"
+                )
+
+            try:
+                result = func(*args, **kwargs)
+                self.record_success()
+                return result
+            except Exception as e:
+                self.record_failure(e)
+                raise
+
+        return wrapper
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get circuit breaker status."""
+        with self._lock:
+            return {
+                'name': self.name,
+                'state': self._state.value,
+                'failure_count': self._failure_count,
+                'success_count': self._success_count,
+                'failure_threshold': self.failure_threshold,
+                'last_failure': self._last_failure_time,
+            }
+
+    def reset(self):
+        """Manually reset the circuit breaker to closed state."""
+        with self._lock:
+            self._state = CircuitBreakerState.CLOSED
+            self._failure_count = 0
+            self._success_count = 0
+            logger.info(f"Circuit breaker '{self.name}' manually reset -> CLOSED")
+
+
+class CircuitBreakerOpenError(Exception):
+    """Raised when trying to execute through an open circuit breaker."""
+    pass
+
+
+# Registry for circuit breakers
+_circuit_breakers: Dict[str, CircuitBreaker] = {}
+_breaker_lock = threading.Lock()
+
+
+def get_circuit_breaker(
+    name: str,
+    failure_threshold: int = 5,
+    success_threshold: int = 2,
+    timeout: float = 60.0,
+) -> CircuitBreaker:
+    """
+    Get or create a named circuit breaker.
+
+    Args:
+        name: Unique name for the circuit breaker
+        failure_threshold: Failures before opening
+        success_threshold: Successes to close from half-open
+        timeout: Seconds before half-open
+
+    Returns:
+        CircuitBreaker instance
+    """
+    with _breaker_lock:
+        if name not in _circuit_breakers:
+            _circuit_breakers[name] = CircuitBreaker(
+                name=name,
+                failure_threshold=failure_threshold,
+                success_threshold=success_threshold,
+                timeout=timeout,
+            )
+        return _circuit_breakers[name]
+
+
+def get_all_circuit_breaker_status() -> Dict[str, Dict[str, Any]]:
+    """Get status of all circuit breakers."""
+    with _breaker_lock:
+        return {name: cb.get_status() for name, cb in _circuit_breakers.items()}
+
+
+# Update handle_error to forward to SIEM
+_original_handle_error = handle_error
+
+
+def handle_error(
+    error: Exception,
+    operation: str,
+    category: ErrorCategory = ErrorCategory.UNKNOWN,
+    severity: Optional[ErrorSeverity] = None,
+    additional_context: Optional[Dict[str, Any]] = None,
+    reraise: bool = False,
+    log_level: Optional[int] = None,
+    forward_to_siem: bool = True,
+) -> ErrorContext:
+    """
+    Handle an error with comprehensive logging, tracking, and SIEM forwarding.
+
+    Args:
+        error: The exception that occurred
+        operation: Name of the operation that failed
+        category: Category of the error
+        severity: Severity level (auto-determined if not provided)
+        additional_context: Additional context information
+        reraise: Whether to re-raise the exception after handling
+        log_level: Override the log level (auto-determined if not provided)
+        forward_to_siem: Whether to forward to SIEM (default True)
+
+    Returns:
+        ErrorContext with full error details
+    """
+    # Determine severity if not provided
+    if severity is None:
+        severity = determine_severity(error, category)
+
+    # Create error context
+    context = ErrorContext(
+        error=error,
+        category=category,
+        severity=severity,
+        operation=operation,
+        additional_context=additional_context or {},
+    )
+
+    # Add to aggregator
+    was_added = _global_aggregator.add_error(context)
+
+    # Determine log level
+    if log_level is None:
+        log_level_map = {
+            ErrorSeverity.INFO: logging.INFO,
+            ErrorSeverity.WARNING: logging.WARNING,
+            ErrorSeverity.ERROR: logging.ERROR,
+            ErrorSeverity.CRITICAL: logging.CRITICAL,
+            ErrorSeverity.FATAL: logging.CRITICAL,
+        }
+        log_level = log_level_map.get(severity, logging.ERROR)
+
+    # Log the error
+    if was_added:
+        logger.log(log_level, context.format_log_message())
+    else:
+        # Just log a brief message for deduplicated errors
+        logger.log(
+            log_level,
+            f"[DEDUPLICATED] {operation}: {type(error).__name__}: {error}"
+        )
+
+    # Forward to SIEM for security-relevant errors
+    if forward_to_siem and severity in (
+        ErrorSeverity.ERROR, ErrorSeverity.CRITICAL, ErrorSeverity.FATAL
+    ):
+        _forward_to_siem(context)
+
+    # Re-raise if requested
+    if reraise:
+        raise error
+
+    return context
+
+
 # Export all public symbols
 __all__ = [
     'ErrorCategory',
@@ -694,4 +1047,12 @@ __all__ = [
     'log_network_error',
     'log_filesystem_error',
     'log_platform_error',
+    # SIEM integration
+    'set_siem_integration',
+    # Circuit breaker
+    'CircuitBreaker',
+    'CircuitBreakerState',
+    'CircuitBreakerOpenError',
+    'get_circuit_breaker',
+    'get_all_circuit_breaker_status',
 ]
