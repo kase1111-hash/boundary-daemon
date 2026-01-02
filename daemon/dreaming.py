@@ -333,8 +333,10 @@ class DreamingReporter:
                     op_name = comp['operation']
                     if op_name not in seen_ops:
                         seen_ops.add(op_name)
+                        # Strip common prefixes for shorter display
+                        display_name = op_name.removeprefix("check:").removeprefix("cleanup:")
                         icon = self._color("✓", 'green') if comp['success'] else self._color("✗", 'yellow')
-                        completion_parts.append(f"{icon} {op_name}")
+                        completion_parts.append(f"{icon} {display_name}")
                 if completion_parts:
                     parts.append(" ".join(completion_parts))
 
