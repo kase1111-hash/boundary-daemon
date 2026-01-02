@@ -6,16 +6,16 @@ This guide provides comprehensive instructions for integrating all Agent OS ecos
 
 | Repository | Language | Integration File | Key Classes |
 |------------|----------|-----------------|-------------|
-| synth-mind | Python | `boundary/` | `ReflectionGate`, `CognitiveGate`, `MemoryGate` |
-| memory-vault | Python | `boundary.py` | `RecallGate`, `BoundaryClient` |
 | Agent-OS | TypeScript | `boundary/` | `ToolGate`, `AgentMessageGate`, `SmithBoundaryIntegration` |
-| learning-contracts | TypeScript | `daemon-connector.ts` | `DaemonConnector`, `ContractEnforcer` |
-| value-ledger | Python | `boundary.py` | `ValueLedgerBoundaryIntegration`, `InterruptionTracker` |
 | Boundary-SIEM | Python | `boundary_ingestion.py` | `EventIngestionPipeline`, `SIEMForwarder` |
-| NatLangChain | Python | `boundary.py` | `EntryValidator`, `ChainGate` |
-| mediator-node | TypeScript | `boundary.ts` | `MediationGate`, `MiningGate` |
 | Finite-Intent-Executor | Python | `boundary.py` | `IntentGate`, `ExecutionGate` |
 | ILR-module | TypeScript | `boundary.ts` | `DisputeGate`, `LicenseGate`, `ResolutionGate` |
+| learning-contracts | TypeScript | `daemon-connector.ts` | `DaemonConnector`, `ContractEnforcer` |
+| mediator-node | TypeScript | `boundary.ts` | `MediationGate`, `MiningGate` |
+| memory-vault | Python | `boundary.py` | `RecallGate`, `BoundaryClient` |
+| NatLangChain | Python | `boundary.py` | `EntryValidator`, `ChainGate` |
+| synth-mind | Python | `boundary/` | `ReflectionGate`, `CognitiveGate`, `MemoryGate` |
+| value-ledger | Python | `boundary.py` | `ValueLedgerBoundaryIntegration`, `InterruptionTracker` |
 
 ## Socket Path Configuration
 
@@ -144,54 +144,7 @@ const protectedFetch = withBoundaryCheck(
 
 ## Repository-Specific Integration
 
-### 1. synth-mind (CRITICAL)
-
-Synth-mind was previously missing boundary integration entirely.
-
-**Required Changes:**
-
-```python
-# Before each reflection loop
-from boundary import ReflectionGate
-
-gate = ReflectionGate()
-gate.require_reflection()  # Raises if denied
-
-# For meta-reflection module
-from boundary import require_reflection_check
-
-@require_reflection_check(reflection_type='meta', depth=1)
-def run_reflection_loop():
-    ...
-
-# Full integration
-from boundary import SynthMindBoundaryIntegration
-
-boundary = SynthMindBoundaryIntegration()
-if boundary.can_run_reflection():
-    run_reflection_loop()
-```
-
-### 2. memory-vault
-
-**Required Changes:**
-
-```python
-# Replace boundry.py (typo) with boundary.py
-from boundary import RecallGate, require_boundary_check
-
-# Before any memory recall
-gate = RecallGate()
-gate.require_recall(memory_class=classification)
-
-# Or use mixin
-from boundary import MemoryVaultBoundaryMixin
-
-class SecureVault(MemoryVaultBoundaryMixin, BaseVault):
-    pass
-```
-
-### 3. Agent-OS
+### 1. Agent-OS
 
 ```typescript
 import { ToolGate, AgentMessageGate, SmithBoundaryIntegration } from './boundary';
@@ -217,54 +170,7 @@ const validation = await smith.validateOperation({
 });
 ```
 
-### 4. learning-contracts
-
-```typescript
-import { DaemonConnector, ContractEnforcer } from './daemon-connector';
-
-const daemon = new DaemonConnector();  // Uses correct socket path now
-
-// Check before memory creation
-const decision = await daemon.checkMemoryCreation({
-    classification: Classification.CONFIDENTIAL,
-    domain: 'learning',
-});
-
-// Use contract enforcer for lifecycle management
-const enforcer = new ContractEnforcer(daemon);
-enforcer.registerContract({
-    contractId: 'contract-1',
-    requiredMode: BoundaryMode.TRUSTED,
-    maxClassification: Classification.SECRET,
-});
-```
-
-### 5. value-ledger
-
-```python
-from boundary import (
-    ValueLedgerBoundaryIntegration,
-    protected_operation,
-    require_boundary,
-)
-
-# Check before recording
-integration = ValueLedgerBoundaryIntegration()
-permitted, reason = integration.can_record_value(value_class=2)
-
-# Use decorator
-@protected_operation(requires_network=True)
-def sync_to_remote():
-    ...
-
-# Track interruptions
-integration.interruption_tracker.record_interruption(
-    operation='sync',
-    reason='Network denied in AIRGAP mode',
-)
-```
-
-### 6. Boundary-SIEM
+### 2. Boundary-SIEM
 
 ```python
 from boundary_ingestion import (
@@ -288,53 +194,7 @@ pipeline.start()
 valid, error = pipeline.verify_integrity()
 ```
 
-### 7. NatLangChain
-
-```python
-from boundary import (
-    NatLangChainBoundaryIntegration,
-    ChainEntry,
-    before_record_hook,
-)
-
-integration = NatLangChainBoundaryIntegration()
-
-# Validate entry before recording
-entry = ChainEntry(
-    author="user@example.com",
-    intent="I want to share my research",
-    timestamp=datetime.now().isoformat(),
-)
-result = integration.validate_entry(entry)
-
-# Install hooks
-integration.install_hooks(chain)  # Adds before_record and before_broadcast hooks
-```
-
-### 8. mediator-node
-
-```typescript
-import { MediatorBoundaryIntegration, createProtectedLLMClient } from './boundary';
-
-const boundary = new MediatorBoundaryIntegration();
-
-// Check LLM call permission
-if (await boundary.mediationGate.canCallLLM('gpt-4')) {
-    await callLLM('gpt-4', prompt);
-}
-
-// Or use wrapper
-const result = await boundary.withLLMBoundary(
-    'gpt-4',
-    () => callLLM('gpt-4', prompt),
-    () => callLocalLLM(prompt),  // fallback
-);
-
-// Create protected client
-const protectedClient = createProtectedLLMClient(llmClient, 'gpt-4');
-```
-
-### 9. Finite-Intent-Executor
+### 3. Finite-Intent-Executor
 
 ```python
 from boundary import (
@@ -358,7 +218,7 @@ def execute_asset_transfer():
     ...
 ```
 
-### 10. ILR-module
+### 4. ILR-module
 
 ```typescript
 import { ILRBoundaryIntegration, DisputeClass } from './boundary';
@@ -379,6 +239,141 @@ const { canProceed, reason } = await ilr.canResolveDispute({
     parties: ['party-a', 'party-b'],
     requiresPayment: true,
 });
+```
+
+### 5. learning-contracts
+
+```typescript
+import { DaemonConnector, ContractEnforcer } from './daemon-connector';
+
+const daemon = new DaemonConnector();  // Uses correct socket path now
+
+// Check before memory creation
+const decision = await daemon.checkMemoryCreation({
+    classification: Classification.CONFIDENTIAL,
+    domain: 'learning',
+});
+
+// Use contract enforcer for lifecycle management
+const enforcer = new ContractEnforcer(daemon);
+enforcer.registerContract({
+    contractId: 'contract-1',
+    requiredMode: BoundaryMode.TRUSTED,
+    maxClassification: Classification.SECRET,
+});
+```
+
+### 6. mediator-node
+
+```typescript
+import { MediatorBoundaryIntegration, createProtectedLLMClient } from './boundary';
+
+const boundary = new MediatorBoundaryIntegration();
+
+// Check LLM call permission
+if (await boundary.mediationGate.canCallLLM('gpt-4')) {
+    await callLLM('gpt-4', prompt);
+}
+
+// Or use wrapper
+const result = await boundary.withLLMBoundary(
+    'gpt-4',
+    () => callLLM('gpt-4', prompt),
+    () => callLocalLLM(prompt),  // fallback
+);
+
+// Create protected client
+const protectedClient = createProtectedLLMClient(llmClient, 'gpt-4');
+```
+
+### 7. memory-vault
+
+```python
+from boundary import RecallGate, require_boundary_check
+
+# Before any memory recall
+gate = RecallGate()
+gate.require_recall(memory_class=classification)
+
+# Or use mixin
+from boundary import MemoryVaultBoundaryMixin
+
+class SecureVault(MemoryVaultBoundaryMixin, BaseVault):
+    pass
+```
+
+### 8. NatLangChain
+
+```python
+from boundary import (
+    NatLangChainBoundaryIntegration,
+    ChainEntry,
+    before_record_hook,
+)
+
+integration = NatLangChainBoundaryIntegration()
+
+# Validate entry before recording
+entry = ChainEntry(
+    author="user@example.com",
+    intent="I want to share my research",
+    timestamp=datetime.now().isoformat(),
+)
+result = integration.validate_entry(entry)
+
+# Install hooks
+integration.install_hooks(chain)  # Adds before_record and before_broadcast hooks
+```
+
+### 9. synth-mind
+
+Synth-mind was previously missing boundary integration entirely.
+
+```python
+# Before each reflection loop
+from boundary import ReflectionGate
+
+gate = ReflectionGate()
+gate.require_reflection()  # Raises if denied
+
+# For meta-reflection module
+from boundary import require_reflection_check
+
+@require_reflection_check(reflection_type='meta', depth=1)
+def run_reflection_loop():
+    ...
+
+# Full integration
+from boundary import SynthMindBoundaryIntegration
+
+boundary = SynthMindBoundaryIntegration()
+if boundary.can_run_reflection():
+    run_reflection_loop()
+```
+
+### 10. value-ledger
+
+```python
+from boundary import (
+    ValueLedgerBoundaryIntegration,
+    protected_operation,
+    require_boundary,
+)
+
+# Check before recording
+integration = ValueLedgerBoundaryIntegration()
+permitted, reason = integration.can_record_value(value_class=2)
+
+# Use decorator
+@protected_operation(requires_network=True)
+def sync_to_remote():
+    ...
+
+# Track interruptions
+integration.interruption_tracker.record_interruption(
+    operation='sync',
+    reason='Network denied in AIRGAP mode',
+)
 ```
 
 ## Testing Integration
