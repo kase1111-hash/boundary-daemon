@@ -11,6 +11,8 @@ It handles the import path setup required for PyInstaller builds.
 
 import sys
 import os
+import threading
+import time
 
 def setup_path():
     """Setup Python path for standalone execution."""
@@ -59,6 +61,10 @@ def main():
     parser.add_argument('--log-dir', default='./logs', help='Directory for log files')
     parser.add_argument('--skip-integrity-check', action='store_true',
                         help='Skip integrity verification (DANGEROUS - dev only)')
+    parser.add_argument('--tray', action='store_true',
+                        help='Enable system tray icon (minimizes to tray on Windows)')
+    parser.add_argument('--no-auto-hide', action='store_true',
+                        help='Do not auto-hide console when using --tray')
 
     args = parser.parse_args()
 
@@ -78,6 +84,8 @@ def main():
     print("Boundary Daemon - Trust Boundary Enforcement System")
     print("=" * 70)
 
+    tray_icon = None
+
     try:
         daemon = BoundaryDaemon(
             log_dir=args.log_dir,
@@ -87,13 +95,56 @@ def main():
 
         daemon.start()
 
-        # Keep running until interrupted
-        import time
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+        # Set up system tray if requested
+        if args.tray:
+            try:
+                from daemon.tray import create_tray_icon
+
+                shutdown_event = threading.Event()
+
+                def on_tray_exit():
+                    shutdown_event.set()
+
+                tray_icon = create_tray_icon(
+                    daemon=daemon,
+                    on_exit=on_tray_exit,
+                    auto_hide=not args.no_auto_hide,
+                )
+
+                if tray_icon:
+                    print("System tray icon active - right-click for menu")
+                    if not args.no_auto_hide:
+                        print("Console will minimize to tray in 1 second...")
+                else:
+                    print("System tray not available (install: pip install pystray Pillow)")
+
+                # Wait for shutdown signal from tray or keyboard
+                try:
+                    while not shutdown_event.is_set():
+                        time.sleep(0.5)
+                except KeyboardInterrupt:
+                    pass
+
+            except ImportError as e:
+                print(f"Tray icon not available: {e}")
+                print("Install requirements: pip install pystray Pillow")
+                # Fall back to normal operation
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    pass
+        else:
+            # Keep running until interrupted (normal mode)
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+
+        # Cleanup
+        if tray_icon:
+            tray_icon.stop()
 
         daemon.stop()
 
