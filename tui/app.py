@@ -351,9 +351,8 @@ class EventLogScreen(Screen):
             with Horizontal(id="filter-row"):
                 yield Label("Filter: ", classes="label")
                 yield Select(
-                    [(t.name, t.name) for t in EventType] if DAEMON_AVAILABLE else [("ALL", "ALL")],
+                    [(t.name, t.name) for t in EventType] if DAEMON_AVAILABLE else [],
                     id="type-filter",
-                    value="ALL",
                     allow_blank=True,
                     prompt="All Types"
                 )
@@ -393,7 +392,7 @@ class EventLogScreen(Screen):
                 events = app.daemon.event_logger.get_recent_events(count=500)
 
                 # Apply filters
-                if filter_type and filter_type != "ALL":
+                if filter_type:
                     events = [e for e in events if hasattr(e, 'event_type') and e.event_type.name == filter_type]
 
                 if search:
@@ -425,7 +424,10 @@ class EventLogScreen(Screen):
     def action_refresh(self) -> None:
         filter_select = self.query_one("#type-filter", Select)
         search_input = self.query_one("#search-input", Input)
-        self.load_events(filter_type=str(filter_select.value), search=search_input.value)
+        # Handle blank selection (Select.BLANK)
+        filter_value = filter_select.value
+        filter_type = None if filter_value == Select.BLANK else str(filter_value)
+        self.load_events(filter_type=filter_type, search=search_input.value)
 
     def action_clear_filter(self) -> None:
         self.query_one("#type-filter", Select).value = Select.BLANK
@@ -791,27 +793,51 @@ class BoundaryDaemonTUI(App):
         super().__init__(**kwargs)
         self.daemon = daemon
 
-    def compose(self) -> ComposeResult:
-        yield DashboardScreen()
+    SCREENS = {
+        "dashboard": DashboardScreen,
+        "mode": ModeControlScreen,
+        "events": EventLogScreen,
+        "tripwires": TripwireScreen,
+        "settings": SettingsScreen,
+    }
 
     def on_mount(self) -> None:
+        # Install and push the dashboard as the base screen
+        self.push_screen("dashboard")
         if not self.daemon:
             self.notify("Running in demo mode - no daemon connected", severity="warning")
 
     def action_show_dashboard(self) -> None:
-        self.switch_screen(DashboardScreen())
+        # Pop all screens back to dashboard (keeping base + dashboard)
+        while len(self.screen_stack) > 2:
+            self.pop_screen()
+        # If we're not on dashboard, ensure we are
+        if not isinstance(self.screen, DashboardScreen):
+            # Pop any remaining non-dashboard screen and push dashboard
+            if len(self.screen_stack) > 1:
+                self.pop_screen()
+            self.push_screen("dashboard")
 
     def action_show_mode(self) -> None:
-        self.push_screen(ModeControlScreen())
+        # Only push if not already on this screen
+        if not isinstance(self.screen, ModeControlScreen):
+            self.action_show_dashboard()  # Return to dashboard first
+            self.push_screen("mode")
 
     def action_show_events(self) -> None:
-        self.push_screen(EventLogScreen())
+        if not isinstance(self.screen, EventLogScreen):
+            self.action_show_dashboard()
+            self.push_screen("events")
 
     def action_show_tripwires(self) -> None:
-        self.push_screen(TripwireScreen())
+        if not isinstance(self.screen, TripwireScreen):
+            self.action_show_dashboard()
+            self.push_screen("tripwires")
 
     def action_show_settings(self) -> None:
-        self.push_screen(SettingsScreen())
+        if not isinstance(self.screen, SettingsScreen):
+            self.action_show_dashboard()
+            self.push_screen("settings")
 
 
 # =============================================================================
