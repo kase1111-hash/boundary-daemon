@@ -1210,7 +1210,7 @@ class AlleyScene:
     # Cafe storefront (well-lit, between buildings) - taller size
     CAFE = [
         "   ___________________________   ",
-        "  |        C A F E           |  ",
+        "  |     S H E L L  C A F E   |  ",
         "  |                          |  ",
         "  |  [====]    O     [====]  |  ",
         "  |  [    ]   /|\\    [    ]  |  ",
@@ -1841,17 +1841,32 @@ class AlleyScene:
                 })
 
     def _update_clouds(self):
-        """Update cloud positions - drift across screen."""
+        """Update cloud positions - drift in wind direction."""
         for cloud in self._clouds:
-            cloud['x'] += cloud['speed']
-            # Wrap around
+            # Clouds move in wind direction (closer/lower clouds can vary slightly)
+            # Cumulus clouds (closer) may have slight delay in direction change for dynamic look
+            cloud['x'] += cloud['speed'] * self._wind_direction
+
+            # Wrap around based on wind direction
             if cloud['type'] in ['main', 'cumulus']:
                 cloud_width = len(cloud['chars'][0]) if cloud['chars'] else 5
-                if cloud['x'] > self.width + cloud_width:
-                    cloud['x'] = -cloud_width
+                if self._wind_direction > 0:
+                    # Wind blowing right - wrap from left
+                    if cloud['x'] > self.width + cloud_width:
+                        cloud['x'] = -cloud_width
+                else:
+                    # Wind blowing left - wrap from right
+                    if cloud['x'] < -cloud_width:
+                        cloud['x'] = self.width + cloud_width
             else:
-                if cloud['x'] > self.width + cloud['length']:
-                    cloud['x'] = -cloud['length']
+                # Wisps
+                wisp_len = cloud.get('length', 5)
+                if self._wind_direction > 0:
+                    if cloud['x'] > self.width + wisp_len:
+                        cloud['x'] = -wisp_len
+                else:
+                    if cloud['x'] < -wisp_len:
+                        cloud['x'] = self.width + wisp_len
 
     def _update_steam(self):
         """Update steam effects from manholes and drains - rare occurrence."""
@@ -2537,7 +2552,7 @@ class AlleyScene:
         self._draw_sprite(self.MAILBOX, self.mailbox_x, self.mailbox_y, Colors.ALLEY_BLUE)
 
         # Calculate cafe position first (shifted 11 chars left)
-        self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 11
+        self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 14  # 3 more left (was -11)
         self.cafe_y = ground_y - len(self.CAFE) + 1
 
         # Place well-lit Cafe between buildings (center of gap)
@@ -3423,7 +3438,7 @@ class AlleyScene:
         """
         total_rows = len(sprite)
         # Grey block section: bottom 11 rows (half story with door, one row lower)
-        grey_start_row = total_rows - 11
+        grey_start_row = total_rows - 7  # 4 less grey (was -11), 4 more brick
         # Brick character for even texture
         brick_char = '▓'
 
