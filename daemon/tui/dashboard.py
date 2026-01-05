@@ -1597,9 +1597,12 @@ class AlleyScene:
         self._qte_misses = 0
         self._qte_npc_x = 0
         self._qte_npc_message = ""
+        self._qte_message_timer = 0  # Timer for auto-clearing messages
+        self._qte_message_duration = 90  # Frames to show message (1.5 sec at 60fps)
         self._qte_wave = 0  # Current wave of meteors
         self._qte_total_waves = 5  # Total waves per event
         self._qte_pending_keys: List[str] = []  # Keys player needs to press
+        self._qte_last_meteor_positions: List[Tuple[int, int, int, int]] = []  # (x, y, w, h) for cleanup
         # Skyline buildings with animated window lights
         self._skyline_windows: List[Dict] = []  # {x, y, on, timer, toggle_time}
         self._skyline_buildings: List[Dict] = []  # {x, y, width, height, windows}
@@ -1967,9 +1970,20 @@ class AlleyScene:
                 # NPC appears on the left side
                 self._qte_npc_x = 5
                 self._qte_npc_message = "HELP! METEORS!"
+                self._qte_message_timer = 0
+                self._qte_last_meteor_positions = []  # Clear cleanup tracking
             return
 
         self._qte_timer += 1
+
+        # Update message timer - auto-clear messages after duration
+        if self._qte_npc_message:
+            self._qte_message_timer += 1
+            if self._qte_message_timer >= self._qte_message_duration:
+                # Don't clear during warning or end states
+                if self._qte_state == 'active':
+                    self._qte_npc_message = ""
+                    self._qte_message_timer = 0
 
         if self._qte_state == 'warning':
             # Warning phase - NPC appears and warns
@@ -2032,10 +2046,11 @@ class AlleyScene:
                     new_explosions.append(exp)
             self._qte_explosions = new_explosions
 
-            # Check wave completion
+            # Check wave completion - wait for explosions to finish too
             active_meteors = [m for m in self._qte_meteors if m['called']]
             uncalled_meteors = [m for m in self._qte_meteors if not m['called']]
-            if len(active_meteors) == 0 and len(uncalled_meteors) == 0 and len(self._qte_missiles) == 0:
+            explosions_done = len(self._qte_explosions) == 0
+            if len(active_meteors) == 0 and len(uncalled_meteors) == 0 and len(self._qte_missiles) == 0 and explosions_done:
                 self._qte_wave += 1
                 if self._qte_wave > self._qte_total_waves:
                     # All waves complete
@@ -2128,6 +2143,7 @@ class AlleyScene:
 
         self._qte_current_callout = (meteor['col'], meteor['row'], key)
         self._qte_npc_message = f"PRESS [{key}] {row_name}!"
+        self._qte_message_timer = 0  # Reset message timer for new callout
 
         # Start the meteor falling
         meteor['called'] = True
@@ -3543,22 +3559,31 @@ class AlleyScene:
                             pass
 
     def _render_damage_overlays(self, screen):
-        """Render meteor damage overlays on the scene."""
+        """Render meteor damage overlays on the scene - fades from red to gray."""
         for overlay in self._damage_overlays:
             px = overlay['x']
             py = overlay['y']
             if 0 <= px < self.width - 1 and 0 <= py < self.height:
                 try:
-                    # Damage fades from bright to dim as timer increases
+                    # Damage fades gradually: red -> orange -> gray -> dim gray -> gone
                     fade_progress = overlay['timer'] / overlay['fade_time']
-                    if fade_progress < 0.3:
-                        # Fresh damage - bright red/orange
+                    if fade_progress < 0.15:
+                        # Fresh damage - bright red
+                        attr = curses.color_pair(Colors.SHADOW_RED) | curses.A_BOLD
+                    elif fade_progress < 0.3:
+                        # Cooling - red, no bold
                         attr = curses.color_pair(Colors.BRICK_RED)
-                    elif fade_progress < 0.6:
-                        # Aging damage - dim
-                        attr = curses.color_pair(Colors.ALLEY_MID) | curses.A_DIM
+                    elif fade_progress < 0.5:
+                        # Cooled - bright gray
+                        attr = curses.color_pair(Colors.ALLEY_LIGHT)
+                    elif fade_progress < 0.7:
+                        # Fading - medium gray
+                        attr = curses.color_pair(Colors.ALLEY_MID)
+                    elif fade_progress < 0.85:
+                        # Old - dim gray
+                        attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_DIM
                     else:
-                        # Old damage - very dim
+                        # Almost gone - very dim
                         attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_DIM
                     screen.attron(attr)
                     screen.addstr(py, px, overlay['char'])
@@ -3615,7 +3640,21 @@ class AlleyScene:
     def _render_qte(self, screen):
         """Render the meteor QTE event - meteors, missiles, explosions, NPC."""
         if not self._qte_active:
+            # Clear any leftover positions from previous frame when QTE ends
+            for (px, py, w, h) in self._qte_last_meteor_positions:
+                for dy in range(h):
+                    for dx in range(w):
+                        cx, cy = px + dx, py + dy
+                        if 0 <= cx < self.width - 1 and 0 <= cy < self.height:
+                            try:
+                                screen.addstr(cy, cx, ' ')
+                            except curses.error:
+                                pass
+            self._qte_last_meteor_positions = []
             return
+
+        # Track current meteor positions for cleanup next frame
+        current_positions = []
 
         # Render meteors
         for meteor in self._qte_meteors:
@@ -3648,6 +3687,11 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+            # Track meteor position for cleanup (include sprite bounds + label)
+            sprite_w = len(sprite[0]) if sprite else 5
+            sprite_h = len(sprite) + 2  # +2 for label above
+            current_positions.append((px - sprite_w // 2, py - 2, sprite_w + 3, sprite_h + 2))
+
             # Draw key indicator above meteor
             if not meteor['called']:
                 key = self.QTE_KEYS[meteor['col']]
@@ -3661,6 +3705,9 @@ class AlleyScene:
                         screen.attroff(attr)
                     except curses.error:
                         pass
+
+        # Save positions for cleanup next frame
+        self._qte_last_meteor_positions = current_positions
 
         # Render missiles
         for missile in self._qte_missiles:
@@ -5826,6 +5873,10 @@ class Dashboard:
                 # Apply new framerate immediately
                 if self.screen:
                     self.screen.timeout(self._framerate_options[self._framerate_index])
+        # QTE keys (6, 7, 8, 9, 0) for meteor game
+        elif key in [ord('6'), ord('7'), ord('8'), ord('9'), ord('0')]:
+            if self.matrix_mode and self.alley_scene:
+                self.alley_scene.handle_qte_key(chr(key))
 
     def _draw(self):
         """Draw the dashboard."""
