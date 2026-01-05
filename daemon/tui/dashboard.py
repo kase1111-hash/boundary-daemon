@@ -1057,22 +1057,22 @@ class AlleyScene:
         "|___|",
     ]
 
-    # Traffic light showing two sides (corner view) - TALLER version
+    # Traffic light showing two sides (corner view) - compact head, tall pole
     # Left column is N/S direction, right column is E/W direction
     TRAFFIC_LIGHT_TEMPLATE = [
-        " .=====. ",
-        " |     | ",
-        " | L R | ",  # Red lights
-        " |     | ",
-        " | L R | ",  # Yellow lights
-        " |     | ",
-        " | L R | ",  # Green lights
-        " |     | ",
-        " '=====' ",
-        "    ||   ",
-        "    ||   ",
-        "    ||   ",
-        "    ||   ",
+        " .===. ",
+        " |L R| ",  # Red lights
+        " |L R| ",  # Yellow lights
+        " |L R| ",  # Green lights
+        " '===' ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
     ]
 
     # Car sprites - large side views (4x person size, ~16 chars wide)
@@ -1099,7 +1099,7 @@ class AlleyScene:
         "< \\",
     ]
 
-    # Street light
+    # Street light - taller pole
     STREET_LIGHT = [
         " ___ ",
         "[___]",
@@ -1107,51 +1107,63 @@ class AlleyScene:
         "  |  ",
         "  |  ",
         "  |  ",
+        "  |  ",
+        "  |  ",
     ]
 
-    # Building wireframe - TALL with BIG windows (2x height, 4x window size)
+    # Building wireframe - TALL with EXTRA TALL windows (4 rows each)
     BUILDING = [
         ".------------------------------.",
         "|                              |",
         "|  [====]  [====]  [====]      |",
+        "|  [    ]  [    ]  [    ]      |",
+        "|  [    ]  [    ]  [    ]      |",
         "|  [====]  [====]  [====]      |",
         "|                              |",
         "|  [====]  [====]  [====]      |",
+        "|  [    ]  [    ]  [    ]      |",
+        "|  [    ]  [    ]  [    ]      |",
         "|  [====]  [====]  [====]      |",
         "|                              |",
         "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
+        "|  [    ]  [    ]  [    ]      |",
+        "|  [    ]  [    ]  [    ]      |",
         "|  [====]  [====]  [====]      |",
         "|______________________________|",
     ]
 
-    # Second building (right side) - TALL with BIG windows
+    # Second building (right side) - TALL with EXTRA TALL windows
     BUILDING2 = [
         ".---------------------------.",
         "|                           |",
         "|    [====]  [====]  [====] |",
+        "|    [    ]  [    ]  [    ] |",
+        "|    [    ]  [    ]  [    ] |",
         "|    [====]  [====]  [====] |",
         "|                           |",
         "|    [====]  [====]  [====] |",
+        "|    [    ]  [    ]  [    ] |",
+        "|    [    ]  [    ]  [    ] |",
         "|    [====]  [====]  [====] |",
         "|                           |",
         "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
+        "|    [    ]  [    ]  [    ] |",
+        "|    [    ]  [    ]  [    ] |",
         "|    [====]  [====]  [====] |",
         "|___________________________|",
+    ]
+
+    # Window positions for people animation (relative to building sprite)
+    # Each entry is (row_offset, col_offset) for the middle of a window
+    BUILDING_WINDOW_POSITIONS = [
+        (3, 5), (3, 15), (3, 25),    # First row of windows
+        (8, 5), (8, 15), (8, 25),    # Second row
+        (13, 5), (13, 15), (13, 25), # Third row
+    ]
+    BUILDING2_WINDOW_POSITIONS = [
+        (3, 7), (3, 17), (3, 27),    # First row of windows
+        (8, 7), (8, 17), (8, 27),    # Second row
+        (13, 7), (13, 17), (13, 27), # Third row
     ]
 
     def __init__(self, width: int, height: int):
@@ -1163,6 +1175,11 @@ class AlleyScene:
         self.dumpster_y = 0
         self.box_x = 0
         self.box_y = 0
+        # Store building positions for window people
+        self._building_x = 0
+        self._building_y = 0
+        self._building2_x = 0
+        self._building2_y = 0
         # Store building bottom for rat constraints
         self._building_bottom_y = height - 3
         # Traffic light state
@@ -1175,6 +1192,13 @@ class AlleyScene:
         # Pedestrians on the street
         self._pedestrians: List[Dict] = []
         self._pedestrian_spawn_timer = 0
+        # Street light flicker effect
+        self._street_light_positions: List[Tuple[int, int]] = []
+        self._street_light_flicker = [1.0, 1.0]  # Brightness per light (0-1)
+        self._flicker_timer = 0
+        # Window people - list of active silhouettes {window_idx, building, direction, progress}
+        self._window_people: List[Dict] = []
+        self._window_spawn_timer = 0
         self._generate_scene()
 
     def resize(self, width: int, height: int):
@@ -1195,34 +1219,34 @@ class AlleyScene:
         self.scene = [[(' ', Colors.ALLEY_DARK) for _ in range(self.width)]
                       for _ in range(self.height)]
 
-        # Calculate common ground level (where dumpster/box bottom edge is)
-        ground_y = self.height - 3  # -2 for curb/street, -1 for ground level
+        # Street and curb at the very bottom of the window
+        street_y = self.height - 1
+        curb_y = self.height - 2
+
+        # Ground level is just above curb (moved up from previous position)
+        ground_y = curb_y - 1
 
         # Draw first building wireframe in background (left side)
         # Position building so its bottom edge is at ground level
-        building_x = 3
-        building_y = ground_y - len(self.BUILDING) + 1
-        self._draw_sprite(self.BUILDING, building_x, max(1, building_y), Colors.ALLEY_BLUE)
+        self._building_x = 3
+        self._building_y = ground_y - len(self.BUILDING) + 1
+        self._draw_sprite(self.BUILDING, self._building_x, max(1, self._building_y), Colors.ALLEY_BLUE)
         self._building_bottom_y = ground_y  # Store for rat constraint
 
         # Draw second building on the right side
         if self.width > 60:
-            building2_x = self.width - len(self.BUILDING2[0]) - 5
-            building2_y = ground_y - len(self.BUILDING2) + 1
-            self._draw_sprite(self.BUILDING2, building2_x, max(1, building2_y), Colors.ALLEY_BLUE)
+            self._building2_x = self.width - len(self.BUILDING2[0]) - 5
+            self._building2_y = ground_y - len(self.BUILDING2) + 1
+            self._draw_sprite(self.BUILDING2, self._building2_x, max(1, self._building2_y), Colors.ALLEY_BLUE)
 
         # Draw street lights along the scene
         self._draw_street_lights(ground_y)
 
-        # Draw street at the very bottom (last 2 rows)
-        street_y = self.height - 1
-        curb_y = self.height - 2
-
-        # Draw curb - solid line separating alley from street
+        # Draw curb - solid line separating alley from street (at bottom)
         for x in range(self.width - 1):
             self.scene[curb_y][x] = ('▄', Colors.ALLEY_MID)
 
-        # Draw street with lane markings (dashed yellow line in center)
+        # Draw street with lane markings at the very bottom row
         for x in range(self.width - 1):
             # Street surface
             self.scene[street_y][x] = ('▓', Colors.ALLEY_DARK)
@@ -1236,25 +1260,28 @@ class AlleyScene:
 
         # Place dumpster in lower-left area (above curb) - drawn AFTER buildings (in front)
         self.dumpster_x = 8
-        self.dumpster_y = self.height - len(self.DUMPSTER) - 3  # -3 to be above curb
+        self.dumpster_y = ground_y - len(self.DUMPSTER) + 1
         self._draw_sprite(self.DUMPSTER, self.dumpster_x, self.dumpster_y, Colors.ALLEY_MID)
 
         # Place box to the right of dumpster (above curb) - drawn AFTER buildings (in front)
         self.box_x = self.dumpster_x + len(self.DUMPSTER[0]) + 6
-        self.box_y = self.height - len(self.BOX) - 3  # -3 to be above curb
+        self.box_y = ground_y - len(self.BOX) + 1
         self._draw_sprite(self.BOX, self.box_x, self.box_y, Colors.SAND_DIM)
 
     def _draw_street_lights(self, ground_y: int):
-        """Draw street lights along the scene."""
+        """Draw street lights along the scene and store positions for flicker effect."""
         light_height = len(self.STREET_LIGHT)
         # Position lights so they stand on the ground
         light_y = ground_y - light_height + 1
 
         # Place street lights at intervals
-        light_positions = [45, self.width - 15]  # One in middle-ish, one on right
-        for light_x in light_positions:
+        self._street_light_positions = []
+        light_x_positions = [45, self.width - 15]  # One in middle-ish, one on right
+        for light_x in light_x_positions:
             if 0 < light_x < self.width - len(self.STREET_LIGHT[0]) - 1:
                 self._draw_sprite(self.STREET_LIGHT, light_x, max(1, light_y), Colors.ALLEY_LIGHT)
+                # Store position for flicker effect (center of light head)
+                self._street_light_positions.append((light_x + 2, max(1, light_y) + 1))
 
     def _spawn_car(self):
         """Spawn a new car on the street."""
@@ -1277,7 +1304,7 @@ class AlleyScene:
             })
 
     def update(self):
-        """Update traffic light state, cars, and pedestrians."""
+        """Update traffic light state, cars, pedestrians, street light flicker, and window people."""
         self._traffic_frame += 1
 
         # State machine for traffic lights
@@ -1305,6 +1332,12 @@ class AlleyScene:
 
         # Update pedestrians
         self._update_pedestrians()
+
+        # Update street light flicker
+        self._update_street_light_flicker()
+
+        # Update window people
+        self._update_window_people()
 
     def _update_cars(self):
         """Update car positions and spawn new cars."""
@@ -1366,6 +1399,62 @@ class AlleyScene:
 
         self._pedestrians = new_pedestrians
 
+    def _update_street_light_flicker(self):
+        """Update street light flicker effect."""
+        self._flicker_timer += 1
+
+        # Randomly adjust flicker brightness for each light
+        for i in range(len(self._street_light_flicker)):
+            # Slight random variation
+            if random.random() < 0.1:  # 10% chance of flicker per frame
+                # Flicker down briefly
+                self._street_light_flicker[i] = random.uniform(0.3, 0.7)
+            elif self._street_light_flicker[i] < 1.0:
+                # Gradually return to full brightness
+                self._street_light_flicker[i] = min(1.0, self._street_light_flicker[i] + 0.1)
+
+    def _update_window_people(self):
+        """Update people walking by windows (rarely)."""
+        self._window_spawn_timer += 1
+
+        # Very rarely spawn a person in a window (about 1 in 500 frames)
+        if self._window_spawn_timer >= random.randint(300, 700):
+            self._window_spawn_timer = 0
+            if len(self._window_people) < 2:  # Max 2 window people at once
+                # Pick a random window from either building
+                building = random.choice([1, 2])
+                if building == 1:
+                    positions = self.BUILDING_WINDOW_POSITIONS
+                    window_idx = random.randint(0, len(positions) - 1)
+                else:
+                    positions = self.BUILDING2_WINDOW_POSITIONS
+                    window_idx = random.randint(0, len(positions) - 1)
+
+                self._window_people.append({
+                    'building': building,
+                    'window_idx': window_idx,
+                    'direction': random.choice([-1, 1]),
+                    'progress': 0.0 if random.random() < 0.5 else 1.0,  # Start from left or right
+                })
+
+        # Update existing window people
+        new_window_people = []
+        for person in self._window_people:
+            # Move person across window
+            speed = 0.05
+            if person['progress'] <= 0.0:
+                person['direction'] = 1
+            elif person['progress'] >= 1.0:
+                person['direction'] = -1
+
+            person['progress'] += person['direction'] * speed
+
+            # Keep person if still in window
+            if -0.5 < person['progress'] < 1.5:
+                new_window_people.append(person)
+
+        self._window_people = new_window_people
+
     def _get_traffic_light_colors(self) -> Tuple[Tuple[str, int], Tuple[str, int], Tuple[str, int],
                                                    Tuple[str, int], Tuple[str, int], Tuple[str, int]]:
         """Get the current light colors for both directions.
@@ -1418,6 +1507,12 @@ class AlleyScene:
                         screen.attroff(attr)
                     except curses.error:
                         pass
+
+        # Render window people silhouettes
+        self._render_window_people(screen)
+
+        # Render street light flicker effects
+        self._render_street_light_flicker(screen)
 
         # Render pedestrians on the sidewalk
         self._render_pedestrians(screen)
@@ -1480,6 +1575,80 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+    def _render_street_light_flicker(self, screen):
+        """Render flickering light effects under street lights."""
+        # Light glow characters
+        glow_chars = ['░', '▒', '▓']
+
+        for i, (light_x, light_y) in enumerate(self._street_light_positions):
+            if i >= len(self._street_light_flicker):
+                continue
+
+            brightness = self._street_light_flicker[i]
+
+            # Draw light glow underneath the lamp (cone of light)
+            glow_y = light_y + 1  # Start just below the lamp head
+            for row in range(3):  # 3 rows of glow
+                spread = row + 1  # Wider as it goes down
+                glow_intensity = brightness * (1.0 - row * 0.25)
+
+                for dx in range(-spread, spread + 1):
+                    px = light_x + dx
+                    py = glow_y + row
+
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                        # Pick glow character based on intensity and distance from center
+                        dist_factor = abs(dx) / (spread + 1)
+                        char_idx = min(2, int((1.0 - glow_intensity) * 2 + dist_factor))
+                        glow_char = glow_chars[char_idx] if glow_intensity > 0.3 else ' '
+
+                        if glow_char != ' ':
+                            try:
+                                attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_DIM
+                                screen.attron(attr)
+                                screen.addstr(py, px, glow_char)
+                                screen.attroff(attr)
+                            except curses.error:
+                                pass
+
+    def _render_window_people(self, screen):
+        """Render silhouettes of people walking by windows."""
+        for person in self._window_people:
+            building = person['building']
+            window_idx = person['window_idx']
+            progress = person['progress']
+
+            # Get window position
+            if building == 1:
+                positions = self.BUILDING_WINDOW_POSITIONS
+                base_x = self._building_x
+                base_y = self._building_y
+            else:
+                positions = self.BUILDING2_WINDOW_POSITIONS
+                base_x = self._building2_x
+                base_y = self._building2_y
+
+            if window_idx >= len(positions):
+                continue
+
+            row_offset, col_offset = positions[window_idx]
+            window_x = base_x + col_offset
+            window_y = base_y + row_offset
+
+            # Calculate silhouette position within window (4 chars wide)
+            window_width = 4
+            silhouette_x = window_x + int(progress * window_width)
+
+            # Draw simple silhouette (just a dark blob)
+            if 0 <= silhouette_x < self.width - 1 and 0 <= window_y < self.height:
+                try:
+                    attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
+                    screen.attron(attr)
+                    screen.addstr(window_y, silhouette_x, '█')
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
         # Position traffic light on right side of scene (shifted 25 chars right = 10 + 15)
@@ -1493,7 +1662,7 @@ class AlleyScene:
         ns_red, ns_yellow, ns_green, ew_red, ew_yellow, ew_green = self._get_traffic_light_colors()
 
         # Render each row of traffic light
-        # Taller template has lights at rows 2 (red), 4 (yellow), 6 (green)
+        # Compact template has lights at rows 1 (red), 2 (yellow), 3 (green)
         for row_idx, row in enumerate(self.TRAFFIC_LIGHT_TEMPLATE):
             for col_idx, char in enumerate(row):
                 px = light_x + col_idx
@@ -1509,18 +1678,18 @@ class AlleyScene:
                 render_char = char
 
                 if char == 'L':  # Left side lights (N/S direction)
-                    if row_idx == 2:  # Red position
+                    if row_idx == 1:  # Red position
                         render_char, color = ns_red
-                    elif row_idx == 4:  # Yellow position
+                    elif row_idx == 2:  # Yellow position
                         render_char, color = ns_yellow
-                    elif row_idx == 6:  # Green position
+                    elif row_idx == 3:  # Green position
                         render_char, color = ns_green
                 elif char == 'R':  # Right side lights (E/W direction)
-                    if row_idx == 2:  # Red position
+                    if row_idx == 1:  # Red position
                         render_char, color = ew_red
-                    elif row_idx == 4:  # Yellow position
+                    elif row_idx == 2:  # Yellow position
                         render_char, color = ew_yellow
-                    elif row_idx == 6:  # Green position
+                    elif row_idx == 3:  # Green position
                         render_char, color = ew_green
                 else:
                     render_char = char
