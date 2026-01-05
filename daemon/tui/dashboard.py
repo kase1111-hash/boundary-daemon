@@ -141,13 +141,11 @@ class Colors:
     SAND_BRIGHT = 27     # Bright sand/brown
     SAND_DIM = 28        # Dim sand
     SAND_FADE = 29       # Faded sand
-    FOG_BRIGHT = 30      # Bright fog (white)
-    FOG_DIM = 31         # Dim fog (gray)
-    MATRIX_DARK = 32     # Dark green for rain tails
-    BRICK_RED = 33       # Red brick color for upper building
-    GREY_BLOCK = 34      # Grey block color for lower building
-    DOOR_KNOB_GOLD = 35  # Gold door knob color
-    CAFE_WARM = 36       # Warm yellow/orange for cafe interior
+    MATRIX_DARK = 30     # Dark green for rain tails
+    BRICK_RED = 31       # Red brick color for upper building
+    GREY_BLOCK = 32      # Grey block color for lower building
+    DOOR_KNOB_GOLD = 33  # Gold door knob color
+    CAFE_WARM = 34       # Warm yellow/orange for cafe interior
 
     @staticmethod
     def init_colors(matrix_mode: bool = False):
@@ -217,9 +215,6 @@ class Colors:
         curses.init_pair(Colors.SAND_BRIGHT, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         curses.init_pair(Colors.SAND_DIM, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         curses.init_pair(Colors.SAND_FADE, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-        # Fog (gray/white)
-        curses.init_pair(Colors.FOG_BRIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
-        curses.init_pair(Colors.FOG_DIM, curses.COLOR_WHITE, curses.COLOR_BLACK)
         # Building colors
         curses.init_pair(Colors.BRICK_RED, curses.COLOR_RED, curses.COLOR_BLACK)
         curses.init_pair(Colors.GREY_BLOCK, curses.COLOR_WHITE, curses.COLOR_BLACK)
@@ -235,7 +230,6 @@ class WeatherMode(Enum):
     RAIN = "rain"          # Blue rain
     SNOW = "snow"          # White/gray snow
     SAND = "sand"          # Brown/yellow sandstorm
-    FOG = "fog"            # Gray fog/mist
 
     @property
     def display_name(self) -> str:
@@ -245,7 +239,6 @@ class WeatherMode(Enum):
             WeatherMode.RAIN: "Rain",
             WeatherMode.SNOW: "Snow",
             WeatherMode.SAND: "Sandstorm",
-            WeatherMode.FOG: "Fog",
         }.get(self, self.value.title())
 
 
@@ -282,13 +275,6 @@ class MatrixRain:
             ",:;~^",  # Layer 3: Coarse sand
             "~^°º",  # Layer 4: Larger particles
         ],
-        WeatherMode.FOG: [
-            " .",  # Layer 0: Thin mist
-            " .·",  # Layer 1: Light fog
-            ".·:",  # Layer 2: Medium fog
-            "·:░",  # Layer 3: Thick fog
-            "░▒",  # Layer 4: Dense fog
-        ],
     }
 
     # Weather-specific speed multipliers (relative to base speeds)
@@ -297,7 +283,6 @@ class MatrixRain:
         WeatherMode.RAIN: 1.2,   # Rain falls fast
         WeatherMode.SNOW: 0.4,   # Base snow speed (modified per-depth below)
         WeatherMode.SAND: 0.15,  # Sand falls very slowly (blows horizontally instead)
-        WeatherMode.FOG: 0.15,   # Fog drifts very slowly
     }
 
     # Snow-specific speeds: big flakes fall FASTER than small ones (opposite of rain)
@@ -316,7 +301,6 @@ class MatrixRain:
         WeatherMode.RAIN: None,    # Use default DEPTH_LENGTHS
         WeatherMode.SNOW: [(1, 1), (1, 1), (1, 2), (1, 2), (1, 2)],  # Single flakes
         WeatherMode.SAND: [(1, 1), (1, 1), (1, 1), (1, 2), (1, 2)],  # Tiny grains
-        WeatherMode.FOG: [(1, 2), (1, 2), (1, 3), (2, 3), (2, 4)],   # Small wisps
     }
 
     # Weather-specific horizontal movement
@@ -325,7 +309,6 @@ class MatrixRain:
         WeatherMode.RAIN: (-0.1, 0.1),    # Slight wind variation
         WeatherMode.SNOW: (-0.4, 0.4),    # Gentle drift both ways
         WeatherMode.SAND: (1.5, 3.0),     # Strong wind blowing right
-        WeatherMode.FOG: (-0.2, 0.2),     # Gentle drift
     }
 
     # Weather-specific color mappings (bright, dim, fade1, fade2)
@@ -334,7 +317,6 @@ class MatrixRain:
         WeatherMode.RAIN: (Colors.RAIN_BRIGHT, Colors.RAIN_DIM, Colors.RAIN_FADE1, Colors.RAIN_FADE2),
         WeatherMode.SNOW: (Colors.SNOW_BRIGHT, Colors.SNOW_DIM, Colors.SNOW_FADE, Colors.SNOW_FADE),
         WeatherMode.SAND: (Colors.SAND_BRIGHT, Colors.SAND_DIM, Colors.SAND_FADE, Colors.SAND_FADE),
-        WeatherMode.FOG: (Colors.FOG_BRIGHT, Colors.FOG_DIM, Colors.FOG_DIM, Colors.FOG_DIM),
     }
 
     # 5 depth layers - each with different character sets (simple=far, complex=near)
@@ -385,11 +367,6 @@ class MatrixRain:
         self._global_flicker = 0.0  # 0-1 intensity of global flicker
         self._intermittent_flicker = False  # Major flicker event active
 
-        # Fog-specific state
-        self._fog_particles: List[Dict] = []
-        if weather_mode == WeatherMode.FOG:
-            self._init_fog()
-
         # Snow-specific state: stuck snowflakes that fade over time
         self._stuck_snow: List[Dict] = []
         # Roof/sill snow - lasts 10x longer and doesn't count towards max
@@ -415,14 +392,11 @@ class MatrixRain:
             self.weather_mode = mode
             self.drops = []
             self.splats = []
-            self._fog_particles = []
             self._stuck_snow = []
             self._roof_sill_snow = []
             self._snow_gusts = []
             self._sand_gusts = []
             self._init_drops()
-            if mode == WeatherMode.FOG:
-                self._init_fog()
             if mode == WeatherMode.SNOW:
                 self._init_snow_gusts()
             if mode == WeatherMode.SAND:
@@ -497,45 +471,6 @@ class MatrixRain:
         new_mode = modes[next_idx]
         self.set_weather_mode(new_mode)
         return new_mode
-
-    def _init_fog(self):
-        """Initialize fog particles in tightly clustered patches - blocks only."""
-        self._fog_particles = []
-        # Create fog as tightly clustered patches
-        num_patch_centers = max(20, self.width // 5)
-
-        # Only block characters - no small particles (removed solid █ for transparency)
-        block_chars = ['░', '▒', '▓']
-
-        for _ in range(num_patch_centers):
-            # Each patch has a center point (below cloud layer at rows 1-2)
-            center_x = random.uniform(0, self.width)
-            center_y = random.uniform(3, self.height)  # Start below cloud cover
-            patch_dx = random.uniform(-0.08, 0.08)  # Whole patch drifts together (slower)
-            patch_dy = random.uniform(-0.02, 0.02)
-
-            # Create particles tightly clustered around the center
-            patch_size = random.randint(15, 35)
-            for _ in range(patch_size):
-                # Particles tightly spread around center (reduced gaussian spread)
-                offset_x = random.gauss(0, 2.5)  # Reduced from 5 to 2.5
-                offset_y = random.gauss(0, 2)    # Reduced from 4 to 2
-
-                # Only blocks - size 2 or 3
-                size = random.choice([2, 2, 3, 3, 3])
-                char = random.choice(block_chars)
-
-                self._fog_particles.append({
-                    'x': center_x + offset_x,
-                    'y': center_y + offset_y,
-                    'dx': patch_dx + random.uniform(-0.03, 0.03),  # Slight individual variation
-                    'dy': patch_dy + random.uniform(-0.015, 0.015),
-                    'char': char,  # Stable block character
-                    'base_opacity': random.uniform(0.5, 1.0),  # Base opacity
-                    'opacity': random.uniform(0.5, 1.0),  # Current opacity (affected by density)
-                    'size': size,
-                    'neighbor_count': 0,  # Track nearby particles for density
-                })
 
     def _init_sand_gusts(self):
         """Initialize vertical columns of faster-moving sand gusts."""
@@ -665,10 +600,6 @@ class MatrixRain:
         else:
             self._global_flicker = 0.0
             self._intermittent_flicker = False
-
-        # Update fog particles if in fog mode
-        if self.weather_mode == WeatherMode.FOG:
-            self._update_fog()
 
         # Update sand gusts if in sand mode
         if self.weather_mode == WeatherMode.SAND:
@@ -867,75 +798,6 @@ class MatrixRain:
                 'life': random.randint(20, 60),
             })
 
-    def _update_fog(self):
-        """Update fog particle positions with magnetic clumping."""
-        # First pass: calculate neighbor counts and attraction forces
-        attraction_radius = 12.0  # How far particles attract each other (increased from 8)
-        attraction_strength = 0.04  # How strong the attraction is (increased from 0.02)
-
-        for i, particle in enumerate(self._fog_particles):
-            neighbor_count = 0
-            attract_x = 0.0
-            attract_y = 0.0
-
-            # Find nearby particles and calculate attraction
-            for j, other in enumerate(self._fog_particles):
-                if i == j:
-                    continue
-
-                dx = other['x'] - particle['x']
-                dy = other['y'] - particle['y']
-
-                # Handle wrapping for distance calculation
-                if abs(dx) > self.width / 2:
-                    dx = dx - self.width if dx > 0 else dx + self.width
-                if abs(dy) > self.height / 2:
-                    dy = dy - self.height if dy > 0 else dy + self.height
-
-                dist = math.sqrt(dx * dx + dy * dy)
-
-                if dist < attraction_radius and dist > 0.5:
-                    neighbor_count += 1
-                    # Weak magnetic attraction - pull towards neighbors
-                    pull = attraction_strength * (1.0 - dist / attraction_radius)
-                    attract_x += (dx / dist) * pull
-                    attract_y += (dy / dist) * pull
-
-            particle['neighbor_count'] = neighbor_count
-
-            # Apply attraction force (clamped to prevent wild movement)
-            # Increased clamp values to allow stronger grouping
-            attract_x = max(-0.15, min(0.15, attract_x))
-            attract_y = max(-0.08, min(0.08, attract_y))
-
-            # Drift slowly with attraction (attraction is stronger than drift)
-            particle['x'] += particle['dx'] * 0.5 + attract_x
-            particle['y'] += particle['dy'] * 0.5 + attract_y
-
-            # Wrap around screen edges
-            if particle['x'] < 0:
-                particle['x'] = self.width - 1
-            elif particle['x'] >= self.width:
-                particle['x'] = 0
-            if particle['y'] < 0:
-                particle['y'] = self.height - 1
-            elif particle['y'] >= self.height:
-                particle['y'] = 0
-
-            # Opacity based on neighbor density - brighter when clumped, dimmer when spread
-            base = particle.get('base_opacity', 0.7)
-            density_factor = min(1.0, neighbor_count / 5.0)  # Max out at 5 neighbors
-            # Lerp between dim (0.3) when alone and bright (base) when clumped
-            target_opacity = 0.3 + (base - 0.3) * density_factor
-            # Smooth transition to target opacity (no flicker)
-            particle['opacity'] += (target_opacity - particle['opacity']) * 0.1
-            particle['opacity'] = max(0.2, min(1.0, particle['opacity']))
-
-            # Very rarely change drift direction (keeps fog coherent)
-            if random.random() < 0.001:
-                particle['dx'] = random.uniform(-0.1, 0.1)
-                particle['dy'] = random.uniform(-0.04, 0.04)
-
     def resize(self, width: int, height: int):
         """Handle terminal resize."""
         old_width = self.width
@@ -950,18 +812,6 @@ class MatrixRain:
 
         # Remove stuck snow that is now out of bounds
         self._stuck_snow = [s for s in self._stuck_snow if s['x'] < width and s['y'] < height]
-
-        # Update fog particles for new dimensions
-        if self.weather_mode == WeatherMode.FOG:
-            # Keep particles in bounds or reinitialize if size changed significantly
-            if abs(width - old_width) > 10 or abs(height - old_height) > 5:
-                self._init_fog()
-            else:
-                for p in self._fog_particles:
-                    if p['x'] >= width:
-                        p['x'] = width - 1
-                    if p['y'] >= height:
-                        p['y'] = height - 1
 
         # Reinitialize sand gusts for new width
         if self.weather_mode == WeatherMode.SAND:
@@ -981,10 +831,6 @@ class MatrixRain:
         """Render rain drops with depth-based visual effects and flicker."""
         weather_chars = self._get_weather_chars()
         colors = self._get_weather_colors()
-
-        # Render fog particles first (behind everything)
-        if self.weather_mode == WeatherMode.FOG:
-            self._render_fog(screen)
 
         # Sort drops by depth so farther ones render first (get overwritten by nearer)
         sorted_drops = sorted(self.drops, key=lambda d: d['depth'])
@@ -1079,35 +925,6 @@ class MatrixRain:
                         screen.attroff(attr)
                 except curses.error:
                     pass
-
-    def _render_fog(self, screen):
-        """Render fog particles with size-based rendering and stable characters."""
-        for particle in self._fog_particles:
-            try:
-                x = int(particle['x'])
-                y = int(particle['y'])
-                size = particle.get('size', 1)
-                opacity = particle.get('opacity', 0.5)
-                neighbor_count = particle.get('neighbor_count', 0)
-
-                if 0 <= x < self.width - 1 and 3 <= y < self.height - 1:  # Stay below cloud layer
-                    # Brightness based on opacity (which is affected by neighbor density)
-                    # Clumped fog (high opacity) is bright, spread fog (low opacity) is dim
-                    if opacity > 0.7 or neighbor_count >= 4:
-                        attr = curses.color_pair(Colors.FOG_BRIGHT) | curses.A_BOLD
-                    elif opacity > 0.5 or neighbor_count >= 2:
-                        attr = curses.color_pair(Colors.FOG_BRIGHT)
-                    elif opacity > 0.35:
-                        attr = curses.color_pair(Colors.FOG_DIM)
-                    else:
-                        attr = curses.color_pair(Colors.FOG_DIM) | curses.A_DIM
-
-                    screen.attron(attr)
-                    # Use the stable pre-assigned character (no flickering)
-                    screen.addstr(y, x, particle['char'])
-                    screen.attroff(attr)
-            except curses.error:
-                pass
 
     def _render_char(self, screen, y: int, x: int, char: str, pos: int, depth: int):
         """Render a single character with depth-appropriate styling."""
@@ -1551,22 +1368,22 @@ class AlleyScene:
     ]
 
     # Static cityscape backdrop (drawn behind main buildings in the gap)
-    # 100 chars wide, various building heights
+    # 140 chars wide, dense city skyline with various building heights
     CITYSCAPE = [
-        "                              |~|                              T                              ",  # Row 0 - antenna tips
-        "            ___               |=|      ___                    /|\\                 ___         ",  # Row 1
-        "    ___    |   |    ___      .|=|.    |   |     ___     ___  |=|=|    ___        |   |   ___  ",  # Row 2
-        "   |   |   |   |   |   |   .:|=|:.   |   |    |   |   |   | |=|=|   |   |  ___  |   |  |   | ",  # Row 3
-        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |   | |[ ]|  |[ ]| ",  # Row 4
-        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |[ ]| |[ ]|  |[ ]| ",  # Row 5
-        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |[ ]| |[ ]|  |[ ]| ",  # Row 6
-        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |[ ]| |[ ]|  |[ ]| ",  # Row 7
-        "   |___|   |___|   |___|   |:|=|:|   |___|    |___|   |___| |=|=|   |___| |[ ]| |___|  |___| ",  # Row 8
-        "                           |:|=|:|                          |=|=|         |[ ]|              ",  # Row 9
-        "                           |:|=|:|                          |=|=|         |___|              ",  # Row 10
-        "                           |:|=|:|                          |=|=|                            ",  # Row 11
-        "                           |:|=|:|                          |___|                            ",  # Row 12
-        "                           |_|=|_|                                                           ",  # Row 13
+        "         T                    |~|                 T              T                    |~|              T           ",  # Row 0
+        "   ___  /|\\        ___       |=|    ___         /|\\   ___      /|\\        ___       |=|    ___      /|\\   ___    ",  # Row 1
+        "  |   | |=|  ___  |   |  ___ |=|   |   |  ___  |=|=| |   | ___ |=|  ___  |   |  ___ |=|   |   | ___ |=|=| |   |   ",  # Row 2
+        "  |[ ]| |=| |   | |[ ]| |   ||=|   |[ ]| |   | |=|=| |[ ]||   ||=| |   | |[ ]| |   ||=|   |[ ]||   ||=|=| |[ ]|   ",  # Row 3
+        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 4
+        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 5
+        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 6
+        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 7
+        "  |___| |=| |___| |___| |___||=|   |___| |___| |=|=| |___||___||=| |___| |___| |___||=|   |___||___||=|=| |___|   ",  # Row 8
+        "        |=|              |   ||=|              |=|=|      |   ||=|              |   ||=|        |  ||=|=|         ",  # Row 9
+        "        |=|              |[ ]||=|              |=|=|      |[ ]||=|              |[ ]||=|        |[ ]||=|=|         ",  # Row 10
+        "        |=|              |[ ]||=|              |=|=|      |[ ]||=|              |[ ]||=|        |[ ]||=|=|         ",  # Row 11
+        "        |=|              |___||=|              |___|      |___||=|              |___||=|        |___||___|         ",  # Row 12
+        "        |_|                  |_|                              |_|                  |_|                            ",  # Row 13
     ]
 
     # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors with stoops
@@ -1712,7 +1529,13 @@ class AlleyScene:
         self._street_light_flicker = [1.0, 1.0]  # Brightness per light (0-1)
         self._flicker_timer = 0
         # Window people - list of active silhouettes {window_idx, building, direction, progress}
-        self._window_people: List[Dict] = []
+        # Pre-spawn some people so windows aren't empty at start
+        self._window_people: List[Dict] = [
+            {'building': 1, 'window_idx': 2, 'direction': 1, 'progress': 0.5, 'state': 'staring', 'state_timer': 0, 'stare_duration': 200, 'wave_count': 0, 'wave_frame': 0},
+            {'building': 1, 'window_idx': 8, 'direction': -1, 'progress': 0.3, 'state': 'walking', 'state_timer': 0, 'stare_duration': 150, 'wave_count': 0, 'wave_frame': 0},
+            {'building': 2, 'window_idx': 5, 'direction': 1, 'progress': 0.6, 'state': 'staring', 'state_timer': 0, 'stare_duration': 180, 'wave_count': 0, 'wave_frame': 0},
+            {'building': 2, 'window_idx': 12, 'direction': -1, 'progress': 0.4, 'state': 'walking', 'state_timer': 0, 'stare_duration': 160, 'wave_count': 0, 'wave_frame': 0},
+        ]
         self._window_spawn_timer = 0
         # Window positions for layering (filled during _draw_building)
         self._window_interior_positions: List[Tuple[int, int]] = []
@@ -2174,6 +1997,8 @@ class AlleyScene:
                     if meteor['y'] >= ground_y:
                         self._qte_misses += 1
                         self._spawn_explosion(meteor['x'], ground_y, ground_impact=True)
+                        # Clear current callout so next meteor can be called
+                        self._qte_current_callout = None
                         continue
                 new_meteors.append(meteor)
             self._qte_meteors = new_meteors
@@ -2189,6 +2014,8 @@ class AlleyScene:
                         self._spawn_explosion(meteor['x'], meteor['y'])
                         self._qte_meteors.remove(meteor)
                         self._qte_score += 1
+                        # Clear current callout so next meteor can be called
+                        self._qte_current_callout = None
                         hit = True
                         break
                 if not hit and missile['y'] > 3:
@@ -2549,18 +2376,27 @@ class AlleyScene:
                     if drain_x + i < self.width - 1:
                         self.scene[curb_y][drain_x + i] = (char, Colors.ALLEY_DARK)
 
-        # Place trees - one on left side, two on right side (in the gap before building 2)
+        # Place trees - spread across the gap between buildings
         self._tree_positions = []
         tree_height = len(self.TREE)
         tree_width = len(self.TREE[0])
-        # Tree 1: left side in the gap (past building 1)
-        tree1_x = building1_right + 15
-        # Tree 2 and 3: right side in the gap (before building 2)
         building2_left = self._building2_x if self._building2_x > 0 else self.width
-        tree2_x = building2_left - tree_width - 8   # 8 chars before building 2
-        tree3_x = building2_left - tree_width - 22  # 22 chars before building 2
+        gap_width = building2_left - building1_right
+
+        # Tree 1: left side of gap
+        tree1_x = building1_right + 8
+        # Tree 2: middle-right of gap
+        tree2_x = building1_right + gap_width // 2 + 20
+        # Tree 3: right side of gap (before building 2)
+        tree3_x = building2_left - tree_width - 12
+
         for tree_x in [tree1_x, tree2_x, tree3_x]:
-            if tree_x > building1_right and tree_x + tree_width < building2_left:
+            # Check tree fits in gap and doesn't overlap with cafe
+            cafe_left = getattr(self, 'cafe_x', 0)
+            cafe_right = cafe_left + len(self.CAFE[0]) if hasattr(self, 'cafe_x') else 0
+            overlaps_cafe = cafe_left - 5 < tree_x < cafe_right + 5
+
+            if tree_x > building1_right + 2 and tree_x + tree_width < building2_left - 2 and not overlaps_cafe:
                 tree_y = ground_y - tree_height + 1
                 self._tree_positions.append((tree_x, tree_y))
                 self._draw_tree(tree_x, tree_y)
@@ -2910,25 +2746,25 @@ class AlleyScene:
                             inside_cafe = True
 
                     if char != ' ':
-                        # Use warm yellow/white for the cafe (well-lit)
+                        # Use neutral colors for cafe structure, warm for interior
                         if char in 'SHELLCAFE' or char in 'OPEN':
-                            color = Colors.RAT_YELLOW  # Bright yellow text
+                            color = Colors.ALLEY_LIGHT  # Text - neutral white
                         elif char in '[]=' or char == '~':
-                            color = Colors.RAT_YELLOW  # Windows glow
+                            color = Colors.ALLEY_MID  # Windows - gray, no glow
                         elif char == 'O' and inside_cafe:
-                            color = Colors.CAFE_WARM  # People silhouettes
-                        elif char in '/\\|':
-                            color = Colors.CAFE_WARM  # People arms/body
+                            color = Colors.ALLEY_DARK  # People silhouettes - dark
+                        elif char in '/\\':
+                            color = Colors.ALLEY_DARK  # People arms - dark
                         elif char == '|':
-                            color = Colors.ALLEY_LIGHT  # Walls
+                            color = Colors.ALLEY_MID  # Walls - gray
                         elif char in '_.-':
-                            color = Colors.ALLEY_LIGHT  # Structure
+                            color = Colors.ALLEY_MID  # Structure - gray
                         else:
-                            color = Colors.ALLEY_LIGHT  # Structure
+                            color = Colors.ALLEY_MID  # Structure - gray
                         self.scene[py][px] = (char, color)
                     elif inside_cafe:
-                        # Fill empty interior space with warm blocks
-                        self.scene[py][px] = ('▓', Colors.CAFE_WARM)
+                        # Fill empty interior space with dark blocks (no warm glow)
+                        self.scene[py][px] = ('▓', Colors.ALLEY_DARK)
 
     def is_valid_snow_position(self, x: int, y: int) -> bool:
         """Check if a position is valid for snow to collect.
@@ -3187,23 +3023,64 @@ class AlleyScene:
 
     def _update_pedestrians(self):
         """Update pedestrian positions and spawn new pedestrians."""
-        # Spawn new pedestrians frequently (5x more people)
+        # Check if meteor event is active - pedestrians should panic
+        meteor_active = self._qte_active and self._qte_state == 'active'
+
+        # Spawn new pedestrians frequently
         self._pedestrian_spawn_timer += 1
-        if self._pedestrian_spawn_timer >= random.randint(15, 40):
-            if len(self._pedestrians) < 10:  # Max 10 pedestrians at once
+        spawn_interval = random.randint(8, 25)  # Spawn faster for more people
+        if self._pedestrian_spawn_timer >= spawn_interval:
+            max_peds = 6 if meteor_active else 18  # Fewer during meteor (they're running away)
+            if len(self._pedestrians) < max_peds:
                 self._spawn_pedestrian()
             self._pedestrian_spawn_timer = 0
 
         # Update pedestrian positions and arm animation
         new_pedestrians = []
         for ped in self._pedestrians:
-            ped['x'] += ped['direction'] * ped['speed']
+            # During meteor event, pedestrians panic!
+            if meteor_active:
+                if not ped.get('panicking'):
+                    # Start panicking - run faster in a random direction
+                    ped['panicking'] = True
+                    ped['panic_timer'] = 0
+                    # Most run off screen, some dart around first
+                    if random.random() < 0.7:
+                        # Run off screen fast
+                        ped['direction'] = random.choice([-1, 1])
+                        ped['speed'] = random.uniform(1.5, 2.5)  # Run fast!
+                    else:
+                        # Dart around briefly before running
+                        ped['darting'] = True
+                        ped['dart_changes'] = random.randint(2, 4)
 
-            # Update arm animation frame
-            ped['frame_timer'] += 1
-            if ped['frame_timer'] >= 3:  # Change arm position every 3 frames (faster swinging)
-                ped['frame_timer'] = 0
-                ped['frame_idx'] = (ped['frame_idx'] + 1) % len(ped['frames'])
+                if ped.get('darting'):
+                    ped['panic_timer'] += 1
+                    # Change direction rapidly while darting
+                    if ped['panic_timer'] % 15 == 0:
+                        ped['direction'] *= -1
+                        ped['dart_changes'] -= 1
+                        if ped['dart_changes'] <= 0:
+                            # Done darting, now run off
+                            ped['darting'] = False
+                            ped['direction'] = random.choice([-1, 1])
+                            ped['speed'] = random.uniform(1.8, 2.5)
+
+                # Faster arm animation when panicking
+                ped['frame_timer'] += 1
+                if ped['frame_timer'] >= 1:  # Super fast arm swing
+                    ped['frame_timer'] = 0
+                    ped['frame_idx'] = (ped['frame_idx'] + 1) % len(ped['frames'])
+            else:
+                # Normal walking
+                ped.pop('panicking', None)
+                ped.pop('darting', None)
+                ped['frame_timer'] += 1
+                if ped['frame_timer'] >= 3:  # Normal arm swing
+                    ped['frame_timer'] = 0
+                    ped['frame_idx'] = (ped['frame_idx'] + 1) % len(ped['frames'])
+
+            ped['x'] += ped['direction'] * ped['speed']
 
             # Keep pedestrian if still on screen (with margin)
             if -10 < ped['x'] < self.width + 10:
@@ -3229,10 +3106,10 @@ class AlleyScene:
         """Update people walking by windows with walk/stare/wave animations."""
         self._window_spawn_timer += 1
 
-        # Spawn people more frequently (about every 150-400 frames)
-        if self._window_spawn_timer >= random.randint(150, 400):
+        # Spawn people frequently (about every 60-150 frames) for more activity
+        if self._window_spawn_timer >= random.randint(60, 150):
             self._window_spawn_timer = 0
-            if len(self._window_people) < 4:  # Max 4 window people at once
+            if len(self._window_people) < 8:  # Allow up to 8 window people at once
                 # Pick a random window from either building
                 building = random.choice([1, 2])
                 if building == 1:
@@ -4208,9 +4085,9 @@ class AlleyScene:
                 else:
                     silhouette = ['\\O', '█']  # Hand up left
 
-            # Draw silhouette (2 chars tall)
+            # Draw silhouette (2 chars tall) - use light color so visible against dark windows
             try:
-                attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
+                attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
                 screen.attron(attr)
                 for i, char in enumerate(silhouette):
                     y = window_y + i
@@ -4826,15 +4703,23 @@ class DashboardClient:
         # Resolve token after finding socket (token might be near socket)
         self._token = self._resolve_token()
 
-        # Test connection - try socket first, then TCP
-        self._connected = self._test_connection()
-
-        # On Windows (or if socket fails), try TCP connection
-        if not self._connected:
+        # On Windows, try TCP first (more reliable than Unix sockets)
+        if sys.platform == 'win32':
             if self._try_tcp_connection():
                 self._connected = True
                 self._use_tcp = True
                 logger.info(f"Connected to daemon via TCP on port {self.WINDOWS_PORT}")
+            else:
+                # Fallback to socket test (unlikely to work on Windows)
+                self._connected = self._test_connection()
+        else:
+            # On Unix, try socket first, then TCP as fallback
+            self._connected = self._test_connection()
+            if not self._connected:
+                if self._try_tcp_connection():
+                    self._connected = True
+                    self._use_tcp = True
+                    logger.info(f"Connected to daemon via TCP on port {self.WINDOWS_PORT}")
 
         if not self._connected:
             self._demo_mode = True
@@ -5442,9 +5327,10 @@ class Dashboard:
     """
 
     def __init__(self, refresh_interval: float = 2.0, socket_path: Optional[str] = None,
-                 matrix_mode: bool = False):
+                 matrix_mode: bool = False, client: Optional['DashboardClient'] = None):
         self.refresh_interval = refresh_interval
-        self.client = DashboardClient(socket_path or "/var/run/boundary-daemon/boundary.sock")
+        # Use pre-created client if provided, otherwise create new one
+        self.client = client or DashboardClient(socket_path)
         self.running = False
         self.screen = None
         self.selected_panel = PanelType.STATUS
@@ -6032,6 +5918,22 @@ class Dashboard:
         row = y + 1
         col = x + 2
 
+        # Connection status
+        if self.client.is_demo_mode():
+            self._addstr(row, col, "Connection: ", Colors.MUTED)
+            self._addstr(row, col + 12, "DEMO MODE", Colors.STATUS_ERROR, bold=True)
+            row += 1
+            self._addstr(row, col, "(No daemon)", Colors.MUTED)
+            row += 1
+        else:
+            self._addstr(row, col, "Connection: ", Colors.MUTED)
+            if self.client._use_tcp:
+                conn_text = f"TCP:{self.client.WINDOWS_PORT}"
+            else:
+                conn_text = "Socket"
+            self._addstr(row, col + 12, conn_text, Colors.STATUS_OK)
+            row += 1
+
         # Mode
         mode = self.status.get('mode', 'UNKNOWN')
         mode_color = Colors.STATUS_OK if mode in ('TRUSTED', 'AIRGAP', 'COLDROOM') else Colors.STATUS_WARN
@@ -6511,8 +6413,35 @@ def run_dashboard(refresh_interval: float = 2.0, socket_path: Optional[str] = No
         socket_path: Path to daemon socket
         matrix_mode: Enable Matrix-style theme with digital rain
     """
+    # Show connection status before entering curses mode
+    print("Connecting to Boundary Daemon...")
+
+    # Create client first to check connection
+    client = DashboardClient(socket_path)
+
+    if client.is_demo_mode():
+        print("\n" + "=" * 60)
+        print("WARNING: Could not connect to Boundary Daemon")
+        print("=" * 60)
+        print("\nSearched for daemon at:")
+        for path in client._socket_paths[:5]:
+            exists = "FOUND" if os.path.exists(path) else "not found"
+            print(f"  - {path} [{exists}]")
+        if sys.platform == 'win32':
+            print(f"  - TCP 127.0.0.1:{client.WINDOWS_PORT} [not responding]")
+        print("\nRunning in DEMO MODE with simulated data.")
+        print("To connect to real daemon, start boundary-daemon.exe first.")
+        print("=" * 60 + "\n")
+        import time
+        time.sleep(2)  # Give user time to read
+    else:
+        if client._use_tcp:
+            print(f"Connected to daemon via TCP on port {client.WINDOWS_PORT}")
+        else:
+            print(f"Connected to daemon at {client.socket_path}")
+
     dashboard = Dashboard(refresh_interval=refresh_interval, socket_path=socket_path,
-                         matrix_mode=matrix_mode)
+                         matrix_mode=matrix_mode, client=client)
     dashboard.run()
 
 
