@@ -272,10 +272,19 @@ class MatrixRain:
     WEATHER_SPEED_MULT = {
         WeatherMode.MATRIX: 1.0,
         WeatherMode.RAIN: 1.2,   # Rain falls fast
-        WeatherMode.SNOW: 0.3,   # Snow falls slowly
+        WeatherMode.SNOW: 0.4,   # Base snow speed (modified per-depth below)
         WeatherMode.SAND: 0.15,  # Sand falls very slowly (blows horizontally instead)
         WeatherMode.FOG: 0.15,   # Fog drifts very slowly
     }
+
+    # Snow-specific speeds: big flakes fall FASTER than small ones (opposite of rain)
+    SNOW_DEPTH_SPEEDS = [
+        0.3,   # Layer 0: Small flakes - slowest
+        0.4,   # Layer 1: Small-medium
+        0.6,   # Layer 2: Medium
+        0.9,   # Layer 3: Big - faster
+        1.2,   # Layer 4: Biggest - fastest
+    ]
 
     # Weather-specific length multipliers (sand/snow = short particles)
     WEATHER_LENGTHS = {
@@ -321,11 +330,11 @@ class MatrixRain:
 
     # Tail lengths for each depth (tiny rain = very short, big drops = long trails)
     DEPTH_LENGTHS = [
-        (1, 3),    # Layer 0: Tiny streaks
-        (2, 4),    # Layer 1: Short
-        (4, 8),    # Layer 2: Medium
-        (8, 14),   # Layer 3: Long
-        (12, 22),  # Layer 4: Very long trails
+        (2, 5),    # Layer 0: Short streaks
+        (4, 8),    # Layer 1: Medium-short
+        (8, 14),   # Layer 2: Medium
+        (14, 22),  # Layer 3: Long
+        (20, 35),  # Layer 4: Very long trails
     ]
 
     # Distribution - massive tiny rain!
@@ -360,6 +369,11 @@ class MatrixRain:
         # Snow-specific state: stuck snowflakes that fade over time
         self._stuck_snow: List[Dict] = []
 
+        # Snow wind gusts - temporary bursts of sideways movement
+        self._snow_gusts: List[Dict] = []
+        if weather_mode == WeatherMode.SNOW:
+            self._init_snow_gusts()
+
         # Sand-specific state: vertical gust columns
         self._sand_gusts: List[Dict] = []
         if weather_mode == WeatherMode.SAND:
@@ -373,10 +387,13 @@ class MatrixRain:
             self.splats = []
             self._fog_particles = []
             self._stuck_snow = []
+            self._snow_gusts = []
             self._sand_gusts = []
             self._init_drops()
             if mode == WeatherMode.FOG:
                 self._init_fog()
+            if mode == WeatherMode.SNOW:
+                self._init_snow_gusts()
             if mode == WeatherMode.SAND:
                 self._init_sand_gusts()
 
@@ -432,6 +449,20 @@ class MatrixRain:
                 'opacity': random.uniform(0.7, 1.0),
             })
 
+    def _init_snow_gusts(self):
+        """Initialize wind gusts that push snow sideways."""
+        self._snow_gusts = []
+        # Start with 2-4 active gusts
+        num_gusts = random.randint(2, 4)
+        for _ in range(num_gusts):
+            self._snow_gusts.append({
+                'direction': random.choice([-1, 1]),  # -1 = left, 1 = right
+                'strength': random.uniform(0.5, 2.0),  # How strong the push
+                'y_start': random.randint(0, self.height - 1),
+                'y_height': random.randint(5, 15),  # Vertical band height
+                'life': random.randint(20, 60),  # Frames until gust fades
+            })
+
     def _get_weather_chars(self) -> List[str]:
         """Get character sets for current weather mode."""
         return self.WEATHER_CHARS.get(self.weather_mode, self.WEATHER_CHARS[WeatherMode.MATRIX])
@@ -470,6 +501,11 @@ class MatrixRain:
 
         # Apply weather-specific speed multiplier
         speed_mult = self._get_speed_multiplier()
+
+        # Snow uses inverted depth speeds (big flakes = faster)
+        if self.weather_mode == WeatherMode.SNOW:
+            speed_mult = self.SNOW_DEPTH_SPEEDS[depth]
+
         weather_chars = self._get_weather_chars()
 
         # Get weather-specific horizontal movement
@@ -533,8 +569,9 @@ class MatrixRain:
         if self.weather_mode == WeatherMode.SAND:
             self._update_sand_gusts()
 
-        # Update stuck snow (melting/fading)
+        # Update snow gusts and stuck snow
         if self.weather_mode == WeatherMode.SNOW:
+            self._update_snow_gusts()
             self._update_stuck_snow()
 
         weather_chars = self._get_weather_chars()
@@ -552,10 +589,22 @@ class MatrixRain:
             drop['phase'] += drop['speed'] * speed_boost
             drop['y'] = int(drop['phase'])
 
+            # Apply snow wind gusts - push flakes sideways
+            gust_dx = 0.0
+            if self.weather_mode == WeatherMode.SNOW:
+                for gust in self._snow_gusts:
+                    if gust['y_start'] <= drop['y'] < gust['y_start'] + gust['y_height']:
+                        # Bigger flakes get pushed more by wind
+                        size_factor = 0.5 + (drop['depth'] * 0.3)
+                        gust_dx = gust['direction'] * gust['strength'] * size_factor
+                        break
+
             # Update horizontal position for snow/sand
-            if 'dx' in drop and drop['dx'] != 0:
+            base_dx = drop.get('dx', 0)
+            total_dx = base_dx + gust_dx
+            if total_dx != 0:
                 dx_boost = speed_boost if self.weather_mode == WeatherMode.SAND else 1.0
-                drop['fx'] = drop.get('fx', float(drop['x'])) + drop['dx'] * dx_boost
+                drop['fx'] = drop.get('fx', float(drop['x'])) + total_dx * dx_boost
                 new_x = int(drop['fx'])
 
                 # Sand blows off right edge and is removed
@@ -651,6 +700,26 @@ class MatrixRain:
                 gust['speed_mult'] = random.uniform(2.0, 4.0)
                 gust['life'] = random.randint(30, 80)
                 gust['opacity'] = random.uniform(0.7, 1.0)
+
+    def _update_snow_gusts(self):
+        """Update snow wind gusts - they fade and new ones appear."""
+        new_gusts = []
+        for gust in self._snow_gusts:
+            gust['life'] -= 1
+            if gust['life'] > 0:
+                new_gusts.append(gust)
+
+        self._snow_gusts = new_gusts
+
+        # Randomly spawn new gusts
+        if random.random() < 0.05 and len(self._snow_gusts) < 5:
+            self._snow_gusts.append({
+                'direction': random.choice([-1, 1]),
+                'strength': random.uniform(0.5, 2.0),
+                'y_start': random.randint(0, self.height - 1),
+                'y_height': random.randint(5, 15),
+                'life': random.randint(20, 60),
+            })
 
     def _update_fog(self):
         """Update fog particle positions."""
@@ -1207,18 +1276,19 @@ class AlleyRat:
     in quick, erratic patterns when there are active warnings.
     """
 
-    # Rat animation frames - facing different directions
+    # Rat animation frames - each frame is a complete 2-row sprite
     RAT_FRAMES = {
         'right': [
-            [" .", ".~"],  # Tiny rat moving right
-            ["<>", "``"],
+            ["~,.,", " `` "],  # Frame 1: running right
+            [" ,.,~", "  `` "],  # Frame 2: running right (shifted)
         ],
         'left': [
-            [". ", "~."],  # Tiny rat moving left
-            ["><", "``"],
+            [",.,~", " `` "],  # Frame 1: running left
+            ["~,., ", "``  "],  # Frame 2: running left (shifted)
         ],
         'idle': [
-            ["<>", "ww"],  # Idle sitting rat
+            ["<O.O>", " vvv "],  # Sitting rat, alert
+            ["<o.o>", " vvv "],  # Sitting rat, relaxed
         ],
     }
 
