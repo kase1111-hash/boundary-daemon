@@ -446,6 +446,33 @@ class MatrixRain:
         """
         self._glow_positions = positions
 
+    def set_quick_melt_zones(self, sidewalk_y: int, mailbox_bounds: Tuple[int, int, int, int], street_y: int):
+        """Set zones where snow melts very quickly (sidewalk, mailbox, traffic lines).
+
+        Args:
+            sidewalk_y: Y coordinate of the sidewalk/curb
+            mailbox_bounds: (x, y, width, height) of the mailbox
+            street_y: Y coordinate of the street (for traffic lines)
+        """
+        self._quick_melt_sidewalk_y = sidewalk_y
+        self._quick_melt_mailbox = mailbox_bounds
+        self._quick_melt_street_y = street_y
+
+    def _is_in_quick_melt_zone(self, x: int, y: int) -> bool:
+        """Check if a position is in a quick-melt zone (sidewalk, mailbox, traffic line)."""
+        # Sidewalk
+        if hasattr(self, '_quick_melt_sidewalk_y') and y == self._quick_melt_sidewalk_y:
+            return True
+        # Street/traffic lines
+        if hasattr(self, '_quick_melt_street_y') and y == self._quick_melt_street_y:
+            return True
+        # Mailbox
+        if hasattr(self, '_quick_melt_mailbox') and self._quick_melt_mailbox:
+            mx, my, mw, mh = self._quick_melt_mailbox
+            if mx <= x < mx + mw and my <= y < my + mh:
+                return True
+        return False
+
     def _is_in_glow_zone(self, x: int, y: int) -> bool:
         """Check if a position is within a street light glow cone."""
         if not hasattr(self, '_glow_positions') or not self._glow_positions:
@@ -778,8 +805,11 @@ class MatrixRain:
         # Update regular stuck snow
         new_stuck = []
         for snow in self._stuck_snow:
+            # Snow in quick-melt zones (sidewalk, mailbox, traffic lines) melts very fast
+            if self._is_in_quick_melt_zone(snow['x'], snow['y']):
+                snow['life'] -= 25  # Very fast melt
             # Snow in glow zones melts 10x faster (warmth from lights)
-            if self._is_in_glow_zone(snow['x'], snow['y']):
+            elif self._is_in_glow_zone(snow['x'], snow['y']):
                 snow['life'] -= 10
             else:
                 snow['life'] -= 1
@@ -790,8 +820,11 @@ class MatrixRain:
         # Update roof/sill snow (separate list)
         new_roof_sill = []
         for snow in self._roof_sill_snow:
+            # Quick-melt zones
+            if self._is_in_quick_melt_zone(snow['x'], snow['y']):
+                snow['life'] -= 25
             # Roof/sill snow also melts faster in glow zones
-            if self._is_in_glow_zone(snow['x'], snow['y']):
+            elif self._is_in_glow_zone(snow['x'], snow['y']):
                 snow['life'] -= 10
             else:
                 snow['life'] -= 1
@@ -1364,8 +1397,8 @@ class AlleyScene:
         "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
         "|  [========]    [====]  [====]    [========]    [====]         |",
         "|            .------.                    .------.               |",
-        "|            |      |                    |      |               |",
-        "|            | [==] |                    | [==] |               |",
+        "|            |[####]|                    |[####]|               |",
+        "|            |[####]|                    |[####]|               |",
         "|            |      |                    |      |               |",
         "|            | [==] |                    | [==] |               |",
         "|            |______|                    |______|   {~}   {~}   |",
@@ -1411,8 +1444,8 @@ class AlleyScene:
         "|    [        ]    [    ]    [        ]    [    ]           |",
         "|    [========]    [====]    [========]    [====]           |",
         "|           .------.                    .------.            |",
-        "|           |      |                    |      |            |",
-        "|           | [==] |                    | [==] |            |",
+        "|           |[####]|                    |[####]|            |",
+        "|           |[####]|                    |[####]|            |",
         "|           |      |                    |      |            |",
         "|           | [==] |                    | [==] |            |",
         "|  {~} {~}  |______|                    |______|            |",
@@ -2075,11 +2108,16 @@ class AlleyScene:
         self._closeup_car_timer += 1
         if self._closeup_car is None and self._closeup_car_timer >= random.randint(200, 400):
             self._closeup_car_timer = 0
-            # Calculate position between cafe and right building
-            cafe_right = self.cafe_x + len(self.CAFE[0]) if hasattr(self, 'cafe_x') else self.width // 2
-            building2_x = self._building2_x if hasattr(self, '_building2_x') else self.width - 50
-            # Position car in the gap between cafe and right building
-            car_x = (cafe_right + building2_x) // 2
+            # Calculate position between right street light and traffic light
+            building1_right = self._building_x + len(self.BUILDING[0]) if hasattr(self, '_building_x') else 70
+            building2_left = self._building2_x if hasattr(self, '_building2_x') else self.width - 60
+            gap_center = (building1_right + building2_left) // 2
+            # Right street light is at gap_center + 38
+            # Traffic light is at box_x + BOX width + 100
+            street_light_x = gap_center + 38
+            traffic_light_x = self.box_x + len(self.BOX[0]) + 100 if hasattr(self, 'box_x') else self.width - 20
+            # Position car between street light and traffic light
+            car_x = (street_light_x + traffic_light_x) // 2
             self._closeup_car = {
                 'x': float(car_x),
                 'direction': random.choice([-1, 1]),  # Face left or right
@@ -2310,17 +2348,46 @@ class AlleyScene:
                         self.scene[py][px] = (char, Colors.SAND_DIM)
 
     def _draw_crosswalk(self, x: int, curb_y: int, street_y: int):
-        """Draw a crosswalk with white stripes (4x wider)."""
+        """Draw a crosswalk with white stripes (4x wider) and vanishing street above."""
         crosswalk_width = 32  # 4x wider
         for cx in range(crosswalk_width):
             px = x + cx
             if 0 <= px < self.width - 1:
-                # Draw white stripes on the street (every 2 chars)
+                # Draw white stripes on the street only (removed curb row)
                 if cx % 2 == 0:
                     if street_y < self.height:
                         self.scene[street_y][px] = ('█', Colors.ALLEY_LIGHT)
-                    if curb_y < self.height:
-                        self.scene[curb_y][px] = ('▀', Colors.ALLEY_LIGHT)
+
+        # Draw vanishing street effect above crosswalk
+        # Starts at curb and ends at lower 1/5th of screen
+        vanish_end_y = self.height - (self.height // 5)  # Lower 1/5th of screen
+        vanish_start_y = curb_y - 1  # Just above curb
+
+        # Calculate crosswalk center for vanishing point
+        crosswalk_center = x + crosswalk_width // 2
+
+        for row_y in range(vanish_start_y, vanish_end_y - 1, -1):
+            # Calculate perspective narrowing as we go up
+            progress = (vanish_start_y - row_y) / max(1, vanish_start_y - vanish_end_y)
+            # Street narrows as it goes into distance
+            half_width = int((crosswalk_width // 2) * (1.0 - progress * 0.7))
+
+            for offset in range(-half_width, half_width + 1):
+                px = crosswalk_center + offset
+                if 0 <= px < self.width - 1 and vanish_end_y <= row_y < vanish_start_y:
+                    # Draw street surface with lane markings
+                    if abs(offset) <= 1:
+                        # Center line (yellow dashes)
+                        if row_y % 3 == 0:
+                            self.scene[row_y][px] = ('=', Colors.RAT_YELLOW)
+                        else:
+                            self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
+                    elif abs(offset) == half_width:
+                        # Edge lines (white)
+                        self.scene[row_y][px] = ('|', Colors.ALLEY_MID)
+                    else:
+                        # Street surface
+                        self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
 
     def _draw_building(self, sprite: List[str], x: int, y: int):
         """Draw a building with grey blocks on bottom half story and red bricks on upper.
@@ -2388,10 +2455,12 @@ class AlleyScene:
                             else:
                                 color = Colors.BRICK_RED
                         elif char == '#':
-                            # Door panels - check for door knob position
-                            # Door knob goes on the right side of the door (col offset ~8 from door start)
-                            # The door panels are at specific positions, add knob to rightmost column of panels
-                            if row_idx >= grey_start_row:
+                            # Check if this is a door window (# inside brackets in door area)
+                            # Door windows are in the grey zone and have pattern |[####]|
+                            if row_idx >= grey_start_row and inside_window:
+                                # Door window - render in blue
+                                color = Colors.ALLEY_BLUE
+                            elif row_idx >= grey_start_row:
                                 color = Colors.GREY_BLOCK
                             else:
                                 color = Colors.BRICK_RED
@@ -4135,6 +4204,12 @@ class Dashboard:
             self.matrix_rain.set_roof_sill_checker(self.alley_scene.is_roof_or_sill)
             # Connect street light glow positions so snow melts faster in warm light
             self.matrix_rain.set_glow_positions(self.alley_scene._street_light_positions)
+            # Set quick-melt zones (sidewalk, mailbox, street) so snow melts very fast there
+            sidewalk_y = self.height - 4  # curb_y
+            street_y = self.height - 3
+            mailbox_bounds = (self.alley_scene.mailbox_x, self.alley_scene.mailbox_y,
+                              len(self.alley_scene.MAILBOX[0]), len(self.alley_scene.MAILBOX))
+            self.matrix_rain.set_quick_melt_zones(sidewalk_y, mailbox_bounds, street_y)
             # Initialize creatures
             self.alley_rat = AlleyRat(self.width, self.height)
             self.alley_rat.set_hiding_spots(self.alley_scene)
@@ -4165,6 +4240,12 @@ class Dashboard:
                             self.alley_scene.resize(self.width, self.height)
                             # Update glow positions for snow melting
                             self.matrix_rain.set_glow_positions(self.alley_scene._street_light_positions)
+                            # Update quick-melt zones
+                            sidewalk_y = self.height - 4
+                            street_y = self.height - 3
+                            mailbox_bounds = (self.alley_scene.mailbox_x, self.alley_scene.mailbox_y,
+                                              len(self.alley_scene.MAILBOX[0]), len(self.alley_scene.MAILBOX))
+                            self.matrix_rain.set_quick_melt_zones(sidewalk_y, mailbox_bounds, street_y)
                         self.matrix_rain.resize(self.width, self.height)
                         if self.alley_rat:
                             self.alley_rat.resize(self.width, self.height)
