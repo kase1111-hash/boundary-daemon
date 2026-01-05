@@ -386,7 +386,13 @@ class Dashboard:
         if not CURSES_AVAILABLE:
             if sys.platform == 'win32':
                 print("Error: curses library not available on Windows.")
-                print("Please install windows-curses: pip install windows-curses")
+                print("")
+                print("Try: pip install windows-curses")
+                print("")
+                print("If that fails (e.g., Python 3.14+), use Python 3.12:")
+                print("  1. Install Python 3.12 from python.org")
+                print("  2. py -3.12 -m pip install windows-curses")
+                print("  3. py -3.12 -m daemon.tui.dashboard --matrix")
             else:
                 print("Error: curses library not available.")
             sys.exit(1)
