@@ -2120,115 +2120,125 @@ class AlleyScene:
 
     def _update_wind(self):
         """Update windy city weather - debris, leaves, and wind wisps."""
-        curb_y = self.height - 4
-        street_y = self.height - 3
+        try:
+            curb_y = self.height - 4
+            street_y = self.height - 3
 
-        # Update wind direction timer - change direction every 3-15 minutes
-        self._wind_direction_timer += 1
-        if self._wind_direction_timer >= self._wind_direction_change_interval:
-            self._wind_direction_timer = 0
-            self._wind_direction *= -1  # Flip direction
-            self._wind_direction_change_interval = random.randint(10800, 54000)  # 3-15 min at ~60fps
+            # Skip wind updates if terminal is too small
+            if self.height < 12 or self.width < 20:
+                return
 
-        # Update tree sway animation
-        self._tree_sway_frame = (self._tree_sway_frame + 1) % 20
+            # Update wind direction timer - change direction every 3-15 minutes
+            self._wind_direction_timer += 1
+            if self._wind_direction_timer >= self._wind_direction_change_interval:
+                self._wind_direction_timer = 0
+                self._wind_direction *= -1  # Flip direction
+                self._wind_direction_change_interval = random.randint(10800, 54000)  # 3-15 min at ~60fps
 
-        # Calm mode: faster debris spawn, more debris allowed
-        debris_spawn_min = 5 if self._calm_mode else 15
-        debris_spawn_max = 15 if self._calm_mode else 40
-        max_debris = 20 if self._calm_mode else 8
+            # Update tree sway animation
+            self._tree_sway_frame = (self._tree_sway_frame + 1) % 20
 
-        # Spawn debris (newspapers, trash) on streets - spawn from upwind side
-        self._debris_spawn_timer += 1
-        if self._debris_spawn_timer >= random.randint(debris_spawn_min, debris_spawn_max):
-            self._debris_spawn_timer = 0
-            if len(self._debris) < max_debris:
-                debris_type = random.choice(['newspaper', 'trash'])
-                chars = self.DEBRIS_NEWSPAPER if debris_type == 'newspaper' else self.DEBRIS_TRASH
-                # Spawn from upwind side
-                if self._wind_direction > 0:
-                    spawn_x = -5.0  # Wind blowing right, spawn from left
-                else:
-                    spawn_x = float(self.width + 5)  # Wind blowing left, spawn from right
-                self._debris.append({
-                    'x': spawn_x,
-                    'y': float(random.choice([curb_y, street_y, street_y - 1])),
-                    'char': random.choice(chars),
-                    'type': debris_type,
-                    'speed': random.uniform(0.8, 2.0),
-                    'wobble': random.uniform(0, 6.28),
-                })
+            # Calm mode: faster debris spawn, more debris allowed
+            debris_spawn_min = 5 if self._calm_mode else 15
+            debris_spawn_max = 15 if self._calm_mode else 40
+            max_debris = 20 if self._calm_mode else 8
 
-        # Calm mode: fewer wind wisps (less mid-screen clutter)
-        max_wisps = 2 if self._calm_mode else 5
-        wisp_spawn_min = 60 if self._calm_mode else 30
-        wisp_spawn_max = 120 if self._calm_mode else 60
-
-        # Spawn wind wisps in sky - spawn from upwind side
-        self._wind_wisp_timer += 1
-        if self._wind_wisp_timer >= random.randint(wisp_spawn_min, wisp_spawn_max):
-            self._wind_wisp_timer = 0
-            if len(self._wind_wisps) < max_wisps:
-                wisp_length = random.randint(3, 8)
-                wisp_chars = ''.join([random.choice(self.WIND_WISPS) for _ in range(wisp_length)])
-                if self._wind_direction > 0:
-                    spawn_x = -5.0  # Wind blowing right
-                else:
-                    spawn_x = float(self.width + 5)  # Wind blowing left
-                self._wind_wisps.append({
-                    'x': spawn_x,
-                    'y': float(random.randint(3, self.height // 3)),
-                    'chars': wisp_chars,
-                    'speed': random.uniform(1.0, 2.5),
-                })
-
-        # Calm mode: more leaves
-        leaf_chance = 0.08 if self._calm_mode else 0.03
-        max_leaves = 30 if self._calm_mode else 15
-
-        # Spawn leaves from trees
-        for tree_x, tree_y in self._tree_positions:
-            if random.random() < leaf_chance:
-                if len(self._leaves) < max_leaves:
-                    self._leaves.append({
-                        'x': float(tree_x + random.randint(2, 7)),
-                        'y': float(tree_y + random.randint(0, 3)),
-                        'char': random.choice(self.DEBRIS_LEAVES),
-                        'speed': random.uniform(0.5, 1.5),
-                        'fall_speed': random.uniform(0.1, 0.3),
+            # Spawn debris (newspapers, trash) on streets - spawn from upwind side
+            self._debris_spawn_timer += 1
+            if self._debris_spawn_timer >= random.randint(debris_spawn_min, debris_spawn_max):
+                self._debris_spawn_timer = 0
+                if len(self._debris) < max_debris:
+                    debris_type = random.choice(['newspaper', 'trash'])
+                    chars = self.DEBRIS_NEWSPAPER if debris_type == 'newspaper' else self.DEBRIS_TRASH
+                    # Spawn from upwind side
+                    if self._wind_direction > 0:
+                        spawn_x = -5.0  # Wind blowing right, spawn from left
+                    else:
+                        spawn_x = float(self.width + 5)  # Wind blowing left, spawn from right
+                    self._debris.append({
+                        'x': spawn_x,
+                        'y': float(random.choice([curb_y, street_y, street_y - 1])),
+                        'char': random.choice(chars),
+                        'type': debris_type,
+                        'speed': random.uniform(0.8, 2.0),
                         'wobble': random.uniform(0, 6.28),
                     })
 
-        # Update debris positions - move in wind direction
-        new_debris = []
-        for d in self._debris:
-            d['x'] += d['speed'] * self._wind_direction  # Blow in wind direction
-            d['wobble'] += 0.3
-            d['y'] += math.sin(d['wobble']) * 0.2  # Wobble up/down
-            # Keep on screen
-            if -10 < d['x'] < self.width + 10:
-                new_debris.append(d)
-        self._debris = new_debris
+            # Calm mode: fewer wind wisps (less mid-screen clutter)
+            max_wisps = 2 if self._calm_mode else 5
+            wisp_spawn_min = 60 if self._calm_mode else 30
+            wisp_spawn_max = 120 if self._calm_mode else 60
 
-        # Update wind wisps - move in wind direction
-        new_wisps = []
-        for w in self._wind_wisps:
-            w['x'] += w['speed'] * self._wind_direction
-            if -len(w['chars']) - 5 < w['x'] < self.width + 10:
-                new_wisps.append(w)
-        self._wind_wisps = new_wisps
+            # Spawn wind wisps in sky - spawn from upwind side
+            self._wind_wisp_timer += 1
+            if self._wind_wisp_timer >= random.randint(wisp_spawn_min, wisp_spawn_max):
+                self._wind_wisp_timer = 0
+                if len(self._wind_wisps) < max_wisps:
+                    wisp_length = random.randint(3, 8)
+                    wisp_chars = ''.join([random.choice(self.WIND_WISPS) for _ in range(wisp_length)])
+                    if self._wind_direction > 0:
+                        spawn_x = -5.0  # Wind blowing right
+                    else:
+                        spawn_x = float(self.width + 5)  # Wind blowing left
+                    # Ensure valid range for wisp y position
+                    wisp_y_max = max(4, self.height // 3)
+                    self._wind_wisps.append({
+                        'x': spawn_x,
+                        'y': float(random.randint(3, wisp_y_max)),
+                        'chars': wisp_chars,
+                        'speed': random.uniform(1.0, 2.5),
+                    })
 
-        # Update leaves - blow in wind direction
-        new_leaves = []
-        for leaf in self._leaves:
-            leaf['x'] += leaf['speed'] * self._wind_direction  # Blow in wind direction
-            leaf['y'] += leaf['fall_speed']  # Fall down
-            leaf['wobble'] += 0.2
-            leaf['x'] += math.sin(leaf['wobble']) * 0.3  # Wobble
-            # Keep if on screen and above street
-            if -5 < leaf['x'] < self.width + 5 and leaf['y'] < street_y + 2:
-                new_leaves.append(leaf)
-        self._leaves = new_leaves
+            # Calm mode: more leaves
+            leaf_chance = 0.08 if self._calm_mode else 0.03
+            max_leaves = 30 if self._calm_mode else 15
+
+            # Spawn leaves from trees
+            for tree_x, tree_y in self._tree_positions:
+                if random.random() < leaf_chance:
+                    if len(self._leaves) < max_leaves:
+                        self._leaves.append({
+                            'x': float(tree_x + random.randint(2, 7)),
+                            'y': float(tree_y + random.randint(0, 3)),
+                            'char': random.choice(self.DEBRIS_LEAVES),
+                            'speed': random.uniform(0.5, 1.5),
+                            'fall_speed': random.uniform(0.1, 0.3),
+                            'wobble': random.uniform(0, 6.28),
+                        })
+
+            # Update debris positions - move in wind direction
+            new_debris = []
+            for d in self._debris:
+                d['x'] += d['speed'] * self._wind_direction  # Blow in wind direction
+                d['wobble'] += 0.3
+                d['y'] += math.sin(d['wobble']) * 0.2  # Wobble up/down
+                # Keep on screen
+                if -10 < d['x'] < self.width + 10:
+                    new_debris.append(d)
+            self._debris = new_debris
+
+            # Update wind wisps - move in wind direction
+            new_wisps = []
+            for w in self._wind_wisps:
+                w['x'] += w['speed'] * self._wind_direction
+                if -len(w['chars']) - 5 < w['x'] < self.width + 10:
+                    new_wisps.append(w)
+            self._wind_wisps = new_wisps
+
+            # Update leaves - blow in wind direction
+            new_leaves = []
+            for leaf in self._leaves:
+                leaf['x'] += leaf['speed'] * self._wind_direction  # Blow in wind direction
+                leaf['y'] += leaf['fall_speed']  # Fall down
+                leaf['wobble'] += 0.2
+                leaf['x'] += math.sin(leaf['wobble']) * 0.3  # Wobble
+                # Keep if on screen and above street
+                if -5 < leaf['x'] < self.width + 5 and leaf['y'] < street_y + 2:
+                    new_leaves.append(leaf)
+            self._leaves = new_leaves
+        except Exception:
+            # Silently handle any wind update errors to prevent freezes
+            pass
 
     def _update_qte(self):
         """Update meteor QTE event - quick time event."""
@@ -2950,7 +2960,7 @@ class AlleyScene:
 
         # Calculate cafe position first (shifted 11 chars left)
         self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 28  # 10 more left (was -18)
-        self.cafe_y = ground_y - len(self.CAFE) + 1
+        self.cafe_y = ground_y - len(self.CAFE) - 1  # Moved up 2 rows
 
         # Place well-lit Cafe between buildings (center of gap)
         self._draw_cafe(self.cafe_x, self.cafe_y)
