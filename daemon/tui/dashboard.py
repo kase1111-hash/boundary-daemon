@@ -478,9 +478,9 @@ class MatrixRain:
         block_chars = ['░', '▒', '▓', '█']
 
         for _ in range(num_patch_centers):
-            # Each patch has a center point
+            # Each patch has a center point (below cloud layer at rows 1-2)
             center_x = random.uniform(0, self.width)
-            center_y = random.uniform(0, self.height)
+            center_y = random.uniform(3, self.height)  # Start below cloud cover
             patch_dx = random.uniform(-0.08, 0.08)  # Whole patch drifts together (slower)
             patch_dy = random.uniform(-0.02, 0.02)
 
@@ -590,9 +590,9 @@ class MatrixRain:
             start_x = random.randint(-10, 0)
             start_y = random.randint(0, self.height - 1)
         else:
-            # Normal: spawn across width, start from cloud layer (row 2)
+            # Normal: spawn across width, start below cloud layer (row 3+)
             start_x = random.randint(0, self.width - 1)
-            start_y = random.randint(1, 3)  # Start from middle of cloud layer
+            start_y = random.randint(3, 5)  # Start below solid cloud cover (rows 1-2)
 
         # Ensure length range is valid (max >= min)
         effective_max_len = max(len_min, min(len_max, max(1, self.height // 2)))
@@ -1054,7 +1054,7 @@ class MatrixRain:
                 opacity = particle.get('opacity', 0.5)
                 neighbor_count = particle.get('neighbor_count', 0)
 
-                if 0 <= x < self.width - 1 and 0 <= y < self.height - 1:
+                if 0 <= x < self.width - 1 and 3 <= y < self.height - 1:  # Stay below cloud layer
                     # Brightness based on opacity (which is affected by neighbor density)
                     # Clumped fog (high opacity) is bright, spread fog (low opacity) is dim
                     if opacity > 0.7 or neighbor_count >= 4:
@@ -1176,23 +1176,23 @@ class AlleyScene:
 
     # Cafe storefront (well-lit, between buildings) - taller size
     CAFE = [
-        "   _______________________   ",
-        "  |      C A F E         |  ",
-        "  |                      |  ",
-        "  |  [====]      [====]  |  ",
-        "  |  [    ]      [    ]  |  ",
-        "  |  [    ]      [    ]  |  ",
-        "  |  [====]      [====]  |  ",
-        "  |                      |  ",
-        "  |  [====]      [====]  |  ",
-        "  |  [    ]      [    ]  |  ",
-        "  |  [    ]      [    ]  |  ",
-        "  |  [====]      [====]  |  ",
-        "  |                      |  ",
-        "  |[===================]|  ",
-        "  |[  OPEN    .oOo.    ]|  ",
-        "  |[___________________]|  ",
-        "  |________[  ]________|  ",
+        "   ___________________________   ",
+        "  |        C A F E           |  ",
+        "  |                          |  ",
+        "  |  [====]    O     [====]  |  ",
+        "  |  [    ]   /|\\    [    ]  |  ",
+        "  |  [    ]  [===]   [    ]  |  ",
+        "  |  [====]          [====]  |  ",
+        "  |                          |  ",
+        "  |  [====]          [====]  |  ",
+        "  |  [    ]          [    ]  |  ",
+        "  |  [    ]          [    ]  |  ",
+        "  |  [====]          [====]  |  ",
+        "  |                          |  ",
+        "  |[=======================]|  ",
+        "  |[ O  O   .oOo.  OPEN    ]|  ",
+        "  |[/|\\-|\\__________       ]|  ",
+        "  |__________[  ]__________|  ",
     ]
 
     # Traffic light showing two sides (corner view) - compact head, tall pole
@@ -1328,10 +1328,10 @@ class AlleyScene:
 
     # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors, porch & chairs
     BUILDING = [
-        "                           _____                                ",
-        "                          |     |                               ",
-        "        _O_            [===|     |              _O_             ",
-        "       (/ \\)           [===|_____|             (/ \\)            ",
+        "                        _____                                   ",
+        "                       |     |                                  ",
+        "        _O_            |     |  [===]          _O_              ",
+        "       (/ \\)           |_____|  [===]         (/ \\)             ",
         ".---------------------------------------------------------------.",
         "|                                                               |",
         "|  [========]    [====]  [====]    [========]    [====]         |",
@@ -1363,13 +1363,13 @@ class AlleyScene:
         "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
         "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
         "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|            .------.                    .------.      {~} {~}  |",
-        "|            |      |                    |      |       H   H  |",
-        "|            | [==] |                    | [==] |       H   H  |",
-        "|            |      |                    |      |              |",
-        "|            | [==] |                    | [==] |              |",
-        "|            |______|                    |______|              |",
-        "|___________|______|____________________|______|______________|",
+        "|            .------.                    .------.               |",
+        "|            |      |                    |      |               |",
+        "|            | [==] |                    | [==] |               |",
+        "|            |      |                    |      |               |",
+        "|            | [==] |                    | [==] |               |",
+        "|            |______|                    |______|   {~}   {~}   |",
+        "|___________|______|____________________|______|___ H ___ H ___|",
         "             ======                      ======                 ",
     ]
 
@@ -1410,13 +1410,13 @@ class AlleyScene:
         "|    [        ]    [    ]    [        ]    [    ]           |",
         "|    [        ]    [    ]    [        ]    [    ]           |",
         "|    [========]    [====]    [========]    [====]           |",
-        "|  {~} {~}  .------.                    .------.            |",
-        "|   H   H   |      |                    |      |            |",
-        "|   H   H   | [==] |                    | [==] |            |",
+        "|           .------.                    .------.            |",
         "|           |      |                    |      |            |",
         "|           | [==] |                    | [==] |            |",
-        "|           |______|                    |______|            |",
-        "|__________|______|____________________|______|____________|",
+        "|           |      |                    |      |            |",
+        "|           | [==] |                    | [==] |            |",
+        "|  {~} {~}  |______|                    |______|            |",
+        "|__ H _ H __|______|____________________|______|____________|",
         "            ======                      ======               ",
     ]
 
@@ -1625,7 +1625,16 @@ class AlleyScene:
         # Draw solid cloud cover at top (double line)
         self._draw_cloud_cover()
 
-        # Draw mid-range buildings first (behind big buildings)
+        # Calculate building positions first for overlap avoidance
+        self._building_x = 9
+        building1_right = self._building_x + len(self.BUILDING[0])
+        self._building2_x = self.width - len(self.BUILDING2[0]) - 11 if self.width > 60 else self.width
+
+        # Draw distant buildings FIRST (furthest back) - only in gap between buildings
+        gap_center = (building1_right + self._building2_x) // 2
+        self._draw_distant_buildings(gap_center, ground_y, building1_right, self._building2_x)
+
+        # Draw mid-range buildings (behind big buildings)
         self._draw_midrange_buildings(ground_y)
 
         # Draw first building wireframe in background (left side)
@@ -1708,9 +1717,6 @@ class AlleyScene:
         self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 8
         self.cafe_y = ground_y - len(self.CAFE) + 1
 
-        # Draw distant buildings above cafe (behind everything, small, dark grey)
-        self._draw_distant_buildings(gap_center - 8, self.cafe_y)
-
         # Place well-lit Cafe between buildings (center of gap)
         self._draw_cafe(self.cafe_x, self.cafe_y)
 
@@ -1757,8 +1763,8 @@ class AlleyScene:
                     char = '░'  # Light shade (rare)
                 self.scene[row][x] = (char, Colors.GREY_BLOCK)
 
-    def _draw_distant_buildings(self, center_x: int, cafe_y: int):
-        """Draw distant building skyline across the entire background."""
+    def _draw_distant_buildings(self, center_x: int, ground_y: int, left_boundary: int, right_boundary: int):
+        """Draw distant building skyline only in the gap between big buildings."""
         # Distant building sprites - OUTLINE ONLY (no fill)
         distant_buildings = [
             # Tall narrow
@@ -1775,18 +1781,36 @@ class AlleyScene:
             [" _ ", "|_|"],
         ]
 
-        # Back row (further away, higher up) - spread across entire width
-        back_row_y = cafe_y - 8
-        back_positions = list(range(5, self.width - 5, 12))  # Every 12 chars
-        for i, pos_x in enumerate(back_positions):
-            building = distant_buildings[(i + 2) % len(distant_buildings)]
+        # Calculate cafe position to avoid overlap
+        cafe_width = len(self.CAFE[0]) + 4  # Cafe will be widened
+        cafe_left = center_x - cafe_width // 2 - 8
+        cafe_right = cafe_left + cafe_width
+
+        # Back row (further away, higher up) - only in gap, avoid cafe
+        back_row_y = ground_y - 20  # Higher up
+        for pos_x in range(left_boundary + 5, right_boundary - 5, 10):
+            # Skip if overlapping with cafe area
+            if cafe_left - 5 < pos_x < cafe_right + 5:
+                continue
+            building = distant_buildings[random.randint(0, len(distant_buildings) - 1)]
             self._draw_outline_building(building, pos_x, back_row_y, Colors.ALLEY_DARK)
 
+        # Middle row - slightly lower, staggered
+        mid_row_y = ground_y - 16
+        for pos_x in range(left_boundary + 10, right_boundary - 5, 10):
+            # Skip if overlapping with cafe area
+            if cafe_left - 5 < pos_x < cafe_right + 5:
+                continue
+            building = distant_buildings[random.randint(0, len(distant_buildings) - 1)]
+            self._draw_outline_building(building, pos_x, mid_row_y, Colors.ALLEY_DARK)
+
         # Front row (closer, lower) - staggered to show back row in gaps
-        front_row_y = cafe_y - 4
-        front_positions = list(range(11, self.width - 5, 12))  # Offset by 6 from back
-        for i, pos_x in enumerate(front_positions):
-            building = distant_buildings[i % len(distant_buildings)]
+        front_row_y = ground_y - 12
+        for pos_x in range(left_boundary + 7, right_boundary - 5, 12):
+            # Skip if overlapping with cafe area
+            if cafe_left - 5 < pos_x < cafe_right + 5:
+                continue
+            building = distant_buildings[random.randint(0, len(distant_buildings) - 1)]
             self._draw_outline_building(building, pos_x, front_row_y, Colors.GREY_BLOCK)
 
     def _draw_outline_building(self, building: List[str], x: int, base_y: int, color: int):
