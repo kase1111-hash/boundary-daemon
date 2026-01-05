@@ -1226,6 +1226,23 @@ class AlleyScene:
         "  (o)============(o)  ",
     ]
 
+    # Manhole cover (on street)
+    MANHOLE = [
+        "(====)",
+    ]
+
+    # Street drain (curb side)
+    DRAIN = [
+        "[|||]",
+    ]
+
+    # Steam animation frames
+    STEAM_FRAMES = [
+        ["  ~  ", " ~~~ ", "~~~~~"],
+        [" ~~  ", "~~~~ ", " ~~~~"],
+        ["~~   ", " ~~~ ", "~~~~ "],
+    ]
+
     # Person walking animation frames (arm swinging) - basic person
     # Pedestrian sprites with leg animation (4 frames for walking cycle)
     PERSON_RIGHT_FRAMES = [
@@ -1309,98 +1326,98 @@ class AlleyScene:
         "  |  ",
     ]
 
-    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, door, porch & steps
+    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors, porch & chairs
     BUILDING = [
-        "                           _____                               ",
-        "                          |     |                              ",
-        "        _O_            [===|     |              _O_            ",
-        "       (/ \\)           [===|_____|             (/ \\)           ",
-        ".--------------------------------------------------------------.",
-        "|                                                              |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|                                                              |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|                                                              |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|                                                              |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|                                                              |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
-        "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|                              .------.                         |",
-        "|                              |      |                         |",
-        "|                              | [==] |                         |",
-        "|                              |      |                         |",
-        "|                              | [==] |                         |",
-        "|                              |______|                         |",
-        "|_____________________________|______|_________________________|",
-        "                               ======                           ",
+        "                           _____                                ",
+        "                          |     |                               ",
+        "        _O_            [===|     |              _O_             ",
+        "       (/ \\)           [===|_____|             (/ \\)            ",
+        ".---------------------------------------------------------------.",
+        "|                                                               |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|                                                               |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|                                                               |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|                                                               |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|                                                               |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
+        "|  [========]    [====]  [====]    [========]    [====]         |",
+        "|            .------.                    .------.      {~} {~}  |",
+        "|            |      |                    |      |       H   H  |",
+        "|            | [==] |                    | [==] |       H   H  |",
+        "|            |      |                    |      |              |",
+        "|            | [==] |                    | [==] |              |",
+        "|            |______|                    |______|              |",
+        "|___________|______|____________________|______|______________|",
+        "             ======                      ======                 ",
     ]
 
-    # Second building (right side) - 2X TALL, 2X WIDE with door, porch & steps
+    # Second building (right side) - 2X TALL, 2X WIDE with two doors, porch & chairs
     BUILDING2 = [
-        "              _____                                  ___   ",
-        "             |     |                                |   |  ",
-        "      [===]  |     |    _O_                  _O_    |   |  ",
-        "      [===]  |_____|   (/ \\)                (/ \\)   |___|  ",
-        ".----------------------------------------------------------.",
-        "|                                                          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|                                                          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|                                                          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|                                                          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|                                                          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [        ]    [    ]    [        ]    [    ]          |",
-        "|    [========]    [====]    [========]    [====]          |",
-        "|  .------.                                                 |",
-        "|  |      |                                                 |",
-        "|  | [==] |                                                 |",
-        "|  |      |                                                 |",
-        "|  | [==] |                                                 |",
-        "|  |______|                                                 |",
-        "|__|______|_________________________________________________|",
-        "    ======                                                   ",
+        "              _____                                  ___    ",
+        "             |     |                                |   |   ",
+        "      [===]  |     |    _O_                  _O_    |   |   ",
+        "      [===]  |_____|   (/ \\)                (/ \\)   |___|   ",
+        ".-----------------------------------------------------------.",
+        "|                                                           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|                                                           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|                                                           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|                                                           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|                                                           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [        ]    [    ]    [        ]    [    ]           |",
+        "|    [========]    [====]    [========]    [====]           |",
+        "|  {~} {~}  .------.                    .------.            |",
+        "|   H   H   |      |                    |      |            |",
+        "|   H   H   | [==] |                    | [==] |            |",
+        "|           |      |                    |      |            |",
+        "|           | [==] |                    | [==] |            |",
+        "|           |______|                    |______|            |",
+        "|__________|______|____________________|______|____________|",
+        "            ======                      ======               ",
     ]
 
     # Window positions for people animation (relative to building sprite)
@@ -1459,6 +1476,11 @@ class AlleyScene:
         # Window positions for layering (filled during _draw_building)
         self._window_interior_positions: List[Tuple[int, int]] = []
         self._window_frame_positions: List[Tuple[int, int, str]] = []  # (x, y, char)
+        # Manholes and drains with occasional steam
+        self._manhole_positions: List[Tuple[int, int]] = []  # (x, y)
+        self._drain_positions: List[Tuple[int, int]] = []  # (x, y)
+        self._steam_effects: List[Dict] = []  # {x, y, frame, timer, duration}
+        self._steam_spawn_timer = 0
         # Cloud layer with wisps
         self._clouds: List[Dict] = []
         self._init_clouds()
@@ -1516,6 +1538,37 @@ class AlleyScene:
             else:
                 if cloud['x'] > self.width + cloud['length']:
                     cloud['x'] = -cloud['length']
+
+    def _update_steam(self):
+        """Update steam effects from manholes and drains - rare occurrence."""
+        self._steam_spawn_timer += 1
+
+        # Rarely spawn steam (about 1 in 800 frames)
+        if self._steam_spawn_timer >= random.randint(600, 1000):
+            self._steam_spawn_timer = 0
+            # Choose a random manhole or drain
+            all_positions = self._manhole_positions + self._drain_positions
+            if all_positions and len(self._steam_effects) < 2:  # Max 2 steam at once
+                pos = random.choice(all_positions)
+                self._steam_effects.append({
+                    'x': pos[0],
+                    'y': pos[1],
+                    'frame': 0,
+                    'timer': 0,
+                    'duration': random.randint(40, 80),  # Short duration
+                })
+
+        # Update existing steam effects
+        new_steam = []
+        for steam in self._steam_effects:
+            steam['timer'] += 1
+            # Animate frame
+            if steam['timer'] % 5 == 0:
+                steam['frame'] = (steam['frame'] + 1) % len(self.STEAM_FRAMES)
+            # Keep if not expired
+            if steam['timer'] < steam['duration']:
+                new_steam.append(steam)
+        self._steam_effects = new_steam
 
     def _render_clouds(self, screen):
         """Render cloud layer."""
@@ -1611,6 +1664,28 @@ class AlleyScene:
                     self.scene[street_y][x] = ('=', Colors.RAT_YELLOW)
                     self.scene[street_y][x + 1] = ('=', Colors.RAT_YELLOW)
 
+        # Add manholes to the street (every ~30 chars)
+        self._manhole_positions = []
+        for x in range(15, self.width - 15, 30):
+            manhole_x = x + random.randint(-3, 3)  # Slight random offset
+            if 5 < manhole_x < self.width - 10:
+                self._manhole_positions.append((manhole_x, street_y))
+                # Draw manhole cover
+                for i, char in enumerate(self.MANHOLE[0]):
+                    if manhole_x + i < self.width - 1:
+                        self.scene[street_y][manhole_x + i] = (char, Colors.ALLEY_MID)
+
+        # Add drains along the curb (every ~25 chars)
+        self._drain_positions = []
+        for x in range(10, self.width - 10, 25):
+            drain_x = x + random.randint(-2, 2)  # Slight random offset
+            if 3 < drain_x < self.width - 8:
+                self._drain_positions.append((drain_x, curb_y))
+                # Draw drain
+                for i, char in enumerate(self.DRAIN[0]):
+                    if drain_x + i < self.width - 1:
+                        self.scene[curb_y][drain_x + i] = (char, Colors.ALLEY_DARK)
+
         # Place dumpster to the LEFT of building 1 (above curb)
         self.dumpster_x = 2
         self.dumpster_y = ground_y - len(self.DUMPSTER) + 1
@@ -1641,7 +1716,7 @@ class AlleyScene:
 
         # Draw crosswalk between cafe and right building
         cafe_right = self.cafe_x + len(self.CAFE[0])
-        crosswalk_x = cafe_right + 5
+        crosswalk_x = cafe_right + 1
         self._draw_crosswalk(crosswalk_x, curb_y, street_y)
 
     def _draw_street_lights(self, ground_y: int):
@@ -1667,10 +1742,19 @@ class AlleyScene:
     def _draw_cloud_cover(self):
         """Draw solid double-line cloud cover at top of screen."""
         # Draw two solid lines of clouds right below the status area (rows 1-2)
-        cloud_chars = ['▓', '░', '▒', '█']
+        # Mostly solid blocks with occasional texture variation
         for row in range(1, 3):  # Rows 1 and 2
             for x in range(self.width - 1):
-                char = cloud_chars[(x + row) % len(cloud_chars)]
+                # 80% solid blocks, 20% texture variation
+                r = random.random()
+                if r < 0.80:
+                    char = '█'  # Solid block
+                elif r < 0.90:
+                    char = '▓'  # Dense shade
+                elif r < 0.97:
+                    char = '▒'  # Medium shade
+                else:
+                    char = '░'  # Light shade (rare)
                 self.scene[row][x] = (char, Colors.GREY_BLOCK)
 
     def _draw_distant_buildings(self, center_x: int, cafe_y: int):
@@ -1937,6 +2021,9 @@ class AlleyScene:
 
         # Update clouds
         self._update_clouds()
+
+        # Update steam effects from manholes/drains
+        self._update_steam()
 
     def _update_cars(self):
         """Update car positions and spawn new cars."""
@@ -2358,6 +2445,9 @@ class AlleyScene:
         # Render street light flicker effects
         self._render_street_light_flicker(screen)
 
+        # Render steam effects from manholes/drains
+        self._render_steam(screen)
+
         # Render pedestrians on the sidewalk
         self._render_pedestrians(screen)
 
@@ -2381,6 +2471,28 @@ class AlleyScene:
                     screen.attroff(attr)
                 except curses.error:
                     pass
+
+    def _render_steam(self, screen):
+        """Render steam rising from manholes and drains."""
+        for steam in self._steam_effects:
+            frame = self.STEAM_FRAMES[steam['frame']]
+            base_x = steam['x']
+            base_y = steam['y']
+
+            # Draw steam rising (3 rows above the source)
+            for row_idx, row in enumerate(frame):
+                py = base_y - row_idx - 1  # Above the manhole/drain
+                for col_idx, char in enumerate(row):
+                    px = base_x + col_idx - 2  # Center the steam
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        try:
+                            # Steam is white/light gray
+                            attr = curses.color_pair(Colors.ALLEY_LIGHT)
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
 
     def _render_cars(self, screen):
         """Render cars on the street."""
@@ -2644,7 +2756,7 @@ class AlleyScene:
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
         # Position traffic light on right side of scene (shifted 20 more chars right)
-        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 75)
+        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 100)
         light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 1  # Above curb, moved down
 
         if light_x < 0 or light_y < 0:
