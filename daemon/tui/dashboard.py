@@ -6388,31 +6388,347 @@ class Dashboard:
         except Exception as e:
             self._show_message(f"Export failed: {e}", Colors.STATUS_ERROR)
 
+    # Boundary Daemon tool definitions with help
+    DAEMON_TOOLS = {
+        # CLI Commands
+        'query': {
+            'desc': 'Query events from log',
+            'usage': 'query <filter> [--last 24h] [--limit N]',
+            'help': [
+                "QUERY - Event Query Tool",
+                "=" * 50,
+                "",
+                "Query events from the daemon's hash-chain log.",
+                "",
+                "USAGE:",
+                "  query <filter>",
+                "  query type:VIOLATION --last 24h",
+                "  query contains:unauthorized",
+                "",
+                "FILTERS:",
+                "  type:<TYPE>       - Event type (VIOLATION, TRIPWIRE, MODE_CHANGE, etc)",
+                "  severity:>=HIGH   - Minimum severity (INFO, LOW, MEDIUM, HIGH, CRITICAL)",
+                "  contains:<text>   - Full text search in details",
+                "  actor:<pattern>   - Filter by actor/agent",
+                "  --last <time>     - Time range (1h, 24h, 7d)",
+                "",
+                "EXAMPLES:",
+                "  query type:VIOLATION",
+                "  query severity:>=HIGH --last 24h",
+                "  query contains:passwd",
+                "  query actor:agent-*",
+            ],
+            'subcommands': [],
+        },
+        'trace': {
+            'desc': 'Trace and search events with details',
+            'usage': 'trace <search_term>',
+            'help': [
+                "TRACE - Event Tracing Tool",
+                "=" * 50,
+                "",
+                "Search and display detailed event information.",
+                "",
+                "USAGE:",
+                "  trace <search_term>",
+                "",
+                "Searches event types and details, displays results",
+                "in detailed box format with timestamps.",
+                "",
+                "EXAMPLES:",
+                "  trace unauthorized",
+                "  trace VIOLATION",
+                "  trace sandbox",
+            ],
+            'subcommands': [],
+        },
+        'status': {
+            'desc': 'Show daemon status',
+            'usage': 'status',
+            'help': [
+                "STATUS - Daemon Status",
+                "=" * 50,
+                "",
+                "Display current daemon status including:",
+                "  - Current security mode",
+                "  - Mode frozen state",
+                "  - Uptime",
+                "  - Event count",
+                "  - Violation count",
+                "  - Connection info",
+            ],
+            'subcommands': [],
+        },
+        'alerts': {
+            'desc': 'Show all alerts',
+            'usage': 'alerts',
+            'help': [
+                "ALERTS - Alert Management",
+                "=" * 50,
+                "",
+                "Display all current security alerts.",
+                "",
+                "Shows:",
+                "  - Alert severity (HIGH, MEDIUM, LOW)",
+                "  - Alert message",
+                "  - Acknowledgment status",
+                "  - Timestamp",
+            ],
+            'subcommands': [],
+        },
+        'violations': {
+            'desc': 'Show recent violations',
+            'usage': 'violations',
+            'help': [
+                "VIOLATIONS - Security Violations",
+                "=" * 50,
+                "",
+                "Display recent security violations including:",
+                "  - Unauthorized tool access attempts",
+                "  - Policy violations",
+                "  - PII detection events",
+                "  - Command injection attempts",
+                "",
+                "For full history, use: query type:VIOLATION --last 24h",
+            ],
+            'subcommands': [],
+        },
+        'mode': {
+            'desc': 'Show or change security mode',
+            'usage': 'mode [MODE]',
+            'help': [
+                "MODE - Security Mode Management",
+                "=" * 50,
+                "",
+                "Show current mode or initiate mode change.",
+                "",
+                "AVAILABLE MODES:",
+                "  OPEN       - Minimal restrictions, full tool access",
+                "  RESTRICTED - Limited tool access, monitoring active",
+                "  TRUSTED    - Verified tools only, enhanced logging",
+                "  AIRGAP     - No network, local tools only",
+                "  COLDROOM   - Read-only, no modifications allowed",
+                "  LOCKDOWN   - Emergency mode, all actions blocked",
+                "",
+                "Mode changes require ceremony confirmation.",
+            ],
+            'subcommands': ['open', 'restricted', 'trusted', 'airgap', 'coldroom', 'lockdown'],
+        },
+        'sandbox': {
+            'desc': 'Sandbox management',
+            'usage': 'sandbox <command>',
+            'help': [
+                "SANDBOX - Sandbox Management",
+                "=" * 50,
+                "",
+                "Manage isolated execution environments.",
+                "",
+                "SUBCOMMANDS:",
+                "  sandbox list      - List active sandboxes",
+                "  sandbox run       - Run command in sandbox",
+                "  sandbox inspect   - Inspect sandbox details",
+                "  sandbox kill      - Terminate sandbox",
+                "  sandbox profiles  - List available profiles",
+                "  sandbox metrics   - Show sandbox metrics",
+                "",
+                "Sandboxes provide isolation for untrusted code execution.",
+            ],
+            'subcommands': ['list', 'run', 'inspect', 'kill', 'profiles', 'metrics', 'test'],
+        },
+        'config': {
+            'desc': 'Configuration management',
+            'usage': 'config <command>',
+            'help': [
+                "CONFIG - Configuration Management",
+                "=" * 50,
+                "",
+                "Manage daemon configuration.",
+                "",
+                "SUBCOMMANDS:",
+                "  config show     - Display current configuration",
+                "  config lint     - Check configuration for errors",
+                "  config validate - Validate configuration",
+                "",
+                "Config file: /etc/boundary-daemon/boundary.conf",
+                "Or set BOUNDARY_CONFIG environment variable.",
+            ],
+            'subcommands': ['show', 'lint', 'validate'],
+        },
+        'case': {
+            'desc': 'Security case management',
+            'usage': 'case <command>',
+            'help': [
+                "CASE - Security Case Management",
+                "=" * 50,
+                "",
+                "Manage security investigation cases.",
+                "",
+                "SUBCOMMANDS:",
+                "  case list       - List all cases",
+                "  case show <id>  - Show case details",
+                "  case create     - Create new case",
+                "  case update     - Update case status",
+                "  case close      - Close a case",
+                "",
+                "Cases track security incidents and investigations.",
+            ],
+            'subcommands': ['list', 'show', 'create', 'update', 'close'],
+        },
+        'tripwire': {
+            'desc': 'Tripwire file monitoring',
+            'usage': 'tripwire <command>',
+            'help': [
+                "TRIPWIRE - File Integrity Monitoring",
+                "=" * 50,
+                "",
+                "Monitor critical files for unauthorized changes.",
+                "",
+                "SUBCOMMANDS:",
+                "  tripwire status  - Show tripwire status",
+                "  tripwire list    - List monitored files",
+                "  tripwire check   - Run integrity check",
+                "  tripwire add     - Add file to monitoring",
+                "  tripwire remove  - Remove file from monitoring",
+                "",
+                "Tripwires detect modifications to sensitive files",
+                "like /etc/passwd, config files, and binaries.",
+            ],
+            'subcommands': ['status', 'list', 'check', 'add', 'remove'],
+        },
+        'network': {
+            'desc': 'Network security status',
+            'usage': 'network',
+            'help': [
+                "NETWORK - Network Security",
+                "=" * 50,
+                "",
+                "Display network security status including:",
+                "  - Network trust level",
+                "  - VPN status",
+                "  - DNS security status",
+                "  - ARP monitoring status",
+                "  - Traffic anomaly detection",
+                "",
+                "Network restrictions vary by security mode.",
+            ],
+            'subcommands': ['status', 'trust', 'dns', 'arp'],
+        },
+        'pii': {
+            'desc': 'PII detection status',
+            'usage': 'pii',
+            'help': [
+                "PII - Personal Information Detection",
+                "=" * 50,
+                "",
+                "Monitor PII detection and filtering.",
+                "",
+                "Shows:",
+                "  - PII detections in agent output",
+                "  - Redaction statistics",
+                "  - Sensitive data patterns matched",
+                "",
+                "PII types: SSN, credit cards, emails, phone numbers,",
+                "API keys, passwords, and other credentials.",
+            ],
+            'subcommands': ['status', 'stats', 'patterns'],
+        },
+        'ceremony': {
+            'desc': 'Security ceremonies',
+            'usage': 'ceremony <type>',
+            'help': [
+                "CEREMONY - Security Ceremonies",
+                "=" * 50,
+                "",
+                "Initiate security ceremonies for sensitive operations.",
+                "",
+                "CEREMONY TYPES:",
+                "  ceremony mode     - Mode change ceremony",
+                "  ceremony verify   - Identity verification",
+                "  ceremony unlock   - Unlock frozen mode",
+                "",
+                "Ceremonies require human confirmation for",
+                "security-critical operations.",
+            ],
+            'subcommands': ['mode', 'verify', 'unlock'],
+        },
+        'export': {
+            'desc': 'Export events to file',
+            'usage': 'export <filename>',
+            'help': [
+                "EXPORT - Export Events",
+                "=" * 50,
+                "",
+                "Export events to JSON file for analysis.",
+                "",
+                "USAGE:",
+                "  export events.json",
+                "  export /path/to/output.json",
+                "",
+                "Exports include:",
+                "  - Timestamp",
+                "  - Event type",
+                "  - Event details",
+            ],
+            'subcommands': [],
+        },
+        'clear': {
+            'desc': 'Clear CLI results',
+            'usage': 'clear',
+            'help': ["Clears the results display area."],
+            'subcommands': [],
+        },
+        'help': {
+            'desc': 'Show help',
+            'usage': 'help [command]',
+            'help': [
+                "HELP - Command Help",
+                "=" * 50,
+                "",
+                "Show help for commands.",
+                "",
+                "USAGE:",
+                "  help           - Show all commands",
+                "  help <command> - Show help for specific command",
+                "",
+                "EXAMPLES:",
+                "  help query",
+                "  help sandbox",
+                "  help mode",
+            ],
+            'subcommands': [],
+        },
+    }
+
     def _start_cli(self):
         """Start CLI mode for running commands."""
         curses.curs_set(1)  # Show cursor
         cmd_text = ""
         cursor_pos = 0
+        show_help_popup = False
+        help_popup_tool = None
+
+        # Build autocomplete list from DAEMON_TOOLS
+        all_completions = list(self.DAEMON_TOOLS.keys())
 
         # Available commands help
         cli_help = [
+            "BOUNDARY DAEMON CLI - Press [F1] or type 'help <cmd>' for tool help",
+            "=" * 60,
+            "",
             "COMMANDS:",
-            "  query <filter>     - Query events (e.g., query type:VIOLATION)",
-            "  trace <event_id>   - Trace event details",
-            "  violations         - Show recent violations",
-            "  alerts             - Show all alerts",
-            "  status             - Show daemon status",
-            "  mode [new_mode]    - Show/change mode",
-            "  export <file>      - Export events to file",
-            "  clear              - Clear results",
-            "  help               - Show this help",
+        ]
+        for cmd, info in self.DAEMON_TOOLS.items():
+            cli_help.append(f"  {cmd:12} - {info['desc']}")
+        cli_help.extend([
             "",
             "QUERY FILTERS:",
-            "  type:<EVENT_TYPE>  - Filter by type (VIOLATION, TRIPWIRE, etc)",
+            "  type:<TYPE>        - Filter by event type",
             "  severity:>=HIGH    - Minimum severity",
             "  contains:<text>    - Full text search",
             "  --last 24h         - Time range",
-        ]
+            "",
+            "Press [Tab] to autocomplete, [F1] for tool help",
+        ])
 
         while True:
             self.screen.clear()
@@ -6460,7 +6776,7 @@ class Dashboard:
             self._addstr(prompt_y, len(cmd_text) + 1, "_", Colors.ACCENT)
 
             # Draw shortcuts
-            shortcuts = "[Enter] Run  [Tab] Complete  [↑↓] History  [PgUp/Dn] Scroll  [ESC] Exit"
+            shortcuts = "[Enter] Run  [Tab] Complete  [F1] Help  [↑↓] History  [ESC] Exit"
             self._addstr(self.height - 1, 0, shortcuts[:self.width-1], Colors.MUTED)
 
             self.screen.refresh()
@@ -6494,20 +6810,118 @@ class Dashboard:
                     self._cli_history_index = len(self._cli_history)
                     cmd_text = ""
             elif key == curses.KEY_PPAGE:  # Page Up
-                self._cli_results_scroll = max(0, self._cli_results_scroll - 10)
+                if show_help_popup:
+                    # Scroll help popup
+                    pass
+                else:
+                    self._cli_results_scroll = max(0, self._cli_results_scroll - 10)
             elif key == curses.KEY_NPAGE:  # Page Down
-                max_scroll = max(0, len(self._cli_results) - (self.height - 6))
-                self._cli_results_scroll = min(max_scroll, self._cli_results_scroll + 10)
-            elif key == 9:  # Tab - autocomplete
-                completions = ['query', 'trace', 'violations', 'alerts', 'status', 'mode', 'export', 'clear', 'help']
-                for comp in completions:
-                    if comp.startswith(cmd_text):
-                        cmd_text = comp + " "
-                        break
+                if show_help_popup:
+                    pass
+                else:
+                    max_scroll = max(0, len(self._cli_results) - (self.height - 6))
+                    self._cli_results_scroll = min(max_scroll, self._cli_results_scroll + 10)
+            elif key == curses.KEY_F1 or key == 265:  # F1 - show help for current command
+                # Get the first word being typed
+                first_word = cmd_text.split()[0] if cmd_text.split() else ""
+                if first_word in self.DAEMON_TOOLS:
+                    help_popup_tool = first_word
+                    show_help_popup = True
+                else:
+                    # Show general help
+                    show_help_popup = True
+                    help_popup_tool = None
+            elif key == 9:  # Tab - smart autocomplete
+                parts = cmd_text.split()
+                if len(parts) == 0 or (len(parts) == 1 and not cmd_text.endswith(' ')):
+                    # Complete command name
+                    prefix = parts[0] if parts else ""
+                    for comp in all_completions:
+                        if comp.startswith(prefix):
+                            cmd_text = comp + " "
+                            break
+                elif len(parts) >= 1:
+                    # Complete subcommand
+                    base_cmd = parts[0]
+                    if base_cmd in self.DAEMON_TOOLS:
+                        subcommands = self.DAEMON_TOOLS[base_cmd].get('subcommands', [])
+                        if subcommands:
+                            prefix = parts[1] if len(parts) > 1 else ""
+                            for sub in subcommands:
+                                if sub.startswith(prefix):
+                                    cmd_text = f"{base_cmd} {sub} "
+                                    break
             elif 32 <= key <= 126:  # Printable characters
                 cmd_text += chr(key)
 
+            # Draw help popup if active
+            if show_help_popup:
+                self._draw_help_popup(help_popup_tool)
+                self.screen.refresh()
+                popup_key = self.screen.getch()
+                if popup_key == 27 or popup_key == curses.KEY_F1 or popup_key == 265 or popup_key in (10, 13):
+                    show_help_popup = False
+                continue
+
         curses.curs_set(0)  # Hide cursor
+
+    def _draw_help_popup(self, tool_name: Optional[str] = None):
+        """Draw a help popup window for a tool."""
+        # Calculate popup dimensions
+        popup_width = min(60, self.width - 4)
+        popup_height = min(25, self.height - 4)
+        popup_x = (self.width - popup_width) // 2
+        popup_y = (self.height - popup_height) // 2
+
+        # Get help content
+        if tool_name and tool_name in self.DAEMON_TOOLS:
+            tool = self.DAEMON_TOOLS[tool_name]
+            help_lines = tool['help']
+            title = f" {tool_name.upper()} HELP "
+        else:
+            help_lines = [
+                "BOUNDARY DAEMON CLI HELP",
+                "=" * 40,
+                "",
+                "Available commands:",
+                "",
+            ]
+            for cmd, info in self.DAEMON_TOOLS.items():
+                help_lines.append(f"  {cmd:12} - {info['desc']}")
+            help_lines.extend([
+                "",
+                "Type 'help <command>' for detailed help.",
+                "Press F1 while typing a command for quick help.",
+            ])
+            title = " CLI HELP "
+
+        # Draw popup border
+        try:
+            # Top border
+            self._addstr(popup_y, popup_x, "┌" + "─" * (popup_width - 2) + "┐", Colors.HEADER)
+            # Title
+            title_x = popup_x + (popup_width - len(title)) // 2
+            self._addstr(popup_y, title_x, title, Colors.ACCENT)
+
+            # Content area
+            for i in range(popup_height - 2):
+                row = popup_y + 1 + i
+                # Side borders
+                self._addstr(row, popup_x, "│", Colors.HEADER)
+                self._addstr(row, popup_x + popup_width - 1, "│", Colors.HEADER)
+                # Content
+                if i < len(help_lines):
+                    line = help_lines[i][:popup_width - 4]
+                    self._addstr(row, popup_x + 2, line, Colors.NORMAL)
+
+            # Bottom border
+            self._addstr(popup_y + popup_height - 1, popup_x, "└" + "─" * (popup_width - 2) + "┘", Colors.HEADER)
+
+            # Close hint
+            close_hint = " [ESC/Enter] Close "
+            self._addstr(popup_y + popup_height - 1, popup_x + popup_width - len(close_hint) - 2, close_hint, Colors.MUTED)
+        except curses.error:
+            pass
 
     def _execute_cli_command(self, cmd: str):
         """Execute a CLI command and populate results."""
@@ -6519,24 +6933,32 @@ class Dashboard:
 
         try:
             if command == 'help':
-                self._cli_results = [
-                    "BOUNDARY DAEMON CLI",
-                    "=" * 40,
-                    "",
-                    "query <filter>    - Query events from log",
-                    "  Examples:",
-                    "    query type:VIOLATION",
-                    "    query severity:>=HIGH --last 24h",
-                    "    query contains:unauthorized",
-                    "",
-                    "trace <text>      - Search and trace events",
-                    "violations        - Show recent violations",
-                    "alerts            - Show all current alerts",
-                    "status            - Show daemon status",
-                    "mode [MODE]       - Show or change mode",
-                    "export <file>     - Export events to file",
-                    "clear             - Clear results",
-                ]
+                if args and args in self.DAEMON_TOOLS:
+                    # Show specific tool help
+                    tool = self.DAEMON_TOOLS[args]
+                    self._cli_results = tool['help'].copy()
+                else:
+                    # Show general help
+                    self._cli_results = [
+                        "BOUNDARY DAEMON CLI",
+                        "=" * 50,
+                        "",
+                        "COMMANDS:",
+                    ]
+                    for cmd_name, info in self.DAEMON_TOOLS.items():
+                        usage = info['usage']
+                        self._cli_results.append(f"  {usage:24} - {info['desc']}")
+                    self._cli_results.extend([
+                        "",
+                        "Type 'help <command>' for detailed help on any command.",
+                        "Press F1 while typing for quick context help.",
+                        "",
+                        "EXAMPLES:",
+                        "  query type:VIOLATION --last 24h",
+                        "  trace unauthorized",
+                        "  sandbox list",
+                        "  tripwire status",
+                    ])
 
             elif command == 'clear':
                 self._cli_results = ["Results cleared."]
