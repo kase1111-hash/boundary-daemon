@@ -122,6 +122,27 @@ class Colors:
     MATRIX_FADE2 = 11
     MATRIX_FADE3 = 12
     LIGHTNING = 13  # Inverted flash for lightning bolt
+    # Alley scene colors
+    ALLEY_DARK = 14      # Darkest shadows
+    ALLEY_MID = 15       # Mid-tone buildings
+    ALLEY_LIGHT = 16     # Lighter details
+    ALLEY_BLUE = 17      # Muted blue accents
+    # Creature colors
+    RAT_YELLOW = 18      # Yellow rat for warnings
+    SHADOW_RED = 19      # Red glowing eyes for threats
+    # Weather mode colors
+    RAIN_BRIGHT = 20     # Bright blue rain
+    RAIN_DIM = 21        # Dim blue rain
+    RAIN_FADE1 = 22      # Fading blue
+    RAIN_FADE2 = 23      # Very faded blue
+    SNOW_BRIGHT = 24     # Bright white snow
+    SNOW_DIM = 25        # Dim gray snow
+    SNOW_FADE = 26       # Faded gray snow
+    SAND_BRIGHT = 27     # Bright sand/brown
+    SAND_DIM = 28        # Dim sand
+    SAND_FADE = 29       # Faded sand
+    FOG_BRIGHT = 30      # Bright fog (white)
+    FOG_DIM = 31         # Dim fog (gray)
 
     @staticmethod
     def init_colors(matrix_mode: bool = False):
@@ -158,21 +179,117 @@ class Colors:
         curses.init_pair(Colors.MATRIX_FADE3, curses.COLOR_BLACK, curses.COLOR_BLACK)
         # Lightning flash - inverted bright white on green
         curses.init_pair(Colors.LIGHTNING, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        # Alley scene colors - muted blue and grey
+        curses.init_pair(Colors.ALLEY_DARK, curses.COLOR_BLACK, curses.COLOR_BLACK)
+        curses.init_pair(Colors.ALLEY_MID, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.ALLEY_LIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.ALLEY_BLUE, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        # Creature colors
+        curses.init_pair(Colors.RAT_YELLOW, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(Colors.SHADOW_RED, curses.COLOR_RED, curses.COLOR_BLACK)
+        # Weather mode colors
+        # Rain (blue)
+        curses.init_pair(Colors.RAIN_BRIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.RAIN_DIM, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.RAIN_FADE1, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.RAIN_FADE2, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        # Snow (white/gray)
+        curses.init_pair(Colors.SNOW_BRIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.SNOW_DIM, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.SNOW_FADE, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        # Sand (yellow/brown - using yellow as closest to brown)
+        curses.init_pair(Colors.SAND_BRIGHT, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(Colors.SAND_DIM, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(Colors.SAND_FADE, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        # Fog (gray/white)
+        curses.init_pair(Colors.FOG_BRIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(Colors.FOG_DIM, curses.COLOR_WHITE, curses.COLOR_BLACK)
+
+
+class WeatherMode(Enum):
+    """Weather modes for Matrix-style effects."""
+    MATRIX = "matrix"      # Classic green Matrix rain
+    RAIN = "rain"          # Blue rain
+    SNOW = "snow"          # White/gray snow
+    SAND = "sand"          # Brown/yellow sandstorm
+    FOG = "fog"            # Gray fog/mist
+
+    @property
+    def display_name(self) -> str:
+        """Get display name for the weather mode."""
+        return {
+            WeatherMode.MATRIX: "Matrix",
+            WeatherMode.RAIN: "Rain",
+            WeatherMode.SNOW: "Snow",
+            WeatherMode.SAND: "Sandstorm",
+            WeatherMode.FOG: "Fog",
+        }.get(self, self.value.title())
 
 
 class MatrixRain:
-    """Digital rain effect from The Matrix with depth simulation."""
+    """Digital rain effect from The Matrix with depth simulation and weather modes."""
+
+    # Weather-specific character sets
+    WEATHER_CHARS = {
+        WeatherMode.MATRIX: [
+            ".-·:;'`",  # Layer 0: Tiny rain - minimal dots
+            ".|!:;+-=",  # Layer 1: Simple ASCII
+            "0123456789+-*/<>=$#",  # Layer 2: Numbers and symbols
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",  # Layer 3: Alphanumeric
+            "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789$#@&",  # Layer 4: Nearest
+        ],
+        WeatherMode.RAIN: [
+            ".|'`",  # Layer 0: Light drizzle
+            ".|!:",  # Layer 1: Light rain
+            ".|!:;",  # Layer 2: Rain
+            "||!:;/\\",  # Layer 3: Heavy rain
+            "|||///\\\\\\",  # Layer 4: Downpour
+        ],
+        WeatherMode.SNOW: [
+            "··",  # Layer 0: Distant snowflakes
+            ".·*",  # Layer 1: Small flakes
+            ".*+",  # Layer 2: Medium flakes
+            "*+❄",  # Layer 3: Large flakes (using simple chars for compatibility)
+            "*❄❅❆",  # Layer 4: Big fluffy snowflakes
+        ],
+        WeatherMode.SAND: [
+            ".,",  # Layer 0: Fine dust
+            ".,;:",  # Layer 1: Fine sand
+            ".,:;'",  # Layer 2: Sand particles
+            ",:;~^",  # Layer 3: Coarse sand
+            "~^°º",  # Layer 4: Larger particles
+        ],
+        WeatherMode.FOG: [
+            " .",  # Layer 0: Thin mist
+            " .·",  # Layer 1: Light fog
+            ".·:",  # Layer 2: Medium fog
+            "·:░",  # Layer 3: Thick fog
+            "░▒",  # Layer 4: Dense fog
+        ],
+    }
+
+    # Weather-specific speed multipliers (relative to base speeds)
+    WEATHER_SPEED_MULT = {
+        WeatherMode.MATRIX: 1.0,
+        WeatherMode.RAIN: 1.2,   # Rain falls fast
+        WeatherMode.SNOW: 0.3,   # Snow falls slowly
+        WeatherMode.SAND: 0.8,   # Sand blows moderately
+        WeatherMode.FOG: 0.15,   # Fog drifts very slowly
+    }
+
+    # Weather-specific color mappings (bright, dim, fade1, fade2)
+    WEATHER_COLORS = {
+        WeatherMode.MATRIX: (Colors.MATRIX_BRIGHT, Colors.MATRIX_DIM, Colors.MATRIX_FADE1, Colors.MATRIX_FADE2),
+        WeatherMode.RAIN: (Colors.RAIN_BRIGHT, Colors.RAIN_DIM, Colors.RAIN_FADE1, Colors.RAIN_FADE2),
+        WeatherMode.SNOW: (Colors.SNOW_BRIGHT, Colors.SNOW_DIM, Colors.SNOW_FADE, Colors.SNOW_FADE),
+        WeatherMode.SAND: (Colors.SAND_BRIGHT, Colors.SAND_DIM, Colors.SAND_FADE, Colors.SAND_FADE),
+        WeatherMode.FOG: (Colors.FOG_BRIGHT, Colors.FOG_DIM, Colors.FOG_DIM, Colors.FOG_DIM),
+    }
 
     # 5 depth layers - each with different character sets (simple=far, complex=near)
     # Layer 0: Farthest - tiny fast raindrops falling from sky
     # Layer 4: Nearest - big slow drops sliding down window
-    DEPTH_CHARS = [
-        ".-·:;'`",  # Layer 0: Tiny rain - minimal dots
-        ".|!:;+-=",  # Layer 1: Simple ASCII
-        "0123456789+-*/<>=$#",  # Layer 2: Numbers and symbols
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",  # Layer 3: Alphanumeric
-        "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789$#@&",  # Layer 4: Nearest - full
-    ]
+    DEPTH_CHARS = WEATHER_CHARS[WeatherMode.MATRIX]  # Default to Matrix
 
     # Speed ranges - REVERSED: tiny rain (layer 0) is FASTEST like falling from sky
     # Big drops (layer 4) are SLOWEST like sliding down a window
@@ -202,9 +319,10 @@ class MatrixRain:
     # Splat characters for when tiny rain hits
     SPLAT_CHARS = ['+', '*', '×', '·']
 
-    def __init__(self, width: int, height: int):
+    def __init__(self, width: int, height: int, weather_mode: WeatherMode = WeatherMode.MATRIX):
         self.width = width
         self.height = height
+        self.weather_mode = weather_mode
         self.drops: List[Dict] = []
         self.splats: List[Dict] = []  # Splat effects when tiny rain hits
         # Increased by 2.35x to maintain absolute counts for layers 2-4
@@ -215,6 +333,58 @@ class MatrixRain:
         self._frame_count = 0
         self._global_flicker = 0.0  # 0-1 intensity of global flicker
         self._intermittent_flicker = False  # Major flicker event active
+
+        # Fog-specific state
+        self._fog_particles: List[Dict] = []
+        if weather_mode == WeatherMode.FOG:
+            self._init_fog()
+
+    def set_weather_mode(self, mode: WeatherMode):
+        """Change the weather mode and reinitialize particles."""
+        if mode != self.weather_mode:
+            self.weather_mode = mode
+            self.drops = []
+            self.splats = []
+            self._fog_particles = []
+            self._init_drops()
+            if mode == WeatherMode.FOG:
+                self._init_fog()
+
+    def cycle_weather(self) -> WeatherMode:
+        """Cycle to the next weather mode and return the new mode."""
+        modes = list(WeatherMode)
+        current_idx = modes.index(self.weather_mode)
+        next_idx = (current_idx + 1) % len(modes)
+        new_mode = modes[next_idx]
+        self.set_weather_mode(new_mode)
+        return new_mode
+
+    def _init_fog(self):
+        """Initialize fog particles that drift slowly."""
+        self._fog_particles = []
+        # Create dense fog patches across the screen
+        num_patches = max(20, self.width * self.height // 50)
+        for _ in range(num_patches):
+            self._fog_particles.append({
+                'x': random.uniform(0, self.width),
+                'y': random.uniform(0, self.height),
+                'dx': random.uniform(-0.3, 0.3),  # Horizontal drift
+                'dy': random.uniform(-0.1, 0.1),  # Very slow vertical movement
+                'char': random.choice(['░', '▒', '·', '.', ' ']),
+                'opacity': random.uniform(0.3, 1.0),
+            })
+
+    def _get_weather_chars(self) -> List[str]:
+        """Get character sets for current weather mode."""
+        return self.WEATHER_CHARS.get(self.weather_mode, self.WEATHER_CHARS[WeatherMode.MATRIX])
+
+    def _get_speed_multiplier(self) -> float:
+        """Get speed multiplier for current weather mode."""
+        return self.WEATHER_SPEED_MULT.get(self.weather_mode, 1.0)
+
+    def _get_weather_colors(self) -> tuple:
+        """Get color tuple (bright, dim, fade1, fade2) for current weather mode."""
+        return self.WEATHER_COLORS.get(self.weather_mode, self.WEATHER_COLORS[WeatherMode.MATRIX])
 
     def _init_drops(self):
         """Initialize rain drops at random positions across all depth layers."""
@@ -234,14 +404,27 @@ class MatrixRain:
         speed_min, speed_max = self.DEPTH_SPEEDS[depth]
         len_min, len_max = self.DEPTH_LENGTHS[depth]
 
+        # Apply weather-specific speed multiplier
+        speed_mult = self._get_speed_multiplier()
+        weather_chars = self._get_weather_chars()
+
+        # For snow, add horizontal drift
+        dx = 0.0
+        if self.weather_mode == WeatherMode.SNOW:
+            dx = random.uniform(-0.3, 0.3)  # Gentle sideways drift
+        elif self.weather_mode == WeatherMode.SAND:
+            dx = random.uniform(0.5, 1.5)  # Sand blows in one direction (wind)
+
         self.drops.append({
             'x': random.randint(0, self.width - 1),
             'y': random.randint(-self.height, 0),
-            'speed': random.uniform(speed_min, speed_max),
+            'speed': random.uniform(speed_min, speed_max) * speed_mult,
             'length': random.randint(len_min, min(len_max, self.height // 2)),
-            'char_offset': random.randint(0, len(self.DEPTH_CHARS[depth]) - 1),
+            'char_offset': random.randint(0, len(weather_chars[depth]) - 1),
             'depth': depth,
             'phase': 0.0,
+            'dx': dx,  # Horizontal movement
+            'fx': 0.0,  # Fractional x position for smooth movement
         })
 
     def _add_splat(self, x: int, y: int):
@@ -258,31 +441,47 @@ class MatrixRain:
         """Update rain drop positions and flicker state."""
         self._frame_count += 1
 
-        # Update flicker states
-        # Rapid low-level flicker - subtle constant shimmer (sine wave oscillation)
-        self._global_flicker = 0.15 + 0.1 * math.sin(self._frame_count * 0.3)
-
-        # Intermittent major flicker - brief stutter every few seconds (2-8% chance per frame)
-        if random.random() < 0.003:
-            self._intermittent_flicker = True
-        elif self._intermittent_flicker and random.random() < 0.3:
+        # Update flicker states (less flicker for non-Matrix modes)
+        if self.weather_mode == WeatherMode.MATRIX:
+            # Rapid low-level flicker - subtle constant shimmer (sine wave oscillation)
+            self._global_flicker = 0.15 + 0.1 * math.sin(self._frame_count * 0.3)
+            # Intermittent major flicker - brief stutter every few seconds
+            if random.random() < 0.003:
+                self._intermittent_flicker = True
+            elif self._intermittent_flicker and random.random() < 0.3:
+                self._intermittent_flicker = False
+        else:
+            self._global_flicker = 0.0
             self._intermittent_flicker = False
+
+        # Update fog particles if in fog mode
+        if self.weather_mode == WeatherMode.FOG:
+            self._update_fog()
+
+        weather_chars = self._get_weather_chars()
 
         new_drops = []
         for drop in self.drops:
             drop['phase'] += drop['speed']
             drop['y'] = int(drop['phase'])
 
+            # Update horizontal position for snow/sand
+            if 'dx' in drop and drop['dx'] != 0:
+                drop['fx'] = drop.get('fx', float(drop['x'])) + drop['dx']
+                drop['x'] = int(drop['fx']) % self.width  # Wrap around
+
             # Roll through characters as the drop falls
             # Tiny rain (layer 0) rolls fastest for that streaking effect
             roll_speed = 5 - drop['depth']  # Layer 0 = 5, Layer 4 = 1
-            drop['char_offset'] = (drop['char_offset'] + roll_speed) % len(self.DEPTH_CHARS[drop['depth']])
+            chars = weather_chars[drop['depth']]
+            drop['char_offset'] = (drop['char_offset'] + roll_speed) % len(chars)
 
             # Check if tiny rain (layer 0) hit the ground (mid-screen to bottom)
+            # Only create splats for Matrix and Rain modes
             if drop['depth'] == 0 and drop['y'] >= self.height:
-                # Create splat effect
-                if random.random() < 0.7:  # 70% chance of splat
-                    self._add_splat(drop['x'], self.height - 1)
+                if self.weather_mode in (WeatherMode.MATRIX, WeatherMode.RAIN):
+                    if random.random() < 0.7:  # 70% chance of splat
+                        self._add_splat(drop['x'], self.height - 1)
                 continue  # Don't keep this drop
 
             # Keep drop if still on screen
@@ -303,9 +502,36 @@ class MatrixRain:
         while len(self.drops) < self._target_drops:
             self._add_drop()
 
+    def _update_fog(self):
+        """Update fog particle positions."""
+        for particle in self._fog_particles:
+            # Drift slowly
+            particle['x'] += particle['dx']
+            particle['y'] += particle['dy']
+
+            # Wrap around screen edges
+            if particle['x'] < 0:
+                particle['x'] = self.width - 1
+            elif particle['x'] >= self.width:
+                particle['x'] = 0
+            if particle['y'] < 0:
+                particle['y'] = self.height - 1
+            elif particle['y'] >= self.height:
+                particle['y'] = 0
+
+            # Slowly change opacity
+            particle['opacity'] += random.uniform(-0.05, 0.05)
+            particle['opacity'] = max(0.2, min(1.0, particle['opacity']))
+
+            # Occasionally change drift direction
+            if random.random() < 0.01:
+                particle['dx'] = random.uniform(-0.3, 0.3)
+                particle['dy'] = random.uniform(-0.1, 0.1)
+
     def resize(self, width: int, height: int):
         """Handle terminal resize."""
         old_width = self.width
+        old_height = self.height
         self.width = width
         self.height = height
         self._target_drops = max(28, width * 7 // 10)  # Massive rain density
@@ -314,6 +540,18 @@ class MatrixRain:
         self.drops = [d for d in self.drops if d['x'] < width]
         self.splats = [s for s in self.splats if s['x'] < width and s['y'] < height]
 
+        # Update fog particles for new dimensions
+        if self.weather_mode == WeatherMode.FOG:
+            # Keep particles in bounds or reinitialize if size changed significantly
+            if abs(width - old_width) > 10 or abs(height - old_height) > 5:
+                self._init_fog()
+            else:
+                for p in self._fog_particles:
+                    if p['x'] >= width:
+                        p['x'] = width - 1
+                    if p['y'] >= height:
+                        p['y'] = height - 1
+
         # Add more drops if window got bigger
         if width > old_width:
             for _ in range(max(1, (width - old_width) * 7 // 10)):
@@ -321,12 +559,19 @@ class MatrixRain:
 
     def render(self, screen):
         """Render rain drops with depth-based visual effects and flicker."""
+        weather_chars = self._get_weather_chars()
+        colors = self._get_weather_colors()
+
+        # Render fog particles first (behind everything)
+        if self.weather_mode == WeatherMode.FOG:
+            self._render_fog(screen)
+
         # Sort drops by depth so farther ones render first (get overwritten by nearer)
         sorted_drops = sorted(self.drops, key=lambda d: d['depth'])
 
         for drop in sorted_drops:
             depth = drop['depth']
-            chars = self.DEPTH_CHARS[depth]
+            chars = weather_chars[depth]
 
             # During intermittent flicker, skip rendering some drops randomly
             if self._intermittent_flicker and random.random() < 0.4:
@@ -343,94 +588,332 @@ class MatrixRain:
                     char_idx = (drop['char_offset'] + i * 2) % len(chars)
                     char = chars[char_idx]
 
-                    # More character mutation flicker for nearer drops
-                    if random.random() < 0.02 * (depth + 1):
-                        char = random.choice(chars)
-
-                    # Rapid flicker can also swap characters briefly
-                    if random.random() < self._global_flicker * 0.15:
-                        char = random.choice(chars)
+                    # More character mutation flicker for nearer drops (Matrix mode only)
+                    if self.weather_mode == WeatherMode.MATRIX:
+                        if random.random() < 0.02 * (depth + 1):
+                            char = random.choice(chars)
+                        # Rapid flicker can also swap characters briefly
+                        if random.random() < self._global_flicker * 0.15:
+                            char = random.choice(chars)
 
                     try:
                         self._render_char(screen, y, drop['x'], char, i, depth)
                     except curses.error:
                         pass
 
-        # Render splats (tiny rain impact effects)
-        for splat in self.splats:
-            try:
-                # Splats fade based on remaining life
-                if splat['life'] > 5:
-                    attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
-                elif splat['life'] > 2:
-                    attr = curses.color_pair(Colors.MATRIX_DIM)
-                else:
-                    attr = curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM
+        # Render splats (tiny rain impact effects) - only for Matrix and Rain modes
+        if self.weather_mode in (WeatherMode.MATRIX, WeatherMode.RAIN):
+            bright, dim, fade1, fade2 = colors
+            for splat in self.splats:
+                try:
+                    # Splats fade based on remaining life
+                    if splat['life'] > 5:
+                        attr = curses.color_pair(bright) | curses.A_BOLD
+                    elif splat['life'] > 2:
+                        attr = curses.color_pair(dim)
+                    else:
+                        attr = curses.color_pair(fade1) | curses.A_DIM
 
-                screen.attron(attr)
-                screen.addstr(splat['y'], splat['x'], splat['char'])
-                screen.attroff(attr)
+                    screen.attron(attr)
+                    screen.addstr(splat['y'], splat['x'], splat['char'])
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
+    def _render_fog(self, screen):
+        """Render fog particles."""
+        for particle in self._fog_particles:
+            try:
+                x = int(particle['x'])
+                y = int(particle['y'])
+                if 0 <= x < self.width - 1 and 0 <= y < self.height - 1:
+                    if particle['opacity'] > 0.7:
+                        attr = curses.color_pair(Colors.FOG_BRIGHT) | curses.A_BOLD
+                    elif particle['opacity'] > 0.4:
+                        attr = curses.color_pair(Colors.FOG_DIM)
+                    else:
+                        attr = curses.color_pair(Colors.FOG_DIM) | curses.A_DIM
+
+                    screen.attron(attr)
+                    screen.addstr(y, x, particle['char'])
+                    screen.attroff(attr)
             except curses.error:
                 pass
 
     def _render_char(self, screen, y: int, x: int, char: str, pos: int, depth: int):
         """Render a single character with depth-appropriate styling."""
         # Depth 0 = farthest/dimmest, Depth 4 = nearest/brightest
+        # Get weather-appropriate colors
+        bright, dim, fade1, fade2 = self._get_weather_colors()
 
         if depth == 0:
             # Farthest layer - very dim, no head highlight
             if pos < 2:
-                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+                attr = curses.color_pair(fade2) | curses.A_DIM
             else:
-                attr = curses.color_pair(Colors.MATRIX_FADE3) | curses.A_DIM
+                # Use fade2 with more dimming for Matrix, just dim for others
+                if self.weather_mode == WeatherMode.MATRIX:
+                    attr = curses.color_pair(Colors.MATRIX_FADE3) | curses.A_DIM
+                else:
+                    attr = curses.color_pair(fade2) | curses.A_DIM
         elif depth == 1:
             # Far layer - dim
             if pos == 0:
-                attr = curses.color_pair(Colors.MATRIX_FADE1)
+                attr = curses.color_pair(fade1)
             elif pos < 3:
-                attr = curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM
+                attr = curses.color_pair(fade1) | curses.A_DIM
             else:
-                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+                attr = curses.color_pair(fade2) | curses.A_DIM
         elif depth == 2:
             # Middle layer - normal
             if pos == 0:
-                attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+                attr = curses.color_pair(dim) | curses.A_BOLD
             elif pos < 3:
-                attr = curses.color_pair(Colors.MATRIX_DIM)
+                attr = curses.color_pair(dim)
             elif pos < 6:
-                attr = curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM
+                attr = curses.color_pair(fade1) | curses.A_DIM
             else:
-                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+                attr = curses.color_pair(fade2) | curses.A_DIM
         elif depth == 3:
             # Near layer - bright
             if pos == 0:
-                attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+                attr = curses.color_pair(bright) | curses.A_BOLD
             elif pos == 1:
-                attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+                attr = curses.color_pair(dim) | curses.A_BOLD
             elif pos < 5:
-                attr = curses.color_pair(Colors.MATRIX_DIM)
+                attr = curses.color_pair(dim)
             elif pos < 9:
-                attr = curses.color_pair(Colors.MATRIX_FADE1)
+                attr = curses.color_pair(fade1)
             else:
-                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+                attr = curses.color_pair(fade2) | curses.A_DIM
         else:  # depth == 4
             # Nearest layer - brightest, boldest
             if pos == 0:
-                attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+                attr = curses.color_pair(bright) | curses.A_BOLD
             elif pos == 1:
-                attr = curses.color_pair(Colors.MATRIX_BRIGHT)
+                attr = curses.color_pair(bright)
             elif pos < 4:
-                attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+                attr = curses.color_pair(dim) | curses.A_BOLD
             elif pos < 8:
-                attr = curses.color_pair(Colors.MATRIX_DIM)
+                attr = curses.color_pair(dim)
             elif pos < 12:
-                attr = curses.color_pair(Colors.MATRIX_FADE1)
+                attr = curses.color_pair(fade1)
             else:
-                attr = curses.color_pair(Colors.MATRIX_FADE2)
+                attr = curses.color_pair(fade2)
 
         screen.attron(attr)
         screen.addstr(y, x, char)
         screen.attroff(attr)
+
+
+class AlleyScene:
+    """
+    Procedurally generated back alley scene for Matrix background.
+    Creates a perspective view of a dark alley with buildings, windows,
+    fire escapes, and urban details.
+    """
+
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        self.scene: List[List[Tuple[str, int]]] = []  # (char, color_id)
+        self._generate_scene()
+
+    def resize(self, width: int, height: int):
+        """Regenerate scene for new dimensions."""
+        self.width = width
+        self.height = height
+        self._generate_scene()
+
+    def _generate_scene(self):
+        """Generate the alley scene."""
+        if self.width <= 0 or self.height <= 0:
+            self.scene = []
+            return
+
+        # Initialize with empty space
+        self.scene = [[(' ', Colors.ALLEY_DARK) for _ in range(self.width)]
+                      for _ in range(self.height)]
+
+        # Calculate perspective points
+        center_x = self.width // 2
+        horizon_y = self.height // 3  # Vanishing point
+        ground_y = self.height - 1
+
+        # Draw buildings on left side
+        self._draw_building_left(0, center_x // 3, horizon_y, ground_y)
+
+        # Draw buildings on right side
+        self._draw_building_right(self.width - center_x // 3, self.width, horizon_y, ground_y)
+
+        # Draw alley floor with perspective lines
+        self._draw_floor(center_x, horizon_y, ground_y)
+
+        # Add some atmospheric details
+        self._add_details(center_x, horizon_y, ground_y)
+
+    def _draw_building_left(self, x_start: int, x_end: int, y_top: int, y_bottom: int):
+        """Draw left building with windows and fire escape."""
+        if x_end <= x_start:
+            return
+
+        for y in range(y_top, min(y_bottom + 1, self.height)):
+            # Building edge gets closer to center as we go up (perspective)
+            progress = (y - y_top) / max(1, (y_bottom - y_top))
+            edge_x = int(x_start + (x_end - x_start) * (0.3 + 0.7 * progress))
+
+            for x in range(x_start, min(edge_x, self.width)):
+                if x >= self.width:
+                    continue
+
+                # Building wall
+                if x == edge_x - 1:
+                    # Building edge
+                    self.scene[y][x] = ('│', Colors.ALLEY_MID)
+                elif (y - y_top) % 4 == 0 and x > x_start + 1:
+                    # Horizontal lines (floors)
+                    self.scene[y][x] = ('─', Colors.ALLEY_DARK)
+                elif (y - y_top) % 4 == 2 and (x - x_start) % 6 in [2, 3]:
+                    # Windows
+                    if random.random() < 0.3:
+                        # Lit window (blue)
+                        self.scene[y][x] = ('▪', Colors.ALLEY_BLUE)
+                    else:
+                        # Dark window
+                        self.scene[y][x] = ('▫', Colors.ALLEY_DARK)
+                elif x == edge_x - 2 and (y - y_top) % 2 == 0:
+                    # Fire escape
+                    self.scene[y][x] = ('┤', Colors.ALLEY_MID)
+                else:
+                    # Brick texture
+                    if (y + x) % 3 == 0:
+                        self.scene[y][x] = ('░', Colors.ALLEY_DARK)
+
+    def _draw_building_right(self, x_start: int, x_end: int, y_top: int, y_bottom: int):
+        """Draw right building with windows."""
+        if x_end <= x_start or x_start >= self.width:
+            return
+
+        for y in range(y_top, min(y_bottom + 1, self.height)):
+            # Building edge gets closer to center as we go up (perspective)
+            progress = (y - y_top) / max(1, (y_bottom - y_top))
+            edge_x = int(x_end - (x_end - x_start) * (0.3 + 0.7 * progress))
+
+            for x in range(max(0, edge_x), min(x_end, self.width)):
+                if x >= self.width:
+                    continue
+
+                # Building wall
+                if x == edge_x:
+                    # Building edge
+                    self.scene[y][x] = ('│', Colors.ALLEY_MID)
+                elif (y - y_top) % 4 == 0 and x < x_end - 2:
+                    # Horizontal lines (floors)
+                    self.scene[y][x] = ('─', Colors.ALLEY_DARK)
+                elif (y - y_top) % 4 == 2 and (x_end - x) % 5 in [2, 3]:
+                    # Windows
+                    if random.random() < 0.25:
+                        # Lit window (blue)
+                        self.scene[y][x] = ('▪', Colors.ALLEY_BLUE)
+                    else:
+                        # Dark window
+                        self.scene[y][x] = ('▫', Colors.ALLEY_DARK)
+                elif x == edge_x + 1 and (y - y_top) % 3 == 0:
+                    # Pipes
+                    self.scene[y][x] = ('┼', Colors.ALLEY_MID)
+                else:
+                    # Brick texture
+                    if (y + x) % 4 == 0:
+                        self.scene[y][x] = ('▒', Colors.ALLEY_DARK)
+
+    def _draw_floor(self, center_x: int, horizon_y: int, ground_y: int):
+        """Draw alley floor with perspective."""
+        for y in range(horizon_y, min(ground_y + 1, self.height)):
+            # Width of visible floor increases as we go down
+            progress = (y - horizon_y) / max(1, (ground_y - horizon_y))
+            floor_half_width = int(progress * (self.width // 4))
+
+            left_x = max(0, center_x - floor_half_width)
+            right_x = min(self.width - 1, center_x + floor_half_width)
+
+            for x in range(left_x, right_x + 1):
+                if x >= self.width:
+                    continue
+
+                # Perspective lines pointing to vanishing point
+                dist_from_center = abs(x - center_x)
+                if dist_from_center <= 1:
+                    # Center line (wet reflection)
+                    if y % 2 == 0:
+                        self.scene[y][x] = (':', Colors.ALLEY_BLUE)
+                elif (x + y) % 7 == 0:
+                    # Cobblestone pattern
+                    self.scene[y][x] = ('·', Colors.ALLEY_MID)
+                elif (x - center_x + y) % 5 == 0:
+                    # Perspective lines
+                    self.scene[y][x] = ('.', Colors.ALLEY_DARK)
+
+    def _add_details(self, center_x: int, horizon_y: int, ground_y: int):
+        """Add urban details like dumpsters, signs, etc."""
+        # Dumpster on left side near bottom
+        dumpster_y = ground_y - 3
+        dumpster_x = center_x // 4
+
+        if dumpster_y > horizon_y and dumpster_x + 5 < center_x:
+            if dumpster_y < self.height and dumpster_x + 4 < self.width:
+                # Dumpster body
+                for dx in range(4):
+                    if dumpster_x + dx < self.width:
+                        self.scene[dumpster_y][dumpster_x + dx] = ('▄', Colors.ALLEY_MID)
+                        if dumpster_y + 1 < self.height:
+                            self.scene[dumpster_y + 1][dumpster_x + dx] = ('█', Colors.ALLEY_DARK)
+                        if dumpster_y + 2 < self.height:
+                            self.scene[dumpster_y + 2][dumpster_x + dx] = ('▀', Colors.ALLEY_MID)
+
+        # Neon sign on right building
+        sign_y = horizon_y + 2
+        sign_x = self.width - self.width // 5
+
+        if sign_y < self.height - 2 and sign_x + 3 < self.width:
+            # Simple neon effect
+            if sign_x < self.width:
+                self.scene[sign_y][sign_x] = ('◊', Colors.ALLEY_BLUE)
+            if sign_x + 1 < self.width:
+                self.scene[sign_y][sign_x + 1] = ('◊', Colors.ALLEY_BLUE)
+
+        # Steam vent
+        if ground_y - 1 < self.height and center_x - 5 >= 0:
+            steam_x = center_x - 5
+            if steam_x < self.width:
+                for dy in range(min(3, ground_y - horizon_y)):
+                    if ground_y - 1 - dy >= 0 and ground_y - 1 - dy < self.height:
+                        if random.random() < 0.5:
+                            self.scene[ground_y - 1 - dy][steam_x] = ('~', Colors.ALLEY_MID)
+
+        # Distant vanishing point details
+        if horizon_y > 0 and horizon_y < self.height:
+            # Hint of street at end of alley
+            for dx in range(-2, 3):
+                x = center_x + dx
+                if 0 <= x < self.width:
+                    self.scene[horizon_y][x] = ('▬', Colors.ALLEY_BLUE)
+
+    def render(self, screen):
+        """Render the alley scene to the screen."""
+        for y, row in enumerate(self.scene):
+            if y >= self.height:
+                break
+            for x, (char, color) in enumerate(row):
+                if x >= self.width:
+                    break
+                if char != ' ':
+                    try:
+                        attr = curses.color_pair(color) | curses.A_DIM
+                        screen.attron(attr)
+                        screen.addstr(y, x, char)
+                        screen.attroff(attr)
+                    except curses.error:
+                        pass
 
 
 class LightningBolt:
@@ -512,6 +995,294 @@ class LightningBolt:
             for y in range(height):
                 screen.attron(attr)
                 screen.addstr(y, 0, ' ' * (width - 1))
+                screen.attroff(attr)
+        except curses.error:
+            pass
+
+
+class AlleyRat:
+    """
+    Yellow ASCII rat that scurries around the alley when security warnings appear.
+
+    The rat appears near the dumpster or edges of the scene and moves
+    in quick, erratic patterns when there are active warnings.
+    """
+
+    # Rat animation frames - facing different directions
+    RAT_FRAMES = {
+        'right': [
+            [" .", ".~"],  # Tiny rat moving right
+            ["<>", "``"],
+        ],
+        'left': [
+            [". ", "~."],  # Tiny rat moving left
+            ["><", "``"],
+        ],
+        'idle': [
+            ["<>", "ww"],  # Idle sitting rat
+        ],
+    }
+
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        self.active = False
+        self.visible = False
+
+        # Position and movement
+        self.x = 0.0
+        self.y = 0.0
+        self.target_x = 0.0
+        self.target_y = 0.0
+        self.direction = 'idle'
+        self.speed = 0.0
+
+        # Animation state
+        self.frame = 0
+        self.frame_counter = 0
+        self.pause_counter = 0
+
+        # Behavior state
+        self._hiding = True
+        self._flee_timer = 0
+
+    def resize(self, width: int, height: int):
+        """Handle terminal resize."""
+        self.width = width
+        self.height = height
+        # Keep rat in bounds
+        self.x = min(self.x, width - 3)
+        self.y = min(self.y, height - 3)
+
+    def activate(self):
+        """Activate the rat when warnings appear."""
+        if not self.active:
+            self.active = True
+            self.visible = True
+            self._hiding = False
+            # Spawn near the dumpster (lower left area)
+            self.x = float(random.randint(2, max(3, self.width // 4)))
+            self.y = float(self.height - random.randint(3, 6))
+            self._pick_new_target()
+
+    def deactivate(self):
+        """Deactivate the rat when warnings clear."""
+        # Rat runs off screen to hide
+        if self.active and not self._hiding:
+            self._hiding = True
+            self.target_x = -5.0  # Run off left edge
+            self.target_y = self.y
+            self.speed = 1.5  # Fast escape
+
+    def _pick_new_target(self):
+        """Pick a new target position for the rat to scurry to."""
+        # Stay in the lower third of the screen, edges
+        floor_y = self.height * 2 // 3
+
+        if random.random() < 0.3:
+            # Sometimes pause (idle)
+            self.target_x = self.x
+            self.target_y = self.y
+            self.pause_counter = random.randint(10, 30)
+            self.speed = 0
+            self.direction = 'idle'
+        else:
+            # Scurry to a new spot
+            self.target_x = float(random.randint(1, max(2, self.width // 3)))
+            self.target_y = float(random.randint(floor_y, self.height - 2))
+            self.speed = random.uniform(0.5, 1.2)
+
+            # Set direction based on movement
+            if self.target_x > self.x:
+                self.direction = 'right'
+            else:
+                self.direction = 'left'
+
+    def update(self):
+        """Update rat position and animation."""
+        if not self.active:
+            return
+
+        self.frame_counter += 1
+
+        # Animate every few frames
+        if self.frame_counter % 4 == 0:
+            frames = self.RAT_FRAMES.get(self.direction, self.RAT_FRAMES['idle'])
+            self.frame = (self.frame + 1) % len(frames)
+
+        # Handle pause
+        if self.pause_counter > 0:
+            self.pause_counter -= 1
+            if self.pause_counter == 0:
+                self._pick_new_target()
+            return
+
+        # Move towards target
+        if self.speed > 0:
+            dx = self.target_x - self.x
+            dy = self.target_y - self.y
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            if dist < 0.5:
+                # Reached target
+                if self._hiding and self.x < 0:
+                    # Fully hidden, deactivate
+                    self.active = False
+                    self.visible = False
+                else:
+                    self._pick_new_target()
+            else:
+                # Move towards target
+                self.x += (dx / dist) * self.speed
+                self.y += (dy / dist) * self.speed
+
+    def render(self, screen):
+        """Render the rat."""
+        if not self.visible or not self.active:
+            return
+
+        frames = self.RAT_FRAMES.get(self.direction, self.RAT_FRAMES['idle'])
+        frame = frames[self.frame % len(frames)]
+
+        ix = int(self.x)
+        iy = int(self.y)
+
+        attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+
+        try:
+            for row_idx, row in enumerate(frame):
+                for col_idx, char in enumerate(row):
+                    px = ix + col_idx
+                    py = iy + row_idx
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height - 1 and char != ' ':
+                        screen.attron(attr)
+                        screen.addstr(py, px, char)
+                        screen.attroff(attr)
+        except curses.error:
+            pass
+
+
+class LurkingShadow:
+    """
+    Lurking shadow with glowing red eyes that appears when threats are detected.
+
+    The shadow lurks in dark corners of the alley, with only its red eyes
+    visible. Occasionally blinks and shifts position.
+    """
+
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        self.active = False
+
+        # Position (eyes position)
+        self.x = 0
+        self.y = 0
+
+        # Blinking state
+        self.eyes_open = True
+        self.blink_counter = 0
+        self.blink_interval = random.randint(30, 80)
+
+        # Movement state
+        self.move_counter = 0
+        self.move_interval = random.randint(100, 300)
+
+        # Intensity (for flickering eyes)
+        self.intensity = 1.0
+        self.flicker_counter = 0
+
+    def resize(self, width: int, height: int):
+        """Handle terminal resize."""
+        self.width = width
+        self.height = height
+        # Keep in bounds
+        self.x = min(self.x, width - 3)
+        self.y = min(self.y, height - 2)
+
+    def activate(self):
+        """Activate the shadow when threats appear."""
+        if not self.active:
+            self.active = True
+            self._choose_lurk_position()
+
+    def deactivate(self):
+        """Deactivate the shadow."""
+        self.active = False
+
+    def _choose_lurk_position(self):
+        """Choose a dark corner to lurk in."""
+        # Lurk in the corners/edges of the alley
+        positions = []
+
+        # Top corners (in the distance)
+        horizon_y = self.height // 3
+        positions.append((random.randint(2, 8), horizon_y + random.randint(1, 3)))
+        positions.append((self.width - random.randint(4, 10), horizon_y + random.randint(1, 3)))
+
+        # Side edges (behind buildings)
+        mid_y = self.height // 2
+        positions.append((random.randint(0, 4), mid_y + random.randint(-2, 4)))
+        positions.append((self.width - random.randint(2, 6), mid_y + random.randint(-2, 4)))
+
+        # Pick one
+        pos = random.choice(positions)
+        self.x = max(0, min(pos[0], self.width - 3))
+        self.y = max(0, min(pos[1], self.height - 2))
+
+        # Reset blink/move timers
+        self.blink_interval = random.randint(30, 80)
+        self.move_interval = random.randint(100, 300)
+
+    def update(self):
+        """Update shadow state."""
+        if not self.active:
+            return
+
+        self.blink_counter += 1
+        self.move_counter += 1
+        self.flicker_counter += 1
+
+        # Subtle intensity flicker
+        self.intensity = 0.8 + 0.2 * math.sin(self.flicker_counter * 0.1)
+
+        # Blink occasionally
+        if self.blink_counter >= self.blink_interval:
+            self.blink_counter = 0
+            self.eyes_open = not self.eyes_open
+            if self.eyes_open:
+                # Eyes were closed, now open - new blink interval
+                self.blink_interval = random.randint(30, 80)
+            else:
+                # Closing eyes briefly
+                self.blink_interval = random.randint(2, 5)
+
+        # Move to new position occasionally
+        if self.move_counter >= self.move_interval:
+            self.move_counter = 0
+            self._choose_lurk_position()
+
+    def render(self, screen):
+        """Render the lurking shadow with glowing red eyes."""
+        if not self.active or not self.eyes_open:
+            return
+
+        # The shadow itself is invisible (dark)
+        # Only render the glowing red eyes
+
+        # Eyes: two dots with a space between
+        eyes = "o o"
+
+        # Determine intensity (for flickering effect)
+        if self.intensity > 0.9:
+            attr = curses.color_pair(Colors.SHADOW_RED) | curses.A_BOLD
+        else:
+            attr = curses.color_pair(Colors.SHADOW_RED)
+
+        try:
+            if 0 <= self.y < self.height - 1 and 0 <= self.x < self.width - 3:
+                screen.attron(attr)
+                screen.addstr(self.y, self.x, eyes)
                 screen.attroff(attr)
         except curses.error:
             pass
@@ -600,6 +1371,8 @@ class DashboardClient:
         """Find working directory of running daemon process."""
         try:
             import psutil
+
+            # First try: Find by process name/cmdline matching
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cwd', 'exe']):
                 try:
                     # Check process name (works for .exe files)
@@ -623,6 +1396,9 @@ class DashboardClient:
                     # Method 4: Running boundary_daemon module
                     elif 'boundary_daemon' in cmdline_str:
                         is_daemon = True
+                    # Method 5: Command line contains boundary-daemon- (directory name)
+                    elif 'boundary-daemon-' in cmdline_str:
+                        is_daemon = True
 
                     if is_daemon:
                         cwd = proc.info.get('cwd')
@@ -637,6 +1413,24 @@ class DashboardClient:
                                 return exe_dir
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     continue
+
+            # Second try: Find process listening on port 19847 (TCP mode)
+            for conn in psutil.net_connections(kind='tcp'):
+                if conn.laddr.port == self.WINDOWS_PORT and conn.status == 'LISTEN':
+                    try:
+                        proc = psutil.Process(conn.pid)
+                        cwd = proc.cwd()
+                        if cwd:
+                            logger.debug(f"Found daemon on port {self.WINDOWS_PORT}, pid {conn.pid}, cwd: {cwd}")
+                            return cwd
+                        exe_path = proc.exe()
+                        if exe_path:
+                            exe_dir = os.path.dirname(exe_path)
+                            logger.debug(f"Found daemon on port {self.WINDOWS_PORT}, pid {conn.pid}, exe: {exe_dir}")
+                            return exe_dir
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        continue
+
         except ImportError:
             logger.debug("psutil not available for process detection")
         except Exception as e:
@@ -1145,6 +1939,7 @@ class Dashboard:
         self.show_help = False
         self.matrix_mode = matrix_mode
         self.matrix_rain: Optional[MatrixRain] = None
+        self.alley_scene: Optional[AlleyScene] = None
 
         # Data caches
         self.status: Dict = {}
@@ -1163,6 +1958,15 @@ class Dashboard:
         self._lightning_bolt: Optional[LightningBolt] = None
         self._lightning_flickers_remaining = 0
         self._lightning_flash_phase = 0
+
+        # Creature state (for matrix mode)
+        self.alley_rat: Optional[AlleyRat] = None
+        self.lurking_shadow: Optional[LurkingShadow] = None
+        self._has_warnings = False
+        self._has_threats = False
+
+        # Weather mode (for matrix mode)
+        self._current_weather: WeatherMode = WeatherMode.MATRIX
 
     def run(self):
         """Run the dashboard."""
@@ -1288,7 +2092,11 @@ class Dashboard:
             screen.timeout(100)  # 100ms for smooth rain animation
             screen.bkgd(' ', curses.color_pair(Colors.MATRIX_DIM))
             self._update_dimensions()
+            self.alley_scene = AlleyScene(self.width, self.height)
             self.matrix_rain = MatrixRain(self.width, self.height)
+            # Initialize creatures
+            self.alley_rat = AlleyRat(self.width, self.height)
+            self.lurking_shadow = LurkingShadow(self.width, self.height)
             # Schedule first lightning strike (5-30 minutes from now)
             self._lightning_next_time = time.time() + random.uniform(300, 1800)
         else:
@@ -1309,8 +2117,17 @@ class Dashboard:
                 # Sync matrix rain dimensions if window resized
                 if self.matrix_mode and self.matrix_rain:
                     if self.width != old_width or self.height != old_height:
+                        if self.alley_scene:
+                            self.alley_scene.resize(self.width, self.height)
                         self.matrix_rain.resize(self.width, self.height)
+                        if self.alley_rat:
+                            self.alley_rat.resize(self.width, self.height)
+                        if self.lurking_shadow:
+                            self.lurking_shadow.resize(self.width, self.height)
                     self.matrix_rain.update()
+
+                    # Update creatures based on alert state
+                    self._update_creatures()
 
                     # Check for lightning strike
                     self._update_lightning()
@@ -1334,8 +2151,15 @@ class Dashboard:
     def _handle_resize(self):
         """Handle terminal resize."""
         self._update_dimensions()
-        if self.matrix_mode and self.matrix_rain:
-            self.matrix_rain.resize(self.width, self.height)
+        if self.matrix_mode:
+            if self.alley_scene:
+                self.alley_scene.resize(self.width, self.height)
+            if self.matrix_rain:
+                self.matrix_rain.resize(self.width, self.height)
+            if self.alley_rat:
+                self.alley_rat.resize(self.width, self.height)
+            if self.lurking_shadow:
+                self.lurking_shadow.resize(self.width, self.height)
         self.screen.clear()
 
     def _update_dimensions(self):
@@ -1370,6 +2194,48 @@ class Dashboard:
                 self._lightning_bolt = None
                 # Schedule next lightning (5-30 minutes from now)
                 self._lightning_next_time = current_time + random.uniform(300, 1800)
+
+    def _update_creatures(self):
+        """Update creature state based on alerts."""
+        # Check for warnings (MEDIUM severity or WARN events)
+        has_warnings = False
+        has_threats = False
+
+        for alert in self.alerts:
+            if alert.severity in ('MEDIUM', 'LOW'):
+                has_warnings = True
+            if alert.severity in ('HIGH', 'CRITICAL'):
+                has_threats = True
+
+        # Also check recent events for warnings
+        for event in self.events[:5]:  # Check last 5 events
+            if event.severity == 'WARN':
+                has_warnings = True
+            if event.severity == 'ERROR':
+                has_threats = True
+
+        # Update rat state (for warnings)
+        if self.alley_rat:
+            if has_warnings and not self._has_warnings:
+                # New warning appeared - activate rat
+                self.alley_rat.activate()
+            elif not has_warnings and self._has_warnings:
+                # Warnings cleared - deactivate rat
+                self.alley_rat.deactivate()
+            self.alley_rat.update()
+
+        # Update shadow state (for threats)
+        if self.lurking_shadow:
+            if has_threats and not self._has_threats:
+                # New threat detected - activate shadow
+                self.lurking_shadow.activate()
+            elif not has_threats and self._has_threats:
+                # Threats cleared - deactivate shadow
+                self.lurking_shadow.deactivate()
+            self.lurking_shadow.update()
+
+        self._has_warnings = has_warnings
+        self._has_threats = has_threats
 
     def _render_lightning(self):
         """Render the lightning bolt with flicker effect."""
@@ -1433,14 +2299,30 @@ class Dashboard:
             self.selected_panel = PanelType.ALERTS
         elif key == ord('4'):
             self.selected_panel = PanelType.SANDBOXES
+        elif key == ord('w') or key == ord('W'):
+            # Cycle weather mode (only in matrix mode)
+            if self.matrix_mode and self.matrix_rain:
+                new_mode = self.matrix_rain.cycle_weather()
+                # Store for header display
+                self._current_weather = new_mode
 
     def _draw(self):
         """Draw the dashboard."""
         self.screen.clear()
 
-        # Render matrix rain in background first
+        # Render alley scene first (furthest back)
+        if self.matrix_mode and self.alley_scene:
+            self.alley_scene.render(self.screen)
+
+        # Render matrix rain on top of alley
         if self.matrix_mode and self.matrix_rain:
             self.matrix_rain.render(self.screen)
+
+            # Render creatures (between rain and UI)
+            if self.alley_rat:
+                self.alley_rat.render(self.screen)
+            if self.lurking_shadow:
+                self.lurking_shadow.render(self.screen)
 
             # Render lightning bolt if active
             if self._lightning_active and self._lightning_bolt:
@@ -1460,6 +2342,9 @@ class Dashboard:
         header = " BOUNDARY DAEMON"
         if self.client.is_demo_mode():
             header += " [DEMO]"
+        # Show weather mode in matrix mode
+        if self.matrix_mode:
+            header += f" [{self._current_weather.display_name}]"
         header += f"  │  Mode: {self.status.get('mode', 'UNKNOWN')}  │  "
         if self.status.get('is_frozen'):
             header += "⚠ MODE FROZEN  │  "
@@ -1682,8 +2567,21 @@ class Dashboard:
 
     def _draw_footer(self):
         """Draw the footer bar."""
-        shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
-        footer = f" {shortcuts} ".ljust(self.width - 1)
+        # Add weather shortcut in matrix mode
+        if self.matrix_mode:
+            shortcuts = "[w]Weather [m]Mode [a]Ack [e]Export [r]Refresh [?]Help [q]Quit"
+        else:
+            shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
+
+        # In demo mode, show connection hint
+        if self.client.is_demo_mode():
+            if sys.platform == 'win32':
+                hint = " | Demo: Start daemon or check port 19847"
+            else:
+                hint = " | Demo: Start daemon (./api/boundary.sock)"
+            footer = f" {shortcuts}{hint} ".ljust(self.width - 1)
+        else:
+            footer = f" {shortcuts} ".ljust(self.width - 1)
 
         row = self.height - 1
         self.screen.attron(curses.color_pair(Colors.MUTED))
@@ -1713,8 +2611,14 @@ class Dashboard:
             "  q    Quit dashboard",
             "  ?    Toggle this help",
             "",
-            "Press any key to close",
         ]
+
+        # Add weather info if in matrix mode
+        if self.matrix_mode:
+            help_text.insert(6, "  w    Cycle weather (Matrix/Rain/Snow/Sand/Fog)")
+            help_text.insert(7, "")
+
+        help_text.append("Press any key to close")
 
         # Calculate centered position
         box_width = max(len(line) for line in help_text) + 4
@@ -1818,9 +2722,12 @@ class Dashboard:
                     color = Colors.STATUS_OK if mode == current_mode else Colors.NORMAL
                     self._addstr(row, start_x + 4, mode, color)
 
-            # Render matrix rain if in matrix mode
-            if self.matrix_mode and self.matrix_rain:
-                self.matrix_rain.render(self.screen)
+            # Render alley and matrix rain if in matrix mode
+            if self.matrix_mode:
+                if self.alley_scene:
+                    self.alley_scene.render(self.screen)
+                if self.matrix_rain:
+                    self.matrix_rain.render(self.screen)
 
             self.screen.refresh()
 
