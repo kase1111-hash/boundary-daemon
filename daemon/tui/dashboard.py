@@ -590,9 +590,9 @@ class MatrixRain:
             start_x = random.randint(-10, 0)
             start_y = random.randint(0, self.height - 1)
         else:
-            # Normal: spawn across width, start above screen
+            # Normal: spawn across width, start from cloud layer (row 2)
             start_x = random.randint(0, self.width - 1)
-            start_y = random.randint(-self.height, 0)
+            start_y = random.randint(1, 3)  # Start from middle of cloud layer
 
         # Ensure length range is valid (max >= min)
         effective_max_len = max(len_min, min(len_max, max(1, self.height // 2)))
@@ -1227,51 +1227,60 @@ class AlleyScene:
     ]
 
     # Person walking animation frames (arm swinging) - basic person
+    # Pedestrian sprites with leg animation (4 frames for walking cycle)
     PERSON_RIGHT_FRAMES = [
-        [" O ", "/| ", " | ", "/ >"],   # Right arm back
-        [" O ", " |\\", " | ", "/ >"],   # Left arm back
-        [" O ", " | ", " | ", "/ >"],   # Arms at sides
+        [" O ", "/| ", " | ", "/ \\"],   # Right arm back, legs apart
+        [" O ", " |\\", " | ", " | "],   # Left arm back, legs together
+        [" O ", "/| ", " | ", "\\ /"],   # Right arm back, legs crossed
+        [" O ", " |\\", " | ", " | "],   # Left arm back, legs together
     ]
     PERSON_LEFT_FRAMES = [
-        [" O ", " |\\", " | ", "< \\"],  # Left arm back
-        [" O ", "/| ", " | ", "< \\"],  # Right arm back
-        [" O ", " | ", " | ", "< \\"],  # Arms at sides
+        [" O ", " |\\", " | ", "/ \\"],  # Left arm back, legs apart
+        [" O ", "/| ", " | ", " | "],   # Right arm back, legs together
+        [" O ", " |\\", " | ", "\\ /"],  # Left arm back, legs crossed
+        [" O ", "/| ", " | ", " | "],   # Right arm back, legs together
     ]
 
-    # Person with hat (= on head)
+    # Person with hat (= on head) - with leg animation
     PERSON_HAT_RIGHT_FRAMES = [
-        [" = ", " O ", "/| ", "/ >"],   # Hat, right arm back
-        [" = ", " O ", " |\\", "/ >"],   # Hat, left arm back
-        [" = ", " O ", " | ", "/ >"],   # Hat, arms at sides
+        [" = ", " O ", "/| ", "/ \\"],   # Hat, legs apart
+        [" = ", " O ", " |\\", " | "],   # Hat, legs together
+        [" = ", " O ", "/| ", "\\ /"],   # Hat, legs crossed
+        [" = ", " O ", " |\\", " | "],   # Hat, legs together
     ]
     PERSON_HAT_LEFT_FRAMES = [
-        [" = ", " O ", " |\\", "< \\"],  # Hat, left arm back
-        [" = ", " O ", "/| ", "< \\"],  # Hat, right arm back
-        [" = ", " O ", " | ", "< \\"],  # Hat, arms at sides
+        [" = ", " O ", " |\\", "/ \\"],  # Hat, legs apart
+        [" = ", " O ", "/| ", " | "],   # Hat, legs together
+        [" = ", " O ", " |\\", "\\ /"],  # Hat, legs crossed
+        [" = ", " O ", "/| ", " | "],   # Hat, legs together
     ]
 
-    # Person with briefcase (# carried)
+    # Person with briefcase (# carried) - with leg animation
     PERSON_BRIEFCASE_RIGHT_FRAMES = [
-        [" O ", "/|#", " | ", "/ >"],   # Briefcase in hand
-        [" O ", " |#", " | ", "/ >"],   # Briefcase
-        [" O ", " |#", " | ", "/ >"],   # Briefcase
+        [" O ", "/|#", " | ", "/ \\"],   # Briefcase, legs apart
+        [" O ", " |#", " | ", " | "],   # Briefcase, legs together
+        [" O ", "/|#", " | ", "\\ /"],   # Briefcase, legs crossed
+        [" O ", " |#", " | ", " | "],   # Briefcase, legs together
     ]
     PERSON_BRIEFCASE_LEFT_FRAMES = [
-        [" O ", "#|\\", " | ", "< \\"],  # Briefcase in hand
-        [" O ", "#| ", " | ", "< \\"],  # Briefcase
-        [" O ", "#| ", " | ", "< \\"],  # Briefcase
+        [" O ", "#|\\", " | ", "/ \\"],  # Briefcase, legs apart
+        [" O ", "#| ", " | ", " | "],   # Briefcase, legs together
+        [" O ", "#|\\", " | ", "\\ /"],  # Briefcase, legs crossed
+        [" O ", "#| ", " | ", " | "],   # Briefcase, legs together
     ]
 
-    # Person with skirt (A-line shape)
+    # Person with skirt (A-line shape) - with leg animation
     PERSON_SKIRT_RIGHT_FRAMES = [
-        [" O ", "/| ", "/A\\", "> |"],   # Skirt, walking
-        [" O ", " |\\", "/A\\", "| <"],   # Skirt, walking
-        [" O ", " | ", "/A\\", "| |"],   # Skirt, standing
+        [" O ", "/| ", "/A\\", "> |"],   # Skirt, walking right
+        [" O ", " |\\", "/A\\", "| |"],   # Skirt, legs together
+        [" O ", "/| ", "/A\\", "| <"],   # Skirt, walking left
+        [" O ", " |\\", "/A\\", "| |"],   # Skirt, legs together
     ]
     PERSON_SKIRT_LEFT_FRAMES = [
-        [" O ", " |\\", "/A\\", "| <"],  # Skirt, walking
-        [" O ", "/| ", "/A\\", "> |"],  # Skirt, walking
-        [" O ", " | ", "/A\\", "| |"],  # Skirt, standing
+        [" O ", " |\\", "/A\\", "| <"],  # Skirt, walking left
+        [" O ", "/| ", "/A\\", "| |"],  # Skirt, legs together
+        [" O ", " |\\", "/A\\", "> |"],  # Skirt, walking right
+        [" O ", "/| ", "/A\\", "| |"],  # Skirt, legs together
     ]
 
     # All person types for random selection
@@ -2045,13 +2054,13 @@ class AlleyScene:
                 self._street_light_flicker[i] = min(1.0, self._street_light_flicker[i] + 0.1)
 
     def _update_window_people(self):
-        """Update people walking by windows (rarely)."""
+        """Update people walking by windows with walk/stare/wave animations."""
         self._window_spawn_timer += 1
 
-        # Very rarely spawn a person in a window (about 1 in 500 frames)
-        if self._window_spawn_timer >= random.randint(300, 700):
+        # Spawn people more frequently (about every 150-400 frames)
+        if self._window_spawn_timer >= random.randint(150, 400):
             self._window_spawn_timer = 0
-            if len(self._window_people) < 2:  # Max 2 window people at once
+            if len(self._window_people) < 4:  # Max 4 window people at once
                 # Pick a random window from either building
                 building = random.choice([1, 2])
                 if building == 1:
@@ -2061,28 +2070,67 @@ class AlleyScene:
                     positions = self.BUILDING2_WINDOW_POSITIONS
                     window_idx = random.randint(0, len(positions) - 1)
 
+                # Start from edge, walking state
+                start_left = random.random() < 0.5
                 self._window_people.append({
                     'building': building,
                     'window_idx': window_idx,
-                    'direction': random.choice([-1, 1]),
-                    'progress': 0.0 if random.random() < 0.5 else 1.0,  # Start from left or right
+                    'direction': 1 if start_left else -1,
+                    'progress': 0.0 if start_left else 1.0,
+                    'state': 'walking',  # walking, staring, waving, leaving
+                    'state_timer': 0,
+                    'stare_duration': random.randint(80, 200),  # Long stare
+                    'wave_count': 0,
+                    'wave_frame': 0,
                 })
 
         # Update existing window people
         new_window_people = []
         for person in self._window_people:
-            # Move person across window
-            speed = 0.05
-            if person['progress'] <= 0.0:
-                person['direction'] = 1
-            elif person['progress'] >= 1.0:
-                person['direction'] = -1
+            person['state_timer'] += 1
 
-            person['progress'] += person['direction'] * speed
+            if person['state'] == 'walking':
+                # Move person across window
+                speed = 0.03
+                person['progress'] += person['direction'] * speed
 
-            # Keep person if still in window
-            if -0.5 < person['progress'] < 1.5:
-                new_window_people.append(person)
+                # Check if reached center of window - stop to stare
+                if 0.35 < person['progress'] < 0.65 and random.random() < 0.02:
+                    person['state'] = 'staring'
+                    person['state_timer'] = 0
+                    person['progress'] = 0.5  # Center in window
+
+                # Keep walking if not done
+                if person['progress'] < -0.3 or person['progress'] > 1.3:
+                    continue  # Remove person - walked off
+
+            elif person['state'] == 'staring':
+                # Person stares out window for a long time
+                if person['state_timer'] >= person['stare_duration']:
+                    # Start waving before leaving
+                    person['state'] = 'waving'
+                    person['state_timer'] = 0
+                    person['wave_count'] = 0
+
+            elif person['state'] == 'waving':
+                # Wave animation - 3 waves
+                person['wave_frame'] = (person['state_timer'] // 5) % 2  # Alternate every 5 frames
+                if person['state_timer'] >= 30:  # Wave for 30 frames (about 3 waves)
+                    person['state'] = 'leaving'
+                    person['state_timer'] = 0
+                    # Pick direction to leave
+                    person['direction'] = random.choice([-1, 1])
+
+            elif person['state'] == 'leaving':
+                # Walk away from window
+                speed = 0.04
+                person['progress'] += person['direction'] * speed
+
+                # Remove when off screen
+                if person['progress'] < -0.3 or person['progress'] > 1.3:
+                    continue  # Remove person
+
+            new_window_people.append(person)
 
         self._window_people = new_window_people
 
@@ -2510,11 +2558,12 @@ class AlleyScene:
                                 pass
 
     def _render_window_people(self, screen):
-        """Render silhouettes of people walking by windows."""
+        """Render silhouettes of people walking by windows with animations."""
         for person in self._window_people:
             building = person['building']
             window_idx = person['window_idx']
             progress = person['progress']
+            state = person.get('state', 'walking')
 
             # Get window position
             if building == 1:
@@ -2537,20 +2586,37 @@ class AlleyScene:
             window_width = 4
             silhouette_x = window_x + int(progress * window_width)
 
-            # Draw simple silhouette (just a dark blob)
-            if 0 <= silhouette_x < self.width - 1 and 0 <= window_y < self.height:
-                try:
-                    attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
-                    screen.attron(attr)
-                    screen.addstr(window_y, silhouette_x, '█')
-                    screen.attroff(attr)
-                except curses.error:
-                    pass
+            # Choose silhouette based on state
+            if state == 'walking' or state == 'leaving':
+                # Walking silhouette - person shape
+                silhouette = ['O', '|']  # Head and body
+            elif state == 'staring':
+                # Staring out window - face visible
+                silhouette = ['O', '█']  # Head and shoulders
+            elif state == 'waving':
+                # Waving animation
+                wave_frame = person.get('wave_frame', 0)
+                if wave_frame == 0:
+                    silhouette = ['O/', '█']  # Hand up right
+                else:
+                    silhouette = ['\\O', '█']  # Hand up left
+
+            # Draw silhouette (2 chars tall)
+            try:
+                attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
+                screen.attron(attr)
+                for i, char in enumerate(silhouette):
+                    y = window_y + i
+                    if 0 <= silhouette_x < self.width - 2 and 0 <= y < self.height:
+                        screen.addstr(y, silhouette_x, char)
+                screen.attroff(attr)
+            except curses.error:
+                pass
 
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
-        # Position traffic light on right side of scene (shifted 45 chars right = 10 + 15 + 20)
-        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 55)
+        # Position traffic light on right side of scene (shifted 20 more chars right)
+        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 75)
         light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 1  # Above curb, moved down
 
         if light_x < 0 or light_y < 0:
