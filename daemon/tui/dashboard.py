@@ -1520,12 +1520,14 @@ class AlleyScene:
         self.mailbox_y = ground_y - len(self.MAILBOX) + 1
         self._draw_sprite(self.MAILBOX, self.mailbox_x, self.mailbox_y, Colors.ALLEY_BLUE)
 
+        # Calculate cafe position first
+        self.cafe_x = gap_center - len(self.CAFE[0]) // 2
+        self.cafe_y = ground_y - len(self.CAFE) + 1
+
         # Draw distant buildings above cafe (behind everything, small, dark grey)
         self._draw_distant_buildings(gap_center, self.cafe_y)
 
         # Place well-lit Cafe between buildings (center of gap)
-        self.cafe_x = gap_center - len(self.CAFE[0]) // 2
-        self.cafe_y = ground_y - len(self.CAFE) + 1
         self._draw_cafe(self.cafe_x, self.cafe_y)
 
     def _draw_street_lights(self, ground_y: int):
