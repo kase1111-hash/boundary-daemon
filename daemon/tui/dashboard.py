@@ -436,20 +436,23 @@ class MatrixRain:
         """
         self._glow_positions = positions
 
-    def set_quick_melt_zones(self, sidewalk_y: int, mailbox_bounds: Tuple[int, int, int, int], street_y: int):
-        """Set zones where snow melts very quickly (sidewalk, mailbox, traffic lines).
+    def set_quick_melt_zones(self, sidewalk_y: int, mailbox_bounds: Tuple[int, int, int, int], street_y: int,
+                              traffic_light_bounds: Tuple[int, int, int, int] = None):
+        """Set zones where snow melts very quickly (sidewalk, mailbox, traffic lines, traffic light).
 
         Args:
             sidewalk_y: Y coordinate of the sidewalk/curb
             mailbox_bounds: (x, y, width, height) of the mailbox
             street_y: Y coordinate of the street (for traffic lines)
+            traffic_light_bounds: (x, y, width, height) of the traffic light
         """
         self._quick_melt_sidewalk_y = sidewalk_y
         self._quick_melt_mailbox = mailbox_bounds
         self._quick_melt_street_y = street_y
+        self._quick_melt_traffic_light = traffic_light_bounds
 
     def _is_in_quick_melt_zone(self, x: int, y: int) -> bool:
-        """Check if a position is in a quick-melt zone (sidewalk, mailbox, traffic line)."""
+        """Check if a position is in a quick-melt zone (sidewalk, mailbox, traffic light, traffic line)."""
         # Sidewalk
         if hasattr(self, '_quick_melt_sidewalk_y') and y == self._quick_melt_sidewalk_y:
             return True
@@ -460,6 +463,11 @@ class MatrixRain:
         if hasattr(self, '_quick_melt_mailbox') and self._quick_melt_mailbox:
             mx, my, mw, mh = self._quick_melt_mailbox
             if mx <= x < mx + mw and my <= y < my + mh:
+                return True
+        # Traffic light
+        if hasattr(self, '_quick_melt_traffic_light') and self._quick_melt_traffic_light:
+            tx, ty, tw, th = self._quick_melt_traffic_light
+            if tx <= x < tx + tw and ty <= y < ty + th:
                 return True
         return False
 
@@ -1041,23 +1049,35 @@ class AlleyScene:
     ]
 
     # Cafe storefront (well-lit, between buildings) - taller size
-    # Shell logo for Shell Cafe
-    SHELL_LOGO = [
-        "  .--.",
-        " /    \\",
-        "|  ()  |",
-        " \\    /",
-        "  '--'",
+    # Big shell logo for Shell Cafe roof
+    BIG_SHELL_LOGO = [
+        "      .------.",
+        "    /          \\",
+        "   /    .--.    \\",
+        "  |    /    \\    |",
+        "  |   | (()) |   |",
+        "  |    \\    /    |",
+        "   \\    '--'    /",
+        "    \\          /",
+        "      '------'",
     ]
 
     CAFE = [
+        "      .------.      ",
+        "    /          \\    ",
+        "   /    .--.    \\   ",
+        "  |    /    \\    |  ",
+        "  |   | (()) |   |  ",
+        "  |    \\    /    |  ",
+        "   \\    '--'    /   ",
+        "    \\__________/    ",
         "   ___________________________   ",
         "  |     S H E L L  C A F E   |  ",
-        "  |   .--.                   |  ",
-        "  |  /    \\   O     [====]  |  ",
-        "  | |  ()  | /|\\    [    ]  |  ",
-        "  |  \\    / [===]   [    ]  |  ",
-        "  |   '--'          [====]  |  ",
+        "  |                          |  ",
+        "  |  [====]    O     [====]  |  ",
+        "  |  [    ]   /|\\    [    ]  |  ",
+        "  |  [    ]  [===]   [    ]  |  ",
+        "  |  [====]          [====]  |  ",
         "  |                          |  ",
         "  |  [====]          [====]  |  ",
         "  |  [    ]          [    ]  |  ",
@@ -1470,8 +1490,8 @@ class AlleyScene:
         "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
         "   [========]    [====]  [====]    [========]    [====]         ",
         "            .------.                    .------.                ",
-        "            |[####]|                    |[####]|                ",
-        "            |[####]|                    |[####]|                ",
+        "            |      |                    |      |                ",
+        "            |      |                    |      |                ",
         "            |      |                    |      |                ",
         "            | [==] |                    | [==] |                ",
         "____________|______|____________________|______|________________",
@@ -1516,8 +1536,8 @@ class AlleyScene:
         "     [        ]    [    ]    [        ]    [    ]           ",
         "     [========]    [====]    [========]    [====]           ",
         "            .------.                    .------.            ",
-        "            |[####]|                    |[####]|            ",
-        "            |[####]|                    |[####]|            ",
+        "            |      |                    |      |            ",
+        "            |      |                    |      |            ",
         "            |      |                    |      |            ",
         "            | [==] |                    | [==] |            ",
         "____________|______|____________________|______|____________",
@@ -1525,20 +1545,20 @@ class AlleyScene:
     ]
 
     # Window positions for people animation (relative to building sprite)
-    # Each entry is (row_offset, col_offset) for the middle of a window
+    # Each entry is (row_offset, col_offset) for the middle of a window interior
     BUILDING_WINDOW_POSITIONS = [
-        (8, 7), (8, 22), (8, 30), (8, 44),      # First row (row 8 is middle of window)
-        (14, 7), (14, 22), (14, 30), (14, 44),  # Second row
-        (20, 7), (20, 22), (20, 30), (20, 44),  # Third row
-        (26, 7), (26, 22), (26, 30), (26, 44),  # Fourth row
-        (32, 7), (32, 22), (32, 30), (32, 44),  # Fifth row
+        (8, 7), (8, 19), (8, 27), (8, 39),      # First row (inside window interiors)
+        (14, 7), (14, 19), (14, 27), (14, 39),  # Second row
+        (20, 7), (20, 19), (20, 27), (20, 39),  # Third row
+        (26, 7), (26, 19), (26, 27), (26, 39),  # Fourth row
+        (32, 7), (32, 19), (32, 27), (32, 39),  # Fifth row
     ]
     BUILDING2_WINDOW_POSITIONS = [
-        (8, 9), (8, 24), (8, 38), (8, 52),      # First row
-        (14, 9), (14, 24), (14, 38), (14, 52),  # Second row
-        (20, 9), (20, 24), (20, 38), (20, 52),  # Third row
-        (26, 9), (26, 24), (26, 38), (26, 52),  # Fourth row
-        (32, 9), (32, 24), (32, 38), (32, 52),  # Fifth row
+        (8, 9), (8, 21), (8, 33), (8, 45),      # First row (inside window interiors)
+        (14, 9), (14, 21), (14, 33), (14, 45),  # Second row
+        (20, 9), (20, 21), (20, 33), (20, 45),  # Third row
+        (26, 9), (26, 21), (26, 33), (26, 45),  # Fourth row
+        (32, 9), (32, 21), (32, 33), (32, 45),  # Fifth row
     ]
 
     def __init__(self, width: int, height: int):
@@ -2453,13 +2473,29 @@ class AlleyScene:
         cafe_x = self.cafe_x
         cafe_y = self.cafe_y
 
-        # Find the SHELL CAFE text in the sprite (row 1)
-        if len(self.CAFE) > 1:
-            sign_row = self.CAFE[1]  # "  |     S H E L L  C A F E   |  "
+        # Render big shell on roof in yellow/gold
+        for row_idx in range(8):  # First 8 rows are the shell roof
+            if row_idx < len(self.CAFE):
+                for col_idx, char in enumerate(self.CAFE[row_idx]):
+                    if char not in ' ':
+                        px = cafe_x + col_idx
+                        py = cafe_y + row_idx
+                        if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                            try:
+                                attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+                                screen.attron(attr)
+                                screen.addstr(py, px, char)
+                                screen.attroff(attr)
+                            except curses.error:
+                                pass
+
+        # Find the SHELL CAFE text in the sprite (row 9 after shell roof)
+        if len(self.CAFE) > 9:
+            sign_row = self.CAFE[9]  # "  |     S H E L L  C A F E   |  "
             for col_idx, char in enumerate(sign_row):
                 if char in 'SHELLCAFE':
                     px = cafe_x + col_idx
-                    py = cafe_y + 1
+                    py = cafe_y + 9
                     if 0 <= px < self.width - 1 and 0 <= py < self.height:
                         try:
                             # Green bold for SHELL CAFE
@@ -2470,9 +2506,9 @@ class AlleyScene:
                         except curses.error:
                             pass
 
-        # Find and animate the OPEN sign (row 14 in CAFE sprite)
-        if len(self.CAFE) > 14:
-            open_row = self.CAFE[14]  # "  |[                  OPEN ]|  "
+        # Find and animate the OPEN sign (row 22 in CAFE sprite, after shell roof added 8 rows)
+        if len(self.CAFE) > 22:
+            open_row = self.CAFE[22]  # "  |[                  OPEN ]|  "
             open_start = open_row.find('OPEN')
             if open_start != -1:
                 # Determine which letters are lit based on phase
@@ -2480,7 +2516,7 @@ class AlleyScene:
                 letters = ['O', 'P', 'E', 'N']
                 for i, letter in enumerate(letters):
                     px = cafe_x + open_start + i
-                    py = cafe_y + 14
+                    py = cafe_y + 22
                     if 0 <= px < self.width - 1 and 0 <= py < self.height:
                         try:
                             if self._open_sign_phase == 0:
@@ -5949,12 +5985,18 @@ class Dashboard:
             self.matrix_rain.set_roof_sill_checker(self.alley_scene.is_roof_or_sill)
             # Connect street light glow positions so snow melts faster in warm light
             self.matrix_rain.set_glow_positions(self.alley_scene._street_light_positions)
-            # Set quick-melt zones (sidewalk, mailbox, street) so snow melts very fast there
+            # Set quick-melt zones (sidewalk, mailbox, street, traffic light) so snow melts very fast there
             sidewalk_y = self.height - 4  # curb_y
             street_y = self.height - 3
             mailbox_bounds = (self.alley_scene.mailbox_x, self.alley_scene.mailbox_y,
                               len(self.alley_scene.MAILBOX[0]), len(self.alley_scene.MAILBOX))
-            self.matrix_rain.set_quick_melt_zones(sidewalk_y, mailbox_bounds, street_y)
+            # Traffic light bounds
+            traffic_light_x = min(self.width - 10, self.alley_scene.box_x + len(self.alley_scene.BOX[0]) + 100)
+            traffic_light_y = self.height - len(self.alley_scene.TRAFFIC_LIGHT_TEMPLATE) - 1
+            traffic_light_bounds = (traffic_light_x, traffic_light_y,
+                                    len(self.alley_scene.TRAFFIC_LIGHT_TEMPLATE[0]),
+                                    len(self.alley_scene.TRAFFIC_LIGHT_TEMPLATE))
+            self.matrix_rain.set_quick_melt_zones(sidewalk_y, mailbox_bounds, street_y, traffic_light_bounds)
             # Initialize creatures
             self.alley_rat = AlleyRat(self.width, self.height)
             self.alley_rat.set_hiding_spots(self.alley_scene)
@@ -5990,7 +6032,12 @@ class Dashboard:
                             street_y = self.height - 3
                             mailbox_bounds = (self.alley_scene.mailbox_x, self.alley_scene.mailbox_y,
                                               len(self.alley_scene.MAILBOX[0]), len(self.alley_scene.MAILBOX))
-                            self.matrix_rain.set_quick_melt_zones(sidewalk_y, mailbox_bounds, street_y)
+                            traffic_light_x = min(self.width - 10, self.alley_scene.box_x + len(self.alley_scene.BOX[0]) + 100)
+                            traffic_light_y = self.height - len(self.alley_scene.TRAFFIC_LIGHT_TEMPLATE) - 1
+                            traffic_light_bounds = (traffic_light_x, traffic_light_y,
+                                                    len(self.alley_scene.TRAFFIC_LIGHT_TEMPLATE[0]),
+                                                    len(self.alley_scene.TRAFFIC_LIGHT_TEMPLATE))
+                            self.matrix_rain.set_quick_melt_zones(sidewalk_y, mailbox_bounds, street_y, traffic_light_bounds)
                         self.matrix_rain.resize(self.width, self.height)
                         if self.alley_rat:
                             self.alley_rat.resize(self.width, self.height)
