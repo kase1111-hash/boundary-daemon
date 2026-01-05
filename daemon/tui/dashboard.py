@@ -2355,14 +2355,18 @@ class AlleyScene:
                     if drain_x + i < self.width - 1:
                         self.scene[curb_y][drain_x + i] = (char, Colors.ALLEY_DARK)
 
-        # Place trees in the gap between buildings
+        # Place trees - one on left side, two on far right of screen
         self._tree_positions = []
         tree_height = len(self.TREE)
-        # Place two trees - one on each side of the gap
+        tree_width = len(self.TREE[0])
+        # Tree 1: left side in the gap
         tree1_x = building1_right + 15
-        tree2_x = self._building2_x - 20
-        for tree_x in [tree1_x, tree2_x]:
-            if building1_right < tree_x < self._building2_x - len(self.TREE[0]):
+        # Tree 2 and 3: far right of screen (past building 2)
+        building2_right = self._building2_x + len(self.BUILDING2[0]) if self._building2_x > 0 else self.width
+        tree2_x = building2_right + 3
+        tree3_x = building2_right + 15
+        for tree_x in [tree1_x, tree2_x, tree3_x]:
+            if tree_x > 0 and tree_x + tree_width < self.width - 2:
                 tree_y = ground_y - tree_height + 1
                 self._tree_positions.append((tree_x, tree_y))
                 self._draw_tree(tree_x, tree_y)
@@ -3053,18 +3057,18 @@ class AlleyScene:
                 px = crosswalk_center + offset
                 if 0 <= px < self.width - 1 and vanish_end_y <= row_y < vanish_start_y:
                     # Draw street surface with lane markings
-                    if abs(offset) <= 1:
-                        # Center line (yellow dashes)
-                        if row_y % 3 == 0:
-                            self.scene[row_y][px] = ('=', Colors.RAT_YELLOW)
-                        else:
-                            self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
+                    if offset == 0:
+                        # Center line - vertical II pattern (yellow)
+                        self.scene[row_y][px] = ('I', Colors.RAT_YELLOW)
+                    elif offset == 1:
+                        # Second I of the II center line
+                        self.scene[row_y][px] = ('I', Colors.RAT_YELLOW)
                     elif offset == -half_width:
-                        # Left edge line (use backslash for perspective)
-                        self.scene[row_y][px] = ('\\', Colors.ALLEY_MID)
-                    elif offset == half_width:
-                        # Right edge line (use forward slash for perspective)
+                        # Left edge line (use forward slash for perspective - narrows toward top)
                         self.scene[row_y][px] = ('/', Colors.ALLEY_MID)
+                    elif offset == half_width:
+                        # Right edge line (use backslash for perspective - narrows toward top)
+                        self.scene[row_y][px] = ('\\', Colors.ALLEY_MID)
                     else:
                         # Street surface
                         self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
@@ -3687,23 +3691,13 @@ class AlleyScene:
         street_y = self.height - 3 - y_offset
         sprite_height = len(sprite)
 
-        # Calculate vanishing street bounds for occlusion
-        curb_y = self.height - 4
-        vanish_end_y = self.height - (self.height // 5)
-        crosswalk_center = getattr(self, '_crosswalk_x', 0) + getattr(self, '_crosswalk_width', 32) // 2
-
+        # Render car on top of vanishing street (street is background)
         for row_idx, row in enumerate(sprite):
             for col_idx, char in enumerate(row):
                 px = x + col_idx
                 py = street_y - (sprite_height - 1 - row_idx)
 
                 if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
-                    # Check if this pixel is in the vanishing street area (car goes behind)
-                    if vanish_end_y <= py < curb_y - 1:
-                        progress = (curb_y - 1 - py) / max(1, curb_y - 1 - vanish_end_y)
-                        half_width = int(16 * (1.0 - progress * 0.7))
-                        if abs(px - crosswalk_center) <= half_width:
-                            continue  # Skip - car is behind vanishing street
                     try:
                         # Close-up car in bright white
                         attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
