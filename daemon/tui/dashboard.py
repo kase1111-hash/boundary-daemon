@@ -501,8 +501,8 @@ class MatrixRain:
         # Create fog as tightly clustered patches
         num_patch_centers = max(20, self.width // 5)
 
-        # Only block characters - no small particles
-        block_chars = ['░', '▒', '▓', '█']
+        # Only block characters - no small particles (removed solid █ for transparency)
+        block_chars = ['░', '▒', '▓']
 
         for _ in range(num_patch_centers):
             # Each patch has a center point (below cloud layer at rows 1-2)
@@ -2527,18 +2527,18 @@ class AlleyScene:
                     if drain_x + i < self.width - 1:
                         self.scene[curb_y][drain_x + i] = (char, Colors.ALLEY_DARK)
 
-        # Place trees - one on left side, two on far right of screen
+        # Place trees - one on left side, two on right side (in the gap before building 2)
         self._tree_positions = []
         tree_height = len(self.TREE)
         tree_width = len(self.TREE[0])
-        # Tree 1: left side in the gap
+        # Tree 1: left side in the gap (past building 1)
         tree1_x = building1_right + 15
-        # Tree 2 and 3: far right of screen (past building 2)
-        building2_right = self._building2_x + len(self.BUILDING2[0]) if self._building2_x > 0 else self.width
-        tree2_x = building2_right + 3
-        tree3_x = building2_right + 15
+        # Tree 2 and 3: right side in the gap (before building 2)
+        building2_left = self._building2_x if self._building2_x > 0 else self.width
+        tree2_x = building2_left - tree_width - 8   # 8 chars before building 2
+        tree3_x = building2_left - tree_width - 22  # 22 chars before building 2
         for tree_x in [tree1_x, tree2_x, tree3_x]:
-            if tree_x > 0 and tree_x + tree_width < self.width - 2:
+            if tree_x > building1_right and tree_x + tree_width < building2_left:
                 tree_y = ground_y - tree_height + 1
                 self._tree_positions.append((tree_x, tree_y))
                 self._draw_tree(tree_x, tree_y)
@@ -2562,7 +2562,7 @@ class AlleyScene:
         self._draw_sprite(self.MAILBOX, self.mailbox_x, self.mailbox_y, Colors.ALLEY_BLUE)
 
         # Calculate cafe position first (shifted 11 chars left)
-        self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 14  # 3 more left (was -11)
+        self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 18  # 4 more left (was -14)
         self.cafe_y = ground_y - len(self.CAFE) + 1
 
         # Place well-lit Cafe between buildings (center of gap)
@@ -2574,8 +2574,8 @@ class AlleyScene:
         self._crosswalk_width = 32  # Store for car occlusion
         self._draw_crosswalk(self._crosswalk_x, curb_y, street_y)
 
-        # Draw street sign near crosswalk
-        sign_x = self._crosswalk_x + self._crosswalk_width // 2 - len(self.STREET_SIGN[0]) // 2
+        # Draw street sign near crosswalk (shifted 12 chars right)
+        sign_x = self._crosswalk_x + self._crosswalk_width // 2 - len(self.STREET_SIGN[0]) // 2 + 12
         sign_y = ground_y - len(self.STREET_SIGN) + 1
         self._draw_street_sign(sign_x, sign_y)
 
@@ -3451,11 +3451,11 @@ class AlleyScene:
                 if 0 <= px < self.width - 1 and vanish_end_y <= row_y < vanish_start_y:
                     # Draw street surface with lane markings
                     if offset == 0:
-                        # Center line - vertical ll pattern (yellow, lowercase L)
-                        self.scene[row_y][px] = ('l', Colors.RAT_YELLOW)
+                        # Center line - vertical || pattern (yellow)
+                        self.scene[row_y][px] = ('|', Colors.RAT_YELLOW)
                     elif offset == 1:
-                        # Second l of the ll center line
-                        self.scene[row_y][px] = ('l', Colors.RAT_YELLOW)
+                        # Second | of the || center line
+                        self.scene[row_y][px] = ('|', Colors.RAT_YELLOW)
                     elif offset == -half_width:
                         # Left edge line (use forward slash for perspective - narrows toward top)
                         self.scene[row_y][px] = ('/', Colors.ALLEY_MID)
@@ -3562,14 +3562,14 @@ class AlleyScene:
                             # Red brick zone - fill completely
                             self.scene[py][px] = (brick_char, Colors.BRICK_RED)
                         elif row_idx >= grey_start_row and row_idx < total_rows - 2:
-                            # Grey zone - fill with blocks (but NOT the bottom 2 porch rows)
-                            # Use consistent block character for uniform appearance
-                            if random.random() < 0.92:
-                                # Mostly filled with consistent blocks
-                                self.scene[py][px] = ('▓', Colors.GREY_BLOCK)
-                            else:
-                                # Occasional lighter block for subtle texture
+                            # Grey zone - fill with consistent blocks (no random smudges)
+                            # Bottom row of grey zone gets smudged texture
+                            if row_idx == total_rows - 3:
+                                # Smudge row at bottom of building (just above porch)
                                 self.scene[py][px] = ('▒', Colors.GREY_BLOCK)
+                            else:
+                                # Solid consistent grey blocks
+                                self.scene[py][px] = ('▓', Colors.GREY_BLOCK)
                         # Bottom 2 rows (porch/stoop level) - leave empty, no blocks
 
         # Second pass: add door knobs
@@ -3991,6 +3991,8 @@ class AlleyScene:
         """Render cars on the street."""
         # Cars are 2 rows tall, bottom row at street level
         street_y = self.height - 1
+        # Cars can't render above the 1/5th line
+        min_car_y = self.height // 5
 
         for car in self._cars:
             x = int(car['x'])
@@ -4003,7 +4005,8 @@ class AlleyScene:
                     # Position sprite so bottom row is at street level
                     py = street_y - (sprite_height - 1 - row_idx)
 
-                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    # Don't render cars above the 1/5th line
+                    if 0 <= px < self.width - 1 and min_car_y <= py < self.height and char != ' ':
                         try:
                             # Cars are white/bright
                             attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
