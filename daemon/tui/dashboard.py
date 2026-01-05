@@ -522,11 +522,14 @@ class MatrixRain:
             start_x = random.randint(0, self.width - 1)
             start_y = random.randint(-self.height, 0)
 
+        # Ensure length range is valid (max >= min)
+        effective_max_len = max(len_min, min(len_max, max(1, self.height // 2)))
+
         self.drops.append({
             'x': start_x,
             'y': start_y,
             'speed': random.uniform(speed_min, speed_max) * speed_mult,
-            'length': random.randint(len_min, min(len_max, self.height // 2)),
+            'length': random.randint(len_min, effective_max_len),
             'char_offset': random.randint(0, len(weather_chars[depth]) - 1),
             'depth': depth,
             'phase': float(start_y),
