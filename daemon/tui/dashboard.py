@@ -117,6 +117,9 @@ class Colors:
     ACCENT = 7
     MATRIX_BRIGHT = 8
     MATRIX_DIM = 9
+    MATRIX_FADE1 = 10
+    MATRIX_FADE2 = 11
+    MATRIX_FADE3 = 12
 
     @staticmethod
     def init_colors(matrix_mode: bool = False):
@@ -145,8 +148,12 @@ class Colors:
         curses.init_pair(Colors.SELECTED, curses.COLOR_BLACK, curses.COLOR_GREEN)
         curses.init_pair(Colors.MUTED, curses.COLOR_GREEN, curses.COLOR_BLACK)
         curses.init_pair(Colors.ACCENT, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        # Matrix rain colors - bright to dim gradient
         curses.init_pair(Colors.MATRIX_BRIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(Colors.MATRIX_DIM, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.MATRIX_FADE1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.MATRIX_FADE2, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.MATRIX_FADE3, curses.COLOR_BLACK, curses.COLOR_BLACK)
 
 
 class MatrixRain:
@@ -164,23 +171,25 @@ class MatrixRain:
         self.width = width
         self.height = height
         self.drops: List[Dict] = []
+        self._target_drops = max(3, width // 15)
         self._init_drops()
 
     def _init_drops(self):
         """Initialize rain drops at random positions."""
         self.drops = []
-        # Start with a few drops
-        for _ in range(max(3, self.width // 20)):
+        for _ in range(self._target_drops):
             self._add_drop()
 
     def _add_drop(self):
         """Add a new rain drop."""
+        if self.width <= 0:
+            return
         self.drops.append({
             'x': random.randint(0, self.width - 1),
             'y': random.randint(-self.height, 0),
-            'speed': random.uniform(0.3, 1.0),
-            'length': random.randint(4, min(12, self.height // 2)),
-            'chars': [random.choice(self.MATRIX_CHARS) for _ in range(15)],
+            'speed': random.uniform(0.4, 1.2),
+            'length': random.randint(5, min(16, self.height // 2)),
+            'char_offset': random.randint(0, len(self.MATRIX_CHARS) - 1),
             'phase': 0.0,
         })
 
@@ -191,10 +200,8 @@ class MatrixRain:
             drop['phase'] += drop['speed']
             drop['y'] = int(drop['phase'])
 
-            # Randomly change characters for that flickering effect
-            if random.random() < 0.3:
-                idx = random.randint(0, len(drop['chars']) - 1)
-                drop['chars'][idx] = random.choice(self.MATRIX_CHARS)
+            # Roll through characters as the drop falls
+            drop['char_offset'] = (drop['char_offset'] + 1) % len(self.MATRIX_CHARS)
 
             # Keep drop if still on screen
             if drop['y'] - drop['length'] < self.height:
@@ -202,16 +209,24 @@ class MatrixRain:
 
         self.drops = new_drops
 
-        # Occasionally add new drops
-        if random.random() < 0.15 and len(self.drops) < self.width // 8:
+        # Add new drops to maintain density
+        while len(self.drops) < self._target_drops:
             self._add_drop()
 
     def resize(self, width: int, height: int):
         """Handle terminal resize."""
+        old_width = self.width
         self.width = width
         self.height = height
+        self._target_drops = max(3, width // 15)
+
         # Remove drops that are now out of bounds
         self.drops = [d for d in self.drops if d['x'] < width]
+
+        # Add more drops if window got bigger
+        if width > old_width:
+            for _ in range(max(1, (width - old_width) // 15)):
+                self._add_drop()
 
     def render(self, screen):
         """Render rain drops to screen."""
@@ -219,23 +234,45 @@ class MatrixRain:
             for i in range(drop['length']):
                 y = drop['y'] - i
                 if 0 <= y < self.height and 0 <= drop['x'] < self.width:
-                    char = drop['chars'][i % len(drop['chars'])]
+                    # Character rolls through the charset as it falls
+                    char_idx = (drop['char_offset'] + i * 3) % len(self.MATRIX_CHARS)
+                    char = self.MATRIX_CHARS[char_idx]
+
+                    # Randomly mutate some characters for extra flicker
+                    if random.random() < 0.05:
+                        char = random.choice(self.MATRIX_CHARS)
+
                     try:
                         if i == 0:
                             # Bright white head of the drop
                             screen.attron(curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD)
                             screen.addstr(y, drop['x'], char)
                             screen.attroff(curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD)
-                        elif i < 3:
-                            # Bright green near the head
+                        elif i == 1:
+                            # Bright green just after head
                             screen.attron(curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD)
                             screen.addstr(y, drop['x'], char)
                             screen.attroff(curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD)
-                        else:
-                            # Dimmer green for the tail
+                        elif i < 4:
+                            # Normal green
                             screen.attron(curses.color_pair(Colors.MATRIX_DIM))
                             screen.addstr(y, drop['x'], char)
                             screen.attroff(curses.color_pair(Colors.MATRIX_DIM))
+                        elif i < 7:
+                            # Fading green (using DIM attribute)
+                            screen.attron(curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM)
+                            screen.addstr(y, drop['x'], char)
+                            screen.attroff(curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM)
+                        elif i < 10:
+                            # More faded
+                            screen.attron(curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM)
+                            screen.addstr(y, drop['x'], char)
+                            screen.attroff(curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM)
+                        else:
+                            # Nearly invisible tail
+                            screen.attron(curses.color_pair(Colors.MATRIX_FADE3) | curses.A_DIM)
+                            screen.addstr(y, drop['x'], char)
+                            screen.attroff(curses.color_pair(Colors.MATRIX_FADE3) | curses.A_DIM)
                     except curses.error:
                         pass
 
@@ -518,10 +555,13 @@ class Dashboard:
 
         while self.running:
             try:
+                old_width, old_height = self.width, self.height
                 self._update_dimensions()
 
-                # Update matrix rain animation
+                # Sync matrix rain dimensions if window resized
                 if self.matrix_mode and self.matrix_rain:
+                    if self.width != old_width or self.height != old_height:
+                        self.matrix_rain.resize(self.width, self.height)
                     self.matrix_rain.update()
 
                 self._draw()
