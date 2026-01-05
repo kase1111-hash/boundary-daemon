@@ -36,14 +36,13 @@ import threading
 import time
 
 # Handle curses import for Windows compatibility
+# Defer error to runtime to allow PyInstaller to analyze the module
 try:
     import curses
+    CURSES_AVAILABLE = True
 except ImportError:
-    if sys.platform == 'win32':
-        print("Error: curses library not available on Windows.")
-        print("Please install windows-curses: pip install windows-curses")
-        sys.exit(1)
-    raise
+    curses = None
+    CURSES_AVAILABLE = False
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -270,6 +269,13 @@ class Dashboard:
 
     def run(self):
         """Run the dashboard."""
+        if not CURSES_AVAILABLE:
+            if sys.platform == 'win32':
+                print("Error: curses library not available on Windows.")
+                print("Please install windows-curses: pip install windows-curses")
+            else:
+                print("Error: curses library not available.")
+            sys.exit(1)
         curses.wrapper(self._main_loop)
 
     def _main_loop(self, screen):
