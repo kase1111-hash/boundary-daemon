@@ -1172,15 +1172,19 @@ class AlleyScene:
         " || ",
     ]
 
-    # Cafe storefront (well-lit, between buildings)
+    # Cafe storefront (well-lit, between buildings) - larger size
     CAFE = [
-        "  _______________  ",
-        " |   C A F E    | ",
-        " |  [=]    [=]  | ",
-        " |[=============]| ",
-        " |[ OPEN  .oOo. ]| ",
-        " |[_____________]| ",
-        " |_____[]______| ",
+        "   _______________________   ",
+        "  |      C A F E         |  ",
+        "  |                      |  ",
+        "  |  [====]      [====]  |  ",
+        "  |  [    ]      [    ]  |  ",
+        "  |  [====]      [====]  |  ",
+        "  |                      |  ",
+        "  |[===================]|  ",
+        "  |[  OPEN    .oOo.    ]|  ",
+        "  |[___________________]|  ",
+        "  |________[  ]________|  ",
     ]
 
     # Traffic light showing two sides (corner view) - compact head, tall pole
@@ -1541,12 +1545,12 @@ class AlleyScene:
                 self._street_light_positions.append((light_x + 2, max(1, light_y) + 1))
 
     def _draw_cafe(self, x: int, y: int):
-        """Draw a well-lit cafe storefront with warm lighting effect."""
-        # Store cafe position for lighting effect
+        """Draw a well-lit cafe storefront."""
+        # Store cafe position
         self.cafe_x = x
         self.cafe_y = y
 
-        # Draw the cafe with warm lighting colors
+        # Draw the cafe with warm lighting colors (no exterior glow)
         for row_idx, row in enumerate(self.CAFE):
             for col_idx, char in enumerate(row):
                 px = x + col_idx
@@ -1560,19 +1564,6 @@ class AlleyScene:
                     else:
                         color = Colors.ALLEY_LIGHT  # Structure
                     self.scene[py][px] = (char, color)
-
-        # Add warm glow around the cafe (light spill)
-        for dy in range(-1, len(self.CAFE) + 2):
-            for dx in range(-2, len(self.CAFE[0]) + 2):
-                px = x + dx
-                py = y + dy
-                if 0 <= px < self.width - 1 and 0 <= py < self.height:
-                    # Only add glow to empty spaces
-                    if self.scene[py][px][0] == ' ':
-                        # Closer to cafe = brighter glow
-                        dist = min(abs(dx), abs(dy), abs(dx - len(self.CAFE[0])), abs(dy - len(self.CAFE)))
-                        if dist <= 1 and random.random() < 0.3:
-                            self.scene[py][px] = ('░', Colors.RAT_YELLOW)
 
     def is_valid_snow_position(self, x: int, y: int) -> bool:
         """Check if a position is valid for snow to collect.
@@ -1683,11 +1674,11 @@ class AlleyScene:
                 self._traffic_state = 'NS_YELLOW'
                 self._state_duration = 0
         elif self._traffic_state == 'NS_YELLOW':
-            if self._state_duration >= 20:
+            if self._state_duration >= 40:  # Increased yellow duration for visibility
                 self._traffic_state = 'ALL_RED_TO_EW'
                 self._state_duration = 0
         elif self._traffic_state == 'ALL_RED_TO_EW':
-            if self._state_duration >= 10:  # Brief all-red pause
+            if self._state_duration >= 15:  # Brief all-red pause
                 self._traffic_state = 'EW_GREEN'
                 self._state_duration = 0
         elif self._traffic_state == 'EW_GREEN':
@@ -1695,11 +1686,11 @@ class AlleyScene:
                 self._traffic_state = 'EW_YELLOW'
                 self._state_duration = 0
         elif self._traffic_state == 'EW_YELLOW':
-            if self._state_duration >= 20:
+            if self._state_duration >= 40:  # Increased yellow duration for visibility
                 self._traffic_state = 'ALL_RED_TO_NS'
                 self._state_duration = 0
         elif self._traffic_state == 'ALL_RED_TO_NS':
-            if self._state_duration >= 10:  # Brief all-red pause
+            if self._state_duration >= 15:  # Brief all-red pause
                 self._traffic_state = 'NS_GREEN'
                 self._state_duration = 0
 
@@ -2024,16 +2015,14 @@ class AlleyScene:
                                     brick_char = random.choice(brick_chars)
                                     self.scene[py][px] = (brick_char, Colors.BRICK_RED)
                         elif row_idx >= grey_start_row and row_idx < total_rows - 2:
-                            # Grey zone - fill completely with texture
-                            # Mix of solid blocks and transparent for variety
-                            if random.random() < 0.85:
-                                # Mostly filled
-                                block_char = random.choice(grey_block_chars)
-                                self.scene[py][px] = (block_char, Colors.GREY_BLOCK)
+                            # Grey zone - fill completely with even texture
+                            # Use consistent block character for uniform appearance
+                            if random.random() < 0.90:
+                                # Mostly filled with consistent blocks
+                                self.scene[py][px] = ('▓', Colors.GREY_BLOCK)
                             else:
-                                # Some transparent gaps for texture
-                                if random.random() < 0.5:
-                                    self.scene[py][px] = ('░', Colors.GREY_BLOCK)
+                                # Occasional lighter block for subtle texture
+                                self.scene[py][px] = ('▒', Colors.GREY_BLOCK)
 
         # Second pass: add door knobs
         # Find door positions (look for the door pattern .------.)
