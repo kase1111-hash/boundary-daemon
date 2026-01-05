@@ -146,6 +146,15 @@ class Colors:
     GREY_BLOCK = 32      # Grey block color for lower building
     DOOR_KNOB_GOLD = 33  # Gold door knob color
     CAFE_WARM = 34       # Warm yellow/orange for cafe interior
+    # Weather-based box border colors
+    BOX_BROWN = 35       # Brown for snow mode top/sides
+    BOX_DARK_BROWN = 36  # Dark brown for rain mode
+    BOX_GREY = 37        # Grey for sand mode
+    BOX_WHITE = 38       # White for snow mode bottom
+    # Weather-blended text colors
+    TEXT_RAIN = 39       # Blue-tinted text for rain mode
+    TEXT_SNOW = 40       # White text for snow mode
+    TEXT_SAND = 41       # Yellow/tan text for sand mode
 
     @staticmethod
     def init_colors(matrix_mode: bool = False):
@@ -222,6 +231,15 @@ class Colors:
         curses.init_pair(Colors.DOOR_KNOB_GOLD, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         # Cafe warm interior color
         curses.init_pair(Colors.CAFE_WARM, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        # Weather-based box border colors
+        curses.init_pair(Colors.BOX_BROWN, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Brown approximation
+        curses.init_pair(Colors.BOX_DARK_BROWN, curses.COLOR_RED, curses.COLOR_BLACK)  # Dark brown via dim red
+        curses.init_pair(Colors.BOX_GREY, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Grey via dim white
+        curses.init_pair(Colors.BOX_WHITE, curses.COLOR_WHITE, curses.COLOR_BLACK)  # White
+        # Weather-blended text colors
+        curses.init_pair(Colors.TEXT_RAIN, curses.COLOR_CYAN, curses.COLOR_BLACK)  # Blue/cyan for rain
+        curses.init_pair(Colors.TEXT_SNOW, curses.COLOR_WHITE, curses.COLOR_BLACK)  # White for snow
+        curses.init_pair(Colors.TEXT_SAND, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Yellow/tan for sand
 
 
 class WeatherMode(Enum):
@@ -6416,9 +6434,11 @@ class Dashboard:
         # Pad to full width
         header = header.ljust(self.width - 1)
 
-        self.screen.attron(curses.color_pair(Colors.HEADER) | curses.A_BOLD)
+        # Use weather-blended color for header
+        header_color = self._get_weather_text_color(Colors.HEADER)
+        self.screen.attron(curses.color_pair(header_color) | curses.A_BOLD)
         self.screen.addstr(0, 0, header[:self.width-1])
-        self.screen.attroff(curses.color_pair(Colors.HEADER) | curses.A_BOLD)
+        self.screen.attroff(curses.color_pair(header_color) | curses.A_BOLD)
 
     def _draw_panels(self):
         """Draw the main panels in a 2x2 grid."""
@@ -6726,17 +6746,66 @@ class Dashboard:
         for i, line in enumerate(help_text):
             self._addstr(start_y + 1 + i, start_x + 2, line, Colors.NORMAL)
 
+    def _get_weather_box_colors(self) -> Tuple[int, int, int, bool]:
+        """Get box border colors based on current weather mode.
+
+        Returns:
+            (top_color, side_color, bottom_color, is_transparent)
+        """
+        if not self.matrix_mode:
+            return (Colors.HEADER, Colors.HEADER, Colors.HEADER, False)
+
+        weather = self._current_weather
+        if weather == WeatherMode.CALM or weather == WeatherMode.MATRIX:
+            # Transparent in calm/matrix mode - don't draw borders
+            return (Colors.MATRIX_FADE3, Colors.MATRIX_FADE3, Colors.MATRIX_FADE3, True)
+        elif weather == WeatherMode.SAND:
+            # Grey in sand mode
+            return (Colors.BOX_GREY, Colors.BOX_GREY, Colors.BOX_GREY, False)
+        elif weather == WeatherMode.SNOW:
+            # Brown on top and sides, white on bottom
+            return (Colors.BOX_BROWN, Colors.BOX_BROWN, Colors.BOX_WHITE, False)
+        elif weather == WeatherMode.RAIN:
+            # Dark brown in rain mode
+            return (Colors.BOX_DARK_BROWN, Colors.BOX_DARK_BROWN, Colors.BOX_DARK_BROWN, False)
+        else:
+            return (Colors.HEADER, Colors.HEADER, Colors.HEADER, False)
+
     def _draw_box(self, y: int, x: int, width: int, height: int, title: str, title_color: int = None):
-        """Draw a box with title."""
+        """Draw a box with title, using weather-based colors."""
         if title_color is None:
             title_color = Colors.HEADER
 
+        # Blend title color with weather
+        title_color = self._get_weather_text_color(title_color)
+
+        # Get weather-based box colors
+        top_color, side_color, bottom_color, is_transparent = self._get_weather_box_colors()
+
+        # Skip drawing borders if transparent (calm/matrix mode)
+        if is_transparent:
+            # Just draw title if present
+            if title:
+                try:
+                    title_str = f" {title} "
+                    self.screen.attron(curses.color_pair(title_color) | curses.A_BOLD)
+                    self.screen.addstr(y, x + 2, title_str[:width-4])
+                    self.screen.attroff(curses.color_pair(title_color) | curses.A_BOLD)
+                except curses.error:
+                    pass
+            return
+
         try:
-            # Top border
+            # Top border with weather color
+            top_attr = curses.color_pair(top_color)
+            if top_color == Colors.BOX_GREY:
+                top_attr |= curses.A_DIM  # Make grey dimmer
+            self.screen.attron(top_attr)
             self.screen.addch(y, x, curses.ACS_ULCORNER)
             self.screen.addch(y, x + width - 1, curses.ACS_URCORNER)
             for i in range(1, width - 1):
                 self.screen.addch(y, x + i, curses.ACS_HLINE)
+            self.screen.attroff(top_attr)
 
             # Title
             if title:
@@ -6745,21 +6814,60 @@ class Dashboard:
                 self.screen.addstr(y, x + 2, title_str[:width-4])
                 self.screen.attroff(curses.color_pair(title_color) | curses.A_BOLD)
 
-            # Side borders
+            # Side borders with weather color
+            side_attr = curses.color_pair(side_color)
+            if side_color == Colors.BOX_GREY:
+                side_attr |= curses.A_DIM
+            self.screen.attron(side_attr)
             for i in range(1, height - 1):
                 self.screen.addch(y + i, x, curses.ACS_VLINE)
                 self.screen.addch(y + i, x + width - 1, curses.ACS_VLINE)
+            self.screen.attroff(side_attr)
 
-            # Bottom border
+            # Bottom border with weather color (may be different in snow)
+            bottom_attr = curses.color_pair(bottom_color)
+            if bottom_color == Colors.BOX_GREY:
+                bottom_attr |= curses.A_DIM
+            elif bottom_color == Colors.BOX_WHITE:
+                bottom_attr |= curses.A_BOLD  # Make white brighter
+            self.screen.attron(bottom_attr)
             self.screen.addch(y + height - 1, x, curses.ACS_LLCORNER)
             self.screen.addch(y + height - 1, x + width - 1, curses.ACS_LRCORNER)
             for i in range(1, width - 1):
                 self.screen.addch(y + height - 1, x + i, curses.ACS_HLINE)
+            self.screen.attroff(bottom_attr)
         except curses.error:
             pass
 
+    def _get_weather_text_color(self, base_color: int) -> int:
+        """Get weather-blended text color.
+
+        Blends the base color with weather-appropriate tint.
+        """
+        if not self.matrix_mode:
+            return base_color
+
+        weather = self._current_weather
+        # For certain base colors, blend with weather
+        # Keep status colors (OK, WARN, ERROR) as-is for visibility
+        if base_color in (Colors.STATUS_OK, Colors.STATUS_WARN, Colors.STATUS_ERROR):
+            return base_color
+
+        # Blend normal/muted text with weather colors
+        if weather == WeatherMode.RAIN:
+            if base_color in (Colors.NORMAL, Colors.MUTED, Colors.HEADER):
+                return Colors.TEXT_RAIN
+        elif weather == WeatherMode.SNOW:
+            if base_color in (Colors.NORMAL, Colors.MUTED, Colors.HEADER):
+                return Colors.TEXT_SNOW
+        elif weather == WeatherMode.SAND:
+            if base_color in (Colors.NORMAL, Colors.MUTED, Colors.HEADER):
+                return Colors.TEXT_SAND
+        # Matrix and Calm stay green (default)
+        return base_color
+
     def _addstr(self, y: int, x: int, text: str, color: int = Colors.NORMAL, bold: bool = False):
-        """Add string with color and bounds checking."""
+        """Add string with color and bounds checking, blending with weather."""
         if y >= self.height or x >= self.width:
             return
 
@@ -6769,8 +6877,11 @@ class Dashboard:
 
         text = text[:max_len]
 
+        # Apply weather-based color blending
+        blended_color = self._get_weather_text_color(color)
+
         try:
-            attr = curses.color_pair(color)
+            attr = curses.color_pair(blended_color)
             if bold:
                 attr |= curses.A_BOLD
             self.screen.attron(attr)
