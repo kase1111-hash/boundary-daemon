@@ -694,15 +694,15 @@ class MatrixRain:
 
     def _add_stuck_snow(self, x: int, y: int, depth: int, char: str):
         """Add a snowflake that has stuck to the screen."""
-        # Limit total stuck snow to prevent memory issues
-        if len(self._stuck_snow) < 200:
+        # Limit total stuck snow to prevent memory issues (4x accumulation)
+        if len(self._stuck_snow) < 800:
             self._stuck_snow.append({
                 'x': x,
                 'y': y,
                 'depth': depth,
                 'char': char,
-                'life': random.randint(40, 120),  # Frames until fully melted
-                'max_life': 120,
+                'life': random.randint(160, 480),  # Longer melt time (4x)
+                'max_life': 480,
             })
 
     def _update_stuck_snow(self):
@@ -1085,7 +1085,7 @@ class AlleyScene:
         " (o)==========(o) ",
     ]
 
-    # Person walking animation frames (arm swinging)
+    # Person walking animation frames (arm swinging) - basic person
     PERSON_RIGHT_FRAMES = [
         [" O ", "/| ", " | ", "/ >"],   # Right arm back
         [" O ", " |\\", " | ", "/ >"],   # Left arm back
@@ -1095,6 +1095,56 @@ class AlleyScene:
         [" O ", " |\\", " | ", "< \\"],  # Left arm back
         [" O ", "/| ", " | ", "< \\"],  # Right arm back
         [" O ", " | ", " | ", "< \\"],  # Arms at sides
+    ]
+
+    # Person with hat (= on head)
+    PERSON_HAT_RIGHT_FRAMES = [
+        [" = ", " O ", "/| ", "/ >"],   # Hat, right arm back
+        [" = ", " O ", " |\\", "/ >"],   # Hat, left arm back
+        [" = ", " O ", " | ", "/ >"],   # Hat, arms at sides
+    ]
+    PERSON_HAT_LEFT_FRAMES = [
+        [" = ", " O ", " |\\", "< \\"],  # Hat, left arm back
+        [" = ", " O ", "/| ", "< \\"],  # Hat, right arm back
+        [" = ", " O ", " | ", "< \\"],  # Hat, arms at sides
+    ]
+
+    # Person with briefcase (# carried)
+    PERSON_BRIEFCASE_RIGHT_FRAMES = [
+        [" O ", "/|#", " | ", "/ >"],   # Briefcase in hand
+        [" O ", " |#", " | ", "/ >"],   # Briefcase
+        [" O ", " |#", " | ", "/ >"],   # Briefcase
+    ]
+    PERSON_BRIEFCASE_LEFT_FRAMES = [
+        [" O ", "#|\\", " | ", "< \\"],  # Briefcase in hand
+        [" O ", "#| ", " | ", "< \\"],  # Briefcase
+        [" O ", "#| ", " | ", "< \\"],  # Briefcase
+    ]
+
+    # Person with skirt (A-line shape)
+    PERSON_SKIRT_RIGHT_FRAMES = [
+        [" O ", "/| ", "/A\\", "> |"],   # Skirt, walking
+        [" O ", " |\\", "/A\\", "| <"],   # Skirt, walking
+        [" O ", " | ", "/A\\", "| |"],   # Skirt, standing
+    ]
+    PERSON_SKIRT_LEFT_FRAMES = [
+        [" O ", " |\\", "/A\\", "| <"],  # Skirt, walking
+        [" O ", "/| ", "/A\\", "> |"],  # Skirt, walking
+        [" O ", " | ", "/A\\", "| |"],  # Skirt, standing
+    ]
+
+    # All person types for random selection
+    PERSON_TYPES_RIGHT = [
+        PERSON_RIGHT_FRAMES,
+        PERSON_HAT_RIGHT_FRAMES,
+        PERSON_BRIEFCASE_RIGHT_FRAMES,
+        PERSON_SKIRT_RIGHT_FRAMES,
+    ]
+    PERSON_TYPES_LEFT = [
+        PERSON_LEFT_FRAMES,
+        PERSON_HAT_LEFT_FRAMES,
+        PERSON_BRIEFCASE_LEFT_FRAMES,
+        PERSON_SKIRT_LEFT_FRAMES,
     ]
 
     # Vertical car sprites (top-down view, going up/down)
@@ -1123,7 +1173,7 @@ class AlleyScene:
         "  |  ",
     ]
 
-    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes and door
+    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, door, porch & steps
     BUILDING = [
         ".--------------------------------------------------------------.",
         "|                                                              |",
@@ -1156,12 +1206,15 @@ class AlleyScene:
         "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
         "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
         "|  [========]    [====]  [====]    [========]    [====]        |",
-        "|                                          .-----.             |",
-        "|                                          |     |             |",
-        "|____________________________________________|   |_____________|",
+        "|                              _____________                   |",
+        "|                             |  .------.  |                   |",
+        "|                             |  |  ##  |  |                   |",
+        "|_____________________________|  |  ##  |  |___________________|",
+        "                              |__|______|__|                    ",
+        "                               ===========                      ",
     ]
 
-    # Second building (right side) - 2X TALL, 2X WIDE with door
+    # Second building (right side) - 2X TALL, 2X WIDE with door, porch & steps
     BUILDING2 = [
         ".----------------------------------------------------------.",
         "|                                                          |",
@@ -1194,9 +1247,12 @@ class AlleyScene:
         "|    [        ]    [    ]    [        ]    [    ]          |",
         "|    [        ]    [    ]    [        ]    [    ]          |",
         "|    [========]    [====]    [========]    [====]          |",
-        "|        .-----.                                           |",
-        "|        |     |                                           |",
-        "|________|   |_____________________________________________|",
+        "|    _____________                                         |",
+        "|   |  .------.  |                                         |",
+        "|   |  |  ##  |  |                                         |",
+        "|___|  |  ##  |  |_________________________________________|",
+        "    |__|______|__|                                          ",
+        "     ===========                                            ",
     ]
 
     # Window positions for people animation (relative to building sprite)
@@ -1483,7 +1539,10 @@ class AlleyScene:
         self._vertical_cars = new_cars
 
     def _spawn_pedestrian(self):
-        """Spawn a new pedestrian on the sidewalk."""
+        """Spawn a new pedestrian on the sidewalk with random accessories."""
+        # Randomly choose person type (basic, hat, briefcase, skirt)
+        person_type_idx = random.randint(0, len(self.PERSON_TYPES_RIGHT) - 1)
+
         # Randomly choose direction
         if random.random() < 0.5:
             # Pedestrian going right (spawn on left)
@@ -1491,7 +1550,7 @@ class AlleyScene:
                 'x': -5.0,
                 'direction': 1,
                 'speed': random.uniform(0.3, 0.6),  # Slower than cars
-                'frames': self.PERSON_RIGHT_FRAMES,
+                'frames': self.PERSON_TYPES_RIGHT[person_type_idx],
                 'frame_idx': 0,
                 'frame_timer': 0,
             })
@@ -1501,7 +1560,7 @@ class AlleyScene:
                 'x': float(self.width + 2),
                 'direction': -1,
                 'speed': random.uniform(0.3, 0.6),
-                'frames': self.PERSON_LEFT_FRAMES,
+                'frames': self.PERSON_TYPES_LEFT[person_type_idx],
                 'frame_idx': 0,
                 'frame_timer': 0,
             })
@@ -1969,30 +2028,31 @@ class AlleyRat:
     in quick, erratic patterns when there are active warnings.
     """
 
-    # Rat animation frames - bigger sprites when moving
+    # Rat animation frames - no visible eyes
+    # Sitting: 2x2 chars, Moving: 1x2 chars (slim profile)
     RAT_FRAMES = {
         'right': [
-            # Frame 1: running right - 3 rows, bigger body
-            ["  __/~", " /o o\\", " \\_W_/`"],
+            # Frame 1: running right - slim 1x2
+            ["~>", "vv"],
             # Frame 2: running right - legs shifted
-            ["  __/~", " /o o\\", "`\\_W_/ "],
+            ["-)", " v"],
         ],
         'left': [
-            # Frame 1: running left - 3 rows, bigger body
-            ["~\\__  ", "/o o\\ ", "`\\_W_/"],
+            # Frame 1: running left - slim 1x2
+            ["<~", "vv"],
             # Frame 2: running left - legs shifted
-            ["~\\__  ", " /o o\\", " \\_W_/`"],
+            ["(-", "v "],
         ],
         'idle': [
-            # Sitting rat facing camera - 2 feet (vv not vvv)
-            ["<O.O>", "  vv "],  # Alert
-            ["<o.o>", "  vv "],  # Relaxed
+            # Sitting rat - 2x2, no eyes (just fur/shape)
+            ["()", "vv"],  # Curled up
+            ["{}", "vv"],  # Slightly different
         ],
         'look_left': [
-            ["<O.O ", "  vv "],  # Looking left
+            ["<)", "vv"],  # Head turned left
         ],
         'look_right': [
-            [" O.O>", "  vv "],  # Looking right
+            ["(>", "vv"],  # Head turned right
         ],
     }
 
