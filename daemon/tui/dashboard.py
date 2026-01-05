@@ -1444,115 +1444,113 @@ class AlleyScene:
         "  |  ",
     ]
 
-    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors, porch & chairs
+    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors with stoops
     BUILDING = [
-        "                        _____                                   ",
-        "                       |     |                                  ",
-        "        _O_            |     |  [===]          _O_              ",
-        "       (/ \\)           |_____|  [===]         (/ \\)             ",
-        ".---------------------------------------------------------------.",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|            .------.                    .------.               |",
-        "|            |[####]|                    |[####]|               |",
-        "|            |[####]|                    |[####]|               |",
-        "|            |      |                    |      |               |",
-        "|            | [==] |                    | [==] |               |",
-        "|            |______|                    |______|   {~}   {~}   |",
-        "|___________|______|____________________|______|___ H ___ H ___|",
-        "             ======                      ======                 ",
+        "                        _____                                  ",
+        "                       |     |                                 ",
+        "        _O_            |     |  [===]          _O_             ",
+        "       (/ \\)           |_____|  [===]         (/ \\)            ",
+        ".--------------------------------------------------------------.",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "            .------.                    .------.                ",
+        "            |[####]|                    |[####]|                ",
+        "            |[####]|                    |[####]|                ",
+        "            |      |                    |      |                ",
+        "            | [==] |                    | [==] |                ",
+        "____________|______|____________________|______|________________",
+        "      ______======______          ______======______            ",
     ]
 
-    # Second building (right side) - 2X TALL, 2X WIDE with two doors, porch & chairs
+    # Second building (right side) - 2X TALL, 2X WIDE with two doors with stoops
     BUILDING2 = [
-        "              _____                                  ___    ",
-        "             |     |                                |   |   ",
-        "      [===]  |     |    _O_                  _O_    |   |   ",
-        "      [===]  |_____|   (/ \\)                (/ \\)   |___|   ",
-        ".-----------------------------------------------------------.",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|           .------.                    .------.            |",
-        "|           |[####]|                    |[####]|            |",
-        "|           |[####]|                    |[####]|            |",
-        "|           |      |                    |      |            |",
-        "|           | [==] |                    | [==] |            |",
-        "|  {~} {~}  |______|                    |______|            |",
-        "|__ H _ H __|______|____________________|______|____________|",
-        "            ======                      ======               ",
+        "              _____                                  ___   ",
+        "             |     |                                |   |  ",
+        "      [===]  |     |    _O_                  _O_    |   |  ",
+        "      [===]  |_____|   (/ \\)                (/ \\)   |___|  ",
+        ".----------------------------------------------------------.",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "            .------.                    .------.            ",
+        "            |[####]|                    |[####]|            ",
+        "            |[####]|                    |[####]|            ",
+        "            |      |                    |      |            ",
+        "            | [==] |                    | [==] |            ",
+        "____________|______|____________________|______|____________",
+        "      ______======______          ______======______        ",
     ]
 
     # Window positions for people animation (relative to building sprite)
     # Each entry is (row_offset, col_offset) for the middle of a window
     BUILDING_WINDOW_POSITIONS = [
-        (4, 5), (4, 20), (4, 30), (4, 45),     # First row
-        (10, 5), (10, 20), (10, 30), (10, 45), # Second row
-        (16, 5), (16, 20), (16, 30), (16, 45), # Third row
-        (22, 5), (22, 20), (22, 30), (22, 45), # Fourth row
-        (28, 5), (28, 20), (28, 30), (28, 45), # Fifth row
+        (8, 7), (8, 22), (8, 30), (8, 44),      # First row (row 8 is middle of window)
+        (14, 7), (14, 22), (14, 30), (14, 44),  # Second row
+        (20, 7), (20, 22), (20, 30), (20, 44),  # Third row
+        (26, 7), (26, 22), (26, 30), (26, 44),  # Fourth row
+        (32, 7), (32, 22), (32, 30), (32, 44),  # Fifth row
     ]
     BUILDING2_WINDOW_POSITIONS = [
-        (4, 7), (4, 22), (4, 37), (4, 52),     # First row
-        (10, 7), (10, 22), (10, 37), (10, 52), # Second row
-        (16, 7), (16, 22), (16, 37), (16, 52), # Third row
-        (22, 7), (22, 22), (22, 37), (22, 52), # Fourth row
-        (28, 7), (28, 22), (28, 37), (28, 52), # Fifth row
+        (8, 9), (8, 24), (8, 38), (8, 52),      # First row
+        (14, 9), (14, 24), (14, 38), (14, 52),  # Second row
+        (20, 9), (20, 24), (20, 38), (20, 52),  # Third row
+        (26, 9), (26, 24), (26, 38), (26, 52),  # Fourth row
+        (32, 9), (32, 24), (32, 38), (32, 52),  # Fifth row
     ]
 
     def __init__(self, width: int, height: int):
@@ -1856,12 +1854,17 @@ class AlleyScene:
         building1_right = self._building_x + len(self.BUILDING[0])
         self._building2_x = self.width - len(self.BUILDING2[0]) - 11 if self.width > 60 else self.width
 
-        # Draw distant buildings FIRST (furthest back) - only in gap between buildings
+        # Calculate cafe position early for overlap avoidance
         gap_center = (building1_right + self._building2_x) // 2
+        cafe_width = len(self.CAFE[0])
+        cafe_left = gap_center - cafe_width // 2 - 8
+        cafe_right = cafe_left + cafe_width
+
+        # Draw distant buildings FIRST (furthest back) - only in gap between buildings
         self._draw_distant_buildings(gap_center, ground_y, building1_right, self._building2_x)
 
-        # Draw mid-range buildings (behind big buildings)
-        self._draw_midrange_buildings(ground_y)
+        # Draw mid-range buildings (behind big buildings, avoid cafe area)
+        self._draw_midrange_buildings(ground_y, cafe_left, cafe_right)
 
         # Draw first building wireframe in background (left side)
         # Position building so its bottom edge is at ground level
@@ -2050,7 +2053,7 @@ class AlleyScene:
                 if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
                     self.scene[py][px] = (char, color)
 
-    def _draw_midrange_buildings(self, ground_y: int):
+    def _draw_midrange_buildings(self, ground_y: int, cafe_left: int = 0, cafe_right: int = 0):
         """Draw mid-range buildings above 1/5 of screen, behind big buildings."""
         # Mid-range building sprites - larger than distant, outline style
         midrange_buildings = [
@@ -2091,9 +2094,12 @@ class AlleyScene:
         # Position at 1/5 from bottom of screen
         midrange_y = self.height - (self.height // 5)
 
-        # Draw across the screen
+        # Draw across the screen, but skip cafe area
         positions = list(range(0, self.width, 20))
         for i, pos_x in enumerate(positions):
+            # Skip if overlapping with cafe area
+            if cafe_left - 10 < pos_x < cafe_right + 5:
+                continue
             building = midrange_buildings[i % len(midrange_buildings)]
             building_height = len(building)
             by = midrange_y - building_height
@@ -2549,10 +2555,13 @@ class AlleyScene:
         for cx in range(crosswalk_width):
             px = x + cx
             if 0 <= px < self.width - 1:
-                # Draw white stripes on the street only (removed curb row)
+                # Draw white stripes on street and blank out sidewalk every other tile
                 if cx % 2 == 0:
                     if street_y < self.height:
                         self.scene[street_y][px] = ('█', Colors.ALLEY_LIGHT)
+                    # Blank out sidewalk (curb) every other tile for crosswalk effect
+                    if curb_y < self.height:
+                        self.scene[curb_y][px] = (' ', Colors.ALLEY_DARK)
 
         # Draw vanishing street effect above crosswalk
         # Starts at curb and ends at lower 1/5th of screen
