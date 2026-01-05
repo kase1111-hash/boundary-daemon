@@ -1456,6 +1456,9 @@ class AlleyScene:
         # Window people - list of active silhouettes {window_idx, building, direction, progress}
         self._window_people: List[Dict] = []
         self._window_spawn_timer = 0
+        # Window positions for layering (filled during _draw_building)
+        self._window_interior_positions: List[Tuple[int, int]] = []
+        self._window_frame_positions: List[Tuple[int, int, str]] = []  # (x, y, char)
         # Cloud layer with wisps
         self._clouds: List[Dict] = []
         self._init_clouds()
@@ -1550,6 +1553,10 @@ class AlleyScene:
         if self.width <= 0 or self.height <= 0:
             self.scene = []
             return
+
+        # Clear window position tracking for layering
+        self._window_interior_positions = []
+        self._window_frame_positions = []
 
         # Initialize with empty space
         self.scene = [[(' ', Colors.ALLEY_DARK) for _ in range(self.width)]
@@ -2260,6 +2267,9 @@ class AlleyScene:
                         if char in '[]=' or (char == '-' and row_idx == 1):
                             # Window frames and roof line - keep blue
                             color = Colors.ALLEY_BLUE
+                            # Store window frame positions for layering (draw on top of window people)
+                            if char in '[]=':
+                                self._window_frame_positions.append((px, py, char))
                         elif char in '|_.':
                             # Structural elements
                             if row_idx >= grey_start_row:
@@ -2284,9 +2294,12 @@ class AlleyScene:
                         self.scene[py][px] = (char, color)
                     else:
                         # Empty space - add texture based on zone
-                        # Skip if inside window area (don't put bricks inside windows)
+                        # Fill window interior with dark background (prevents seeing through to distant buildings)
                         if inside_window:
-                            continue  # Leave window interior empty
+                            self.scene[py][px] = (' ', Colors.ALLEY_DARK)
+                            # Store window interior position for layering
+                            self._window_interior_positions.append((px, py))
+                            continue
 
                         if row_idx >= 4 and row_idx < grey_start_row:
                             # Red brick zone - fill completely
@@ -2316,11 +2329,11 @@ class AlleyScene:
                         self.scene[knob_py][knob_px] = ('o', Colors.DOOR_KNOB_GOLD)
 
     def render(self, screen):
-        """Render the alley scene to the screen."""
+        """Render the alley scene to the screen with proper layering."""
         # Render clouds first (behind everything)
         self._render_clouds(screen)
 
-        # Render static scene elements
+        # Render static scene elements (except window frames - those go on top)
         for y, row in enumerate(self.scene):
             if y >= self.height:
                 break
@@ -2336,8 +2349,11 @@ class AlleyScene:
                     except curses.error:
                         pass
 
-        # Render window people silhouettes
+        # Render window people silhouettes (behind window frames)
         self._render_window_people(screen)
+
+        # Render window frames on top of window people (so people appear inside)
+        self._render_window_frames(screen)
 
         # Render street light flicker effects
         self._render_street_light_flicker(screen)
@@ -2353,6 +2369,18 @@ class AlleyScene:
 
         # Render horizontal cars on the street LAST (on top of everything)
         self._render_cars(screen)
+
+    def _render_window_frames(self, screen):
+        """Render window frames on top of window people for proper layering."""
+        for px, py, char in self._window_frame_positions:
+            if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                try:
+                    attr = curses.color_pair(Colors.ALLEY_BLUE) | curses.A_DIM
+                    screen.attron(attr)
+                    screen.addstr(py, px, char)
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
 
     def _render_cars(self, screen):
         """Render cars on the street."""
