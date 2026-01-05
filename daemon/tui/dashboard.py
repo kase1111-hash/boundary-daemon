@@ -1728,8 +1728,10 @@ class AlleyRat:
             self.visible = True
             self._hiding = False
             # Spawn at building bottom level, near dumpster area (above curb)
+            max_y = self.height - 5
+            min_y = min(self._floor_y, max_y)  # Ensure valid range
             self.x = float(random.randint(8, max(10, self.width // 4)))
-            self.y = float(random.randint(self._floor_y, self.height - 5))  # Stay above curb
+            self.y = float(random.randint(min_y, max_y))  # Stay above curb
             self._pick_new_target()
 
     def deactivate(self):
@@ -1745,6 +1747,7 @@ class AlleyRat:
         """Pick a new target position for the rat to scurry to."""
         # Stay at building bottom level, above the curb (can hide behind building)
         max_y = self.height - 5  # Stay above curb and street
+        min_y = min(self._floor_y, max_y)  # Ensure valid range
 
         if random.random() < 0.6:
             # Most of the time, stay still and look around
@@ -1771,7 +1774,7 @@ class AlleyRat:
         else:
             # Occasionally hop to a random spot at building bottom level (above curb)
             self.target_x = float(random.randint(6, max(7, self.width // 3)))
-            self.target_y = float(random.randint(self._floor_y, max_y))
+            self.target_y = float(random.randint(min_y, max_y))
             # Use hopping - will move in discrete jumps
             self.speed = 0  # Don't move continuously
             self._hop_cooldown = 0  # Ready to hop
