@@ -419,15 +419,13 @@ class MatrixRain:
         return new_mode
 
     def _init_fog(self):
-        """Initialize fog particles in clustered patches."""
+        """Initialize fog particles in clustered patches - blocks only, 5x count."""
         self._fog_particles = []
-        # Create fog as clustered patches, not random scatter
-        num_patch_centers = max(5, self.width // 20)
+        # Create fog as clustered patches - 5x more patches for denser fog
+        num_patch_centers = max(25, self.width // 4)
 
-        # Character sets by size - assigned once, not randomized per frame
-        small_chars = ['·', '.', ':', '∴']
-        medium_chars = ['░', '▒']
-        big_chars = ['▓', '█', '▒']
+        # Only block characters - no small particles
+        block_chars = ['░', '▒', '▓', '█']
 
         for _ in range(num_patch_centers):
             # Each patch has a center point
@@ -436,28 +434,23 @@ class MatrixRain:
             patch_dx = random.uniform(-0.15, 0.15)  # Whole patch drifts together
             patch_dy = random.uniform(-0.04, 0.04)
 
-            # Create particles clustered around the center
-            patch_size = random.randint(8, 20)
+            # Create particles clustered around the center - larger patches
+            patch_size = random.randint(12, 30)
             for _ in range(patch_size):
                 # Particles spread around center with gaussian-like distribution
-                offset_x = random.gauss(0, 4)
-                offset_y = random.gauss(0, 3)
-                size = random.choice([1, 1, 1, 2, 2, 3])
+                offset_x = random.gauss(0, 5)
+                offset_y = random.gauss(0, 4)
 
-                # Assign stable character based on size
-                if size >= 3:
-                    char = random.choice(big_chars)
-                elif size >= 2:
-                    char = random.choice(medium_chars)
-                else:
-                    char = random.choice(small_chars)
+                # Only blocks - size 2 or 3
+                size = random.choice([2, 2, 3, 3, 3])
+                char = random.choice(block_chars)
 
                 self._fog_particles.append({
                     'x': center_x + offset_x,
                     'y': center_y + offset_y,
                     'dx': patch_dx + random.uniform(-0.03, 0.03),  # Slight individual variation
                     'dy': patch_dy + random.uniform(-0.015, 0.015),
-                    'char': char,  # Stable character
+                    'char': char,  # Stable block character
                     'base_opacity': random.uniform(0.5, 1.0),  # Base opacity
                     'opacity': random.uniform(0.5, 1.0),  # Current opacity (affected by density)
                     'size': size,
@@ -1046,7 +1039,7 @@ class MatrixRain:
 
 class AlleyScene:
     """
-    Simple alley scene with dumpster and box for Matrix background.
+    Simple alley scene with dumpster, box, and traffic light for Matrix background.
     """
 
     # Dumpster ASCII art (6 wide x 4 tall)
@@ -1064,10 +1057,31 @@ class AlleyScene:
         "|___|",
     ]
 
+    # Traffic light showing two sides (corner view) - 7 wide x 7 tall
+    # Left column is N/S direction, right column is E/W direction
+    TRAFFIC_LIGHT_TEMPLATE = [
+        " .===. ",
+        " |L|R] ",  # L = left light, R = right light (top - red)
+        " |L|R] ",  # middle - yellow
+        " |L|R] ",  # bottom - green
+        " '===' ",
+        "   ||  ",
+        "   ||  ",
+    ]
+
     def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
         self.scene: List[List[Tuple[str, int]]] = []
+        # Store object positions for rat hiding
+        self.dumpster_x = 0
+        self.dumpster_y = 0
+        self.box_x = 0
+        self.box_y = 0
+        # Traffic light state
+        self._traffic_frame = 0
+        self._traffic_state = 'NS_GREEN'  # NS_GREEN, NS_YELLOW, EW_GREEN, EW_YELLOW
+        self._state_duration = 0
         self._generate_scene()
 
     def resize(self, width: int, height: int):
@@ -1077,7 +1091,7 @@ class AlleyScene:
         self._generate_scene()
 
     def _generate_scene(self):
-        """Generate scene with dumpster and box."""
+        """Generate scene with dumpster, box, curb, and street."""
         if self.width <= 0 or self.height <= 0:
             self.scene = []
             return
@@ -1086,15 +1100,85 @@ class AlleyScene:
         self.scene = [[(' ', Colors.ALLEY_DARK) for _ in range(self.width)]
                       for _ in range(self.height)]
 
-        # Place dumpster in lower-left area
-        dumpster_x = 3
-        dumpster_y = self.height - len(self.DUMPSTER) - 2
-        self._draw_sprite(self.DUMPSTER, dumpster_x, dumpster_y, Colors.ALLEY_MID)
+        # Draw street at the very bottom (last 2 rows)
+        street_y = self.height - 1
+        curb_y = self.height - 2
 
-        # Place box to the right of dumpster
-        box_x = dumpster_x + len(self.DUMPSTER[0]) + 4
-        box_y = self.height - len(self.BOX) - 2
-        self._draw_sprite(self.BOX, box_x, box_y, Colors.SAND_DIM)
+        # Draw curb - solid line separating alley from street
+        for x in range(self.width - 1):
+            self.scene[curb_y][x] = ('▄', Colors.ALLEY_MID)
+
+        # Draw street with lane markings (dashed yellow line in center)
+        for x in range(self.width - 1):
+            # Street surface
+            self.scene[street_y][x] = ('▓', Colors.ALLEY_DARK)
+
+        # Add dashed lane markings if width allows (every 4 chars, 2 on 2 off)
+        if self.width > 30:
+            for x in range(0, self.width - 1, 4):
+                if x + 1 < self.width - 1:
+                    self.scene[street_y][x] = ('=', Colors.RAT_YELLOW)
+                    self.scene[street_y][x + 1] = ('=', Colors.RAT_YELLOW)
+
+        # Place dumpster in lower-left area (above curb)
+        self.dumpster_x = 8
+        self.dumpster_y = self.height - len(self.DUMPSTER) - 3  # -3 to be above curb
+        self._draw_sprite(self.DUMPSTER, self.dumpster_x, self.dumpster_y, Colors.ALLEY_MID)
+
+        # Place box to the right of dumpster (above curb)
+        self.box_x = self.dumpster_x + len(self.DUMPSTER[0]) + 6
+        self.box_y = self.height - len(self.BOX) - 3  # -3 to be above curb
+        self._draw_sprite(self.BOX, self.box_x, self.box_y, Colors.SAND_DIM)
+
+    def update(self):
+        """Update traffic light state."""
+        self._traffic_frame += 1
+
+        # State machine for traffic lights
+        self._state_duration += 1
+
+        if self._traffic_state == 'NS_GREEN':
+            if self._state_duration >= 80:  # Green for 80 frames
+                self._traffic_state = 'NS_YELLOW'
+                self._state_duration = 0
+        elif self._traffic_state == 'NS_YELLOW':
+            if self._state_duration >= 20:  # Yellow for 20 frames
+                self._traffic_state = 'EW_GREEN'
+                self._state_duration = 0
+        elif self._traffic_state == 'EW_GREEN':
+            if self._state_duration >= 80:  # Green for 80 frames
+                self._traffic_state = 'EW_YELLOW'
+                self._state_duration = 0
+        elif self._traffic_state == 'EW_YELLOW':
+            if self._state_duration >= 20:  # Yellow for 20 frames
+                self._traffic_state = 'NS_GREEN'
+                self._state_duration = 0
+
+    def _get_traffic_light_colors(self) -> Tuple[Tuple[str, int], Tuple[str, int], Tuple[str, int],
+                                                   Tuple[str, int], Tuple[str, int], Tuple[str, int]]:
+        """Get the current light colors for both directions.
+
+        Returns: (ns_red, ns_yellow, ns_green, ew_red, ew_yellow, ew_green)
+        Each is a tuple of (char, color).
+        """
+        # Define light states
+        off = ('o', Colors.ALLEY_DARK)
+        red_on = ('O', Colors.SHADOW_RED)
+        yellow_on = ('O', Colors.RAT_YELLOW)
+        green_on = ('O', Colors.STATUS_OK)
+
+        if self._traffic_state == 'NS_GREEN':
+            # NS has green, EW has red
+            return (off, off, green_on, red_on, off, off)
+        elif self._traffic_state == 'NS_YELLOW':
+            # NS has yellow, EW has red
+            return (off, yellow_on, off, red_on, off, off)
+        elif self._traffic_state == 'EW_GREEN':
+            # NS has red, EW has green
+            return (red_on, off, off, off, off, green_on)
+        else:  # EW_YELLOW
+            # NS has red, EW has yellow
+            return (red_on, off, off, off, yellow_on, off)
 
     def _draw_sprite(self, sprite: List[str], x: int, y: int, color: int):
         """Draw an ASCII sprite at the given position."""
@@ -1107,6 +1191,7 @@ class AlleyScene:
 
     def render(self, screen):
         """Render the alley scene to the screen."""
+        # Render static scene elements
         for y, row in enumerate(self.scene):
             if y >= self.height:
                 break
@@ -1121,6 +1206,70 @@ class AlleyScene:
                         screen.attroff(attr)
                     except curses.error:
                         pass
+
+        # Render traffic light (dynamic - lights change)
+        self._render_traffic_light(screen)
+
+    def _render_traffic_light(self, screen):
+        """Render the traffic light with current light states."""
+        # Position traffic light on right side of scene
+        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 10)
+        light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 2
+
+        if light_x < 0 or light_y < 0:
+            return
+
+        # Get current light states
+        ns_red, ns_yellow, ns_green, ew_red, ew_yellow, ew_green = self._get_traffic_light_colors()
+
+        # Render each row of traffic light
+        for row_idx, row in enumerate(self.TRAFFIC_LIGHT_TEMPLATE):
+            for col_idx, char in enumerate(row):
+                px = light_x + col_idx
+                py = light_y + row_idx
+
+                if not (0 <= px < self.width - 1 and 0 <= py < self.height):
+                    continue
+                if char == ' ':
+                    continue
+
+                # Determine color based on character position
+                color = Colors.ALLEY_MID
+                render_char = char
+
+                if char == 'L':  # Left side lights (N/S direction)
+                    if row_idx == 1:  # Red position
+                        render_char, color = ns_red
+                    elif row_idx == 2:  # Yellow position
+                        render_char, color = ns_yellow
+                    elif row_idx == 3:  # Green position
+                        render_char, color = ns_green
+                elif char == 'R':  # Right side lights (E/W direction)
+                    if row_idx == 1:  # Red position
+                        render_char, color = ew_red
+                    elif row_idx == 2:  # Yellow position
+                        render_char, color = ew_yellow
+                    elif row_idx == 3:  # Green position
+                        render_char, color = ew_green
+                else:
+                    render_char = char
+
+                try:
+                    if char in 'LR':
+                        # Lights get bold when on
+                        if render_char == 'O':
+                            attr = curses.color_pair(color) | curses.A_BOLD
+                        else:
+                            attr = curses.color_pair(color) | curses.A_DIM
+                    else:
+                        # Structure of light
+                        attr = curses.color_pair(Colors.ALLEY_MID) | curses.A_DIM
+
+                    screen.attron(attr)
+                    screen.addstr(py, px, render_char)
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
 
 
 class LightningBolt:
@@ -1215,25 +1364,30 @@ class AlleyRat:
     in quick, erratic patterns when there are active warnings.
     """
 
-    # Rat animation frames - each frame is a complete 2-row sprite
+    # Rat animation frames - bigger sprites when moving
     RAT_FRAMES = {
         'right': [
-            ["~,.,", " `` "],  # Frame 1: running right
-            [" ,.,~", "  `` "],  # Frame 2: running right (shifted)
+            # Frame 1: running right - 3 rows, bigger body
+            ["  __/~", " /o o\\", " \\_W_/`"],
+            # Frame 2: running right - legs shifted
+            ["  __/~", " /o o\\", "`\\_W_/ "],
         ],
         'left': [
-            [",.,~", " `` "],  # Frame 1: running left
-            ["~,., ", "``  "],  # Frame 2: running left (shifted)
+            # Frame 1: running left - 3 rows, bigger body
+            ["~\\__  ", "/o o\\ ", "`\\_W_/"],
+            # Frame 2: running left - legs shifted
+            ["~\\__  ", " /o o\\", " \\_W_/`"],
         ],
         'idle': [
-            ["<O.O>", " vvv "],  # Sitting rat, alert - looking forward
-            ["<o.o>", " vvv "],  # Sitting rat, relaxed - looking forward
+            # Sitting rat facing camera - 2 feet (vv not vvv)
+            ["<O.O>", "  vv "],  # Alert
+            ["<o.o>", "  vv "],  # Relaxed
         ],
         'look_left': [
-            ["<O.O ", " vvv "],  # Looking left
+            ["<O.O ", "  vv "],  # Looking left
         ],
         'look_right': [
-            [" O.O>", " vvv "],  # Looking right
+            [" O.O>", "  vv "],  # Looking right
         ],
     }
 
@@ -1265,6 +1419,23 @@ class AlleyRat:
         self._look_timer = 0
         self._look_direction = 'idle'
 
+        # Hiding spots (positions behind objects)
+        self._hiding_spots: List[Tuple[float, float]] = []
+
+    def set_hiding_spots(self, alley_scene):
+        """Set hiding spots based on alley scene objects."""
+        self._hiding_spots = []
+        if alley_scene:
+            # Behind dumpster (to the right of it)
+            dumpster_behind_x = alley_scene.dumpster_x + 2
+            dumpster_y = alley_scene.dumpster_y + 2
+            self._hiding_spots.append((float(dumpster_behind_x), float(dumpster_y)))
+
+            # Behind box (to the right of it)
+            box_behind_x = alley_scene.box_x + 2
+            box_y = alley_scene.box_y + 1
+            self._hiding_spots.append((float(box_behind_x), float(box_y)))
+
     def resize(self, width: int, height: int):
         """Handle terminal resize."""
         self.width = width
@@ -1279,9 +1450,10 @@ class AlleyRat:
             self.active = True
             self.visible = True
             self._hiding = False
-            # Spawn near the dumpster (lower left area)
-            self.x = float(random.randint(2, max(3, self.width // 4)))
-            self.y = float(self.height - random.randint(3, 6))
+            # Spawn in lower 1/5 of screen, near dumpster area (above curb)
+            floor_y = self.height * 4 // 5
+            self.x = float(random.randint(8, max(10, self.width // 4)))
+            self.y = float(random.randint(floor_y, self.height - 5))  # Stay above curb
             self._pick_new_target()
 
     def deactivate(self):
@@ -1295,10 +1467,11 @@ class AlleyRat:
 
     def _pick_new_target(self):
         """Pick a new target position for the rat to scurry to."""
-        # Stay in the lower third of the screen, edges
-        floor_y = self.height * 2 // 3
+        # Stay in the lower 1/5 of the screen, above the curb
+        floor_y = self.height * 4 // 5
+        max_y = self.height - 5  # Stay above curb and street
 
-        if random.random() < 0.7:
+        if random.random() < 0.6:
             # Most of the time, stay still and look around
             self.target_x = self.x
             self.target_y = self.y
@@ -1306,10 +1479,24 @@ class AlleyRat:
             self.speed = 0
             self.direction = 'idle'
             self._look_timer = random.randint(15, 35)  # Start looking around
+        elif random.random() < 0.4 and self._hiding_spots:
+            # Sometimes hide behind dumpster or box
+            hide_spot = random.choice(self._hiding_spots)
+            self.target_x = hide_spot[0]
+            self.target_y = hide_spot[1]
+            # Use hopping
+            self.speed = 0
+            self._hop_cooldown = 0
+
+            # Set direction based on target
+            if self.target_x > self.x:
+                self.direction = 'right'
+            else:
+                self.direction = 'left'
         else:
-            # Occasionally hop to a new spot
-            self.target_x = float(random.randint(1, max(2, self.width // 3)))
-            self.target_y = float(random.randint(floor_y, self.height - 2))
+            # Occasionally hop to a random spot in the lower area (above curb)
+            self.target_x = float(random.randint(6, max(7, self.width // 3)))
+            self.target_y = float(random.randint(floor_y, max_y))
             # Use hopping - will move in discrete jumps
             self.speed = 0  # Don't move continuously
             self._hop_cooldown = 0  # Ready to hop
@@ -2357,6 +2544,7 @@ class Dashboard:
             self.matrix_rain = MatrixRain(self.width, self.height)
             # Initialize creatures
             self.alley_rat = AlleyRat(self.width, self.height)
+            self.alley_rat.set_hiding_spots(self.alley_scene)
             self.lurking_shadow = LurkingShadow(self.width, self.height)
             # Schedule first lightning strike (5-30 minutes from now)
             self._lightning_next_time = time.time() + random.uniform(300, 1800)
@@ -2383,9 +2571,14 @@ class Dashboard:
                         self.matrix_rain.resize(self.width, self.height)
                         if self.alley_rat:
                             self.alley_rat.resize(self.width, self.height)
+                            self.alley_rat.set_hiding_spots(self.alley_scene)
                         if self.lurking_shadow:
                             self.lurking_shadow.resize(self.width, self.height)
                     self.matrix_rain.update()
+
+                    # Update alley scene (traffic light)
+                    if self.alley_scene:
+                        self.alley_scene.update()
 
                     # Update creatures based on alert state
                     self._update_creatures()
@@ -2419,6 +2612,7 @@ class Dashboard:
                 self.matrix_rain.resize(self.width, self.height)
             if self.alley_rat:
                 self.alley_rat.resize(self.width, self.height)
+                self.alley_rat.set_hiding_spots(self.alley_scene)
             if self.lurking_shadow:
                 self.lurking_shadow.resize(self.width, self.height)
         self.screen.clear()
