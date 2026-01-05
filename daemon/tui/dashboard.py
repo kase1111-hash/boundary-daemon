@@ -2385,10 +2385,10 @@ class AlleyScene:
 
         # Tree 1: left side of gap
         tree1_x = building1_right + 8
-        # Tree 2: middle-right of gap
-        tree2_x = building1_right + gap_width // 2 + 20
-        # Tree 3: right side of gap (before building 2)
-        tree3_x = building2_left - tree_width - 12
+        # Tree 2: middle-right of gap (shifted 40 right)
+        tree2_x = building1_right + gap_width // 2 + 60
+        # Tree 3: right side of gap (before building 2, shifted 40 right)
+        tree3_x = building2_left - tree_width + 28
 
         for tree_x in [tree1_x, tree2_x, tree3_x]:
             # Check tree fits in gap and doesn't overlap with cafe
