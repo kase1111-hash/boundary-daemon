@@ -1547,6 +1547,25 @@ class AlleyScene:
         "     ||     ",
     ]
 
+    # Static cityscape backdrop (drawn behind main buildings in the gap)
+    # 100 chars wide, various building heights
+    CITYSCAPE = [
+        "                              |~|                              T                              ",  # Row 0 - antenna tips
+        "            ___               |=|      ___                    /|\\                 ___         ",  # Row 1
+        "    ___    |   |    ___      .|=|.    |   |     ___     ___  |=|=|    ___        |   |   ___  ",  # Row 2
+        "   |   |   |   |   |   |   .:|=|:.   |   |    |   |   |   | |=|=|   |   |  ___  |   |  |   | ",  # Row 3
+        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |   | |[ ]|  |[ ]| ",  # Row 4
+        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |[ ]| |[ ]|  |[ ]| ",  # Row 5
+        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |[ ]| |[ ]|  |[ ]| ",  # Row 6
+        "   |[ ]|   |[ ]|   |[ ]|   |:|=|:|   |[ ]|    |[ ]|   |[ ]| |=|=|   |[ ]| |[ ]| |[ ]|  |[ ]| ",  # Row 7
+        "   |___|   |___|   |___|   |:|=|:|   |___|    |___|   |___| |=|=|   |___| |[ ]| |___|  |___| ",  # Row 8
+        "                           |:|=|:|                          |=|=|         |[ ]|              ",  # Row 9
+        "                           |:|=|:|                          |=|=|         |___|              ",  # Row 10
+        "                           |:|=|:|                          |=|=|                            ",  # Row 11
+        "                           |:|=|:|                          |___|                            ",  # Row 12
+        "                           |_|=|_|                                                           ",  # Row 13
+    ]
+
     # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors with stoops
     BUILDING = [
         "                        _____                                  ",
@@ -2672,179 +2691,103 @@ class AlleyScene:
                 self.scene[row][x] = (char, Colors.GREY_BLOCK)
 
     def _draw_distant_buildings(self, center_x: int, ground_y: int, left_boundary: int, right_boundary: int):
-        """Draw distant building skyline in visible areas (gap between main buildings)."""
+        """Draw static cityscape backdrop in the gap between main buildings."""
         # Initialize skyline windows list
         self._skyline_windows = []
         self._skyline_buildings = []
 
-        # Calculate cafe position to avoid overlap
-        cafe_width = len(self.CAFE[0]) + 4
-        cafe_left = center_x - cafe_width // 2 - 11
-        cafe_right = cafe_left + cafe_width
-
-        # Skyline base y (where buildings touch the "horizon")
-        skyline_y = ground_y - 8
-
-        # Store visible regions for skyline (only in gap between main buildings)
-        # left_boundary = building1_right, right_boundary = building2_x
-        # Also account for building2_right for far right area
-        building2_right = right_boundary + len(self.BUILDING2[0]) if right_boundary > 0 else self.width
-
-        # Visible regions: only the center gap between buildings
-        # The main buildings cover x=9 to building1_right and building2_x to building2_right
-        visible_regions = []
-
-        # Center gap (between main buildings)
-        if left_boundary < right_boundary:
-            visible_regions.append((left_boundary + 1, right_boundary - 1))
-
-        # Store for visibility checking during window updates
+        # Store visibility bounds
         self._skyline_visible_left = left_boundary + 1
         self._skyline_visible_right = right_boundary - 1
 
-        # Generate buildings ONLY in visible center gap
-        for region_left, region_right in visible_regions:
-            pos_x = region_left + 1
-            while pos_x < region_right - 5:
-                # Skip cafe area
-                if cafe_left - 2 < pos_x < cafe_right + 2:
-                    pos_x = cafe_right + 2
-                    continue
+        # Position cityscape centered in the gap
+        cityscape_width = len(self.CITYSCAPE[0]) if self.CITYSCAPE else 0
+        cityscape_height = len(self.CITYSCAPE)
+        gap_width = right_boundary - left_boundary
 
-                # Randomly choose building type (more variety in center)
-                btype = random.choice(['tiny', 'small', 'medium', 'tall', 'skyscraper', 'wide'])
+        # Center the cityscape in the gap
+        cityscape_x = left_boundary + (gap_width - cityscape_width) // 2
 
-                # Determine building dimensions based on type
-                if btype == 'tiny':
-                    width = random.randint(3, 4)
-                    height = random.randint(3, 5)
-                elif btype == 'small':
-                    width = random.randint(4, 6)
-                    height = random.randint(5, 8)
-                elif btype == 'medium':
-                    width = random.randint(5, 8)
-                    height = random.randint(8, 12)
-                elif btype == 'tall':
-                    width = random.randint(4, 6)
-                    height = random.randint(12, 18)
-                elif btype == 'skyscraper':
-                    width = random.randint(6, 10)
-                    height = random.randint(18, 28)
-                else:  # wide
-                    width = random.randint(8, 12)
-                    height = random.randint(6, 10)
+        # Position at top of the visible gap area (above the cafe/street level)
+        cityscape_y = ground_y - cityscape_height - 6
 
-                # Calculate building position
-                building_top = skyline_y - height
-
-                # Make sure building fits in region
-                if pos_x + width < region_right:
-                    self._draw_skyline_building(pos_x, building_top, width, height, btype,
-                                                region_left, region_right)
-
-                # Move to next position with slight gap
-                pos_x += width + random.randint(1, 3)
-
-    def _draw_skyline_building(self, x: int, top_y: int, width: int, height: int, btype: str,
-                                region_left: int, region_right: int):
-        """Draw a single skyline building with windows in visible region only."""
-        # Draw building outline/fill
-        for row in range(height):
-            py = top_y + row
-            if py < 3 or py >= self.height:  # Stay below clouds
+        # Draw the static cityscape
+        for row_idx, row in enumerate(self.CITYSCAPE):
+            py = cityscape_y + row_idx
+            if py < 2 or py >= self.height:
                 continue
 
-            for col in range(width):
-                px = x + col
+            for col_idx, char in enumerate(row):
+                px = cityscape_x + col_idx
                 if px < 0 or px >= self.width - 1:
                     continue
-                # Skip if outside visible region
-                if px < region_left or px > region_right:
+                # Only draw in visible gap
+                if px <= left_boundary or px >= right_boundary:
+                    continue
+                if char == ' ':
                     continue
 
-                # Determine character based on position
-                if row == 0:
-                    # Roof
-                    if col == 0:
-                        char = '/'
-                    elif col == width - 1:
-                        char = '\\'
-                    else:
-                        char = '_'
-                elif col == 0 or col == width - 1:
-                    # Walls
-                    char = '|'
-                elif row == height - 1:
-                    # Bottom
-                    char = '_'
+                # Color based on character
+                if char in '[]':
+                    # Window brackets
+                    color = Colors.ALLEY_MID
+                    # Check if this is a window position (between brackets)
+                    # and set up animation
+                elif char in '|_/\\':
+                    # Building structure
+                    color = Colors.ALLEY_DARK
+                elif char in '~T':
+                    # Antenna/tower tops
+                    color = Colors.ALLEY_MID
+                elif char in '.:\'"':
+                    # Building details
+                    color = Colors.ALLEY_DARK
+                elif char == '=':
+                    # Window/structure fill
+                    color = Colors.ALLEY_MID
                 else:
-                    # Interior - mostly empty, some windows
-                    char = ' '
+                    color = Colors.ALLEY_DARK
 
-                if char != ' ':
-                    self.scene[py][px] = (char, Colors.ALLEY_DARK)
+                self.scene[py][px] = (char, color)
 
-        # Add windows to the building
-        window_start_row = 2
-        window_end_row = height - 2
-        window_start_col = 1
-        window_end_col = width - 1
-
-        # Window spacing based on building type
-        if btype == 'skyscraper':
-            row_spacing = 2
-            col_spacing = 2
-        elif btype in ['tall', 'medium']:
-            row_spacing = 3
-            col_spacing = 2
-        else:
-            row_spacing = 2
-            col_spacing = 2
-
-        for row in range(window_start_row, window_end_row, row_spacing):
-            py = top_y + row
-            if py < 3 or py >= self.height:
+        # Add animated windows at window bracket positions [ ]
+        # Find all window positions in the cityscape
+        for row_idx, row in enumerate(self.CITYSCAPE):
+            py = cityscape_y + row_idx
+            if py < 2 or py >= self.height:
                 continue
 
-            for col in range(window_start_col, window_end_col, col_spacing):
-                px = x + col
-                if px < 0 or px >= self.width - 1:
-                    continue
-                # Skip windows outside visible region
-                if px < region_left or px > region_right:
-                    continue
+            col_idx = 0
+            while col_idx < len(row) - 2:
+                # Look for [ ] pattern (window)
+                if row[col_idx:col_idx+3] == '[ ]':
+                    px = cityscape_x + col_idx + 1  # Center of window
+                    if left_boundary < px < right_boundary and 0 <= px < self.width - 1:
+                        # Add animated window
+                        rand_val = random.random()
+                        if rand_val < 0.3:
+                            is_on = True
+                            is_animated = random.random() < 0.3
+                        else:
+                            is_on = False
+                            is_animated = random.random() < 0.15
 
-                # Determine if window is on, off, or animated
-                rand_val = random.random()
-                if rand_val < 0.15:
-                    # Window is on (bright)
-                    is_on = True
-                    is_animated = False
-                elif rand_val < 0.25:
-                    # Window toggles on/off
-                    is_on = random.choice([True, False])
-                    is_animated = True
+                        toggle_time = random.randint(100, 400) if is_animated else 0
+                        self._skyline_windows.append({
+                            'x': px,
+                            'y': py,
+                            'on': is_on,
+                            'animated': is_animated,
+                            'timer': random.randint(0, toggle_time) if is_animated else 0,
+                            'toggle_time': toggle_time,
+                        })
+
+                        # Draw initial window state
+                        if is_on:
+                            self.scene[py][px] = ('▪', Colors.RAT_YELLOW)
+                    col_idx += 3
                 else:
-                    # Window is off (dark)
-                    is_on = False
-                    is_animated = False
-
-                # Store window info for animation
-                toggle_time = random.randint(100, 500) if is_animated else 0
-                self._skyline_windows.append({
-                    'x': px,
-                    'y': py,
-                    'on': is_on,
-                    'animated': is_animated,
-                    'timer': random.randint(0, toggle_time) if is_animated else 0,
-                    'toggle_time': toggle_time,
-                })
-
-                # Draw initial window state
-                if is_on:
-                    self.scene[py][px] = ('▪', Colors.RAT_YELLOW)
-                else:
-                    self.scene[py][px] = ('▫', Colors.ALLEY_DARK)
+                    col_idx += 1
 
     def _draw_outline_building(self, building: List[str], x: int, base_y: int, color: int):
         """Draw a building outline at the given position."""
