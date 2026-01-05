@@ -1091,7 +1091,7 @@ class AlleyScene:
         self._generate_scene()
 
     def _generate_scene(self):
-        """Generate scene with dumpster, box, and traffic light."""
+        """Generate scene with dumpster, box, curb, and street."""
         if self.width <= 0 or self.height <= 0:
             self.scene = []
             return
@@ -1100,14 +1100,34 @@ class AlleyScene:
         self.scene = [[(' ', Colors.ALLEY_DARK) for _ in range(self.width)]
                       for _ in range(self.height)]
 
-        # Place dumpster in lower-left area (moved further from edge)
+        # Draw street at the very bottom (last 2 rows)
+        street_y = self.height - 1
+        curb_y = self.height - 2
+
+        # Draw curb - solid line separating alley from street
+        for x in range(self.width - 1):
+            self.scene[curb_y][x] = ('▄', Colors.ALLEY_MID)
+
+        # Draw street with lane markings (dashed yellow line in center)
+        for x in range(self.width - 1):
+            # Street surface
+            self.scene[street_y][x] = ('▓', Colors.ALLEY_DARK)
+
+        # Add dashed lane markings if width allows (every 4 chars, 2 on 2 off)
+        if self.width > 30:
+            for x in range(0, self.width - 1, 4):
+                if x + 1 < self.width - 1:
+                    self.scene[street_y][x] = ('=', Colors.RAT_YELLOW)
+                    self.scene[street_y][x + 1] = ('=', Colors.RAT_YELLOW)
+
+        # Place dumpster in lower-left area (above curb)
         self.dumpster_x = 8
-        self.dumpster_y = self.height - len(self.DUMPSTER) - 2
+        self.dumpster_y = self.height - len(self.DUMPSTER) - 3  # -3 to be above curb
         self._draw_sprite(self.DUMPSTER, self.dumpster_x, self.dumpster_y, Colors.ALLEY_MID)
 
-        # Place box to the right of dumpster (moved further from edge)
+        # Place box to the right of dumpster (above curb)
         self.box_x = self.dumpster_x + len(self.DUMPSTER[0]) + 6
-        self.box_y = self.height - len(self.BOX) - 2
+        self.box_y = self.height - len(self.BOX) - 3  # -3 to be above curb
         self._draw_sprite(self.BOX, self.box_x, self.box_y, Colors.SAND_DIM)
 
     def update(self):
@@ -1344,25 +1364,30 @@ class AlleyRat:
     in quick, erratic patterns when there are active warnings.
     """
 
-    # Rat animation frames - each frame is a complete 2-row sprite
+    # Rat animation frames - bigger sprites when moving
     RAT_FRAMES = {
         'right': [
-            ["~,.,", " `` "],  # Frame 1: running right
-            [" ,.,~", "  `` "],  # Frame 2: running right (shifted)
+            # Frame 1: running right - 3 rows, bigger body
+            ["  __/~", " /o o\\", " \\_W_/`"],
+            # Frame 2: running right - legs shifted
+            ["  __/~", " /o o\\", "`\\_W_/ "],
         ],
         'left': [
-            [",.,~", " `` "],  # Frame 1: running left
-            ["~,., ", "``  "],  # Frame 2: running left (shifted)
+            # Frame 1: running left - 3 rows, bigger body
+            ["~\\__  ", "/o o\\ ", "`\\_W_/"],
+            # Frame 2: running left - legs shifted
+            ["~\\__  ", " /o o\\", " \\_W_/`"],
         ],
         'idle': [
-            ["<O.O>", " vvv "],  # Sitting rat, alert - looking forward
-            ["<o.o>", " vvv "],  # Sitting rat, relaxed - looking forward
+            # Sitting rat facing camera - 2 feet (vv not vvv)
+            ["<O.O>", "  vv "],  # Alert
+            ["<o.o>", "  vv "],  # Relaxed
         ],
         'look_left': [
-            ["<O.O ", " vvv "],  # Looking left
+            ["<O.O ", "  vv "],  # Looking left
         ],
         'look_right': [
-            [" O.O>", " vvv "],  # Looking right
+            [" O.O>", "  vv "],  # Looking right
         ],
     }
 
@@ -1425,10 +1450,10 @@ class AlleyRat:
             self.active = True
             self.visible = True
             self._hiding = False
-            # Spawn in lower 1/5 of screen, near dumpster area
+            # Spawn in lower 1/5 of screen, near dumpster area (above curb)
             floor_y = self.height * 4 // 5
             self.x = float(random.randint(8, max(10, self.width // 4)))
-            self.y = float(random.randint(floor_y, self.height - 2))
+            self.y = float(random.randint(floor_y, self.height - 5))  # Stay above curb
             self._pick_new_target()
 
     def deactivate(self):
@@ -1442,8 +1467,9 @@ class AlleyRat:
 
     def _pick_new_target(self):
         """Pick a new target position for the rat to scurry to."""
-        # Stay in the lower 1/5 of the screen
+        # Stay in the lower 1/5 of the screen, above the curb
         floor_y = self.height * 4 // 5
+        max_y = self.height - 5  # Stay above curb and street
 
         if random.random() < 0.6:
             # Most of the time, stay still and look around
@@ -1468,9 +1494,9 @@ class AlleyRat:
             else:
                 self.direction = 'left'
         else:
-            # Occasionally hop to a random spot in the lower area
+            # Occasionally hop to a random spot in the lower area (above curb)
             self.target_x = float(random.randint(6, max(7, self.width // 3)))
-            self.target_y = float(random.randint(floor_y, self.height - 2))
+            self.target_y = float(random.randint(floor_y, max_y))
             # Use hopping - will move in discrete jumps
             self.speed = 0  # Don't move continuously
             self._hop_cooldown = 0  # Ready to hop
