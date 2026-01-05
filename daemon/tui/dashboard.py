@@ -51,6 +51,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Callable
 
+# Import Ollama client for CLI chat
+try:
+    from daemon.monitoring_report import OllamaClient, OllamaConfig
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    OllamaClient = None
+    OllamaConfig = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -5998,6 +6007,18 @@ class Dashboard:
         self._cli_history_index = 0
         self._cli_results: List[str] = []
         self._cli_results_scroll = 0
+        self._cli_last_activity = 0.0  # Last activity timestamp
+        self._cli_timeout = 300.0  # 5 minutes inactivity timeout
+        self._cli_chat_history: List[Dict[str, str]] = []  # Ollama chat history
+
+        # Ollama client for CLI chat
+        self._ollama_client = None
+        if OLLAMA_AVAILABLE and OllamaConfig is not None:
+            try:
+                config = OllamaConfig(model="llama3.2", timeout=60)
+                self._ollama_client = OllamaClient(config)
+            except Exception:
+                pass  # Ollama not available
 
         # Moon state (arcs across sky every 15 minutes)
         self._moon_active = False
@@ -7393,44 +7414,114 @@ class Dashboard:
         },
     }
 
+    def _send_to_ollama(self, message: str) -> List[str]:
+        """Send a message to Ollama and return response lines."""
+        if not self._ollama_client:
+            return ["ERROR: Ollama not available. Start with: ollama serve"]
+
+        # Check if Ollama is running
+        if not self._ollama_client.is_available():
+            return ["ERROR: Ollama not running. Start with: ollama serve"]
+
+        # Build context from chat history (last 10 exchanges)
+        context = ""
+        for entry in self._cli_chat_history[-10:]:
+            context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+
+        # System prompt for the daemon assistant
+        system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
+You help users understand system security, daemon operations, and answer questions.
+Keep responses concise (2-4 sentences) since this is a terminal interface.
+If the user asks about daemon commands, remind them to use /command syntax (e.g., /help, /status, /alerts)."""
+
+        prompt = f"{context}User: {message}\nAssistant:"
+
+        try:
+            response = self._ollama_client.generate(prompt, system=system_prompt)
+            if response:
+                # Store in chat history
+                self._cli_chat_history.append({'user': message, 'assistant': response})
+                # Keep only last 20 exchanges
+                if len(self._cli_chat_history) > 20:
+                    self._cli_chat_history = self._cli_chat_history[-20:]
+
+                # Format response for display
+                lines = ["", f"You: {message}", ""]
+                # Word wrap response
+                words = response.split()
+                current_line = "  "
+                for word in words:
+                    if len(current_line) + len(word) + 1 > self.width - 4:
+                        lines.append(current_line)
+                        current_line = "  " + word
+                    else:
+                        current_line += (" " if len(current_line) > 2 else "") + word
+                if current_line.strip():
+                    lines.append(current_line)
+                lines.append("")
+                return lines
+            else:
+                return ["ERROR: No response from Ollama"]
+        except Exception as e:
+            return [f"ERROR: Ollama error: {e}"]
+
     def _start_cli(self):
-        """Start CLI mode for running commands."""
+        """Start CLI mode for running commands and chatting with Ollama."""
         curses.curs_set(1)  # Show cursor
         cmd_text = ""
         cursor_pos = 0
         show_help_popup = False
         help_popup_tool = None
 
-        # Build autocomplete list from DAEMON_TOOLS
-        all_completions = list(self.DAEMON_TOOLS.keys())
+        # Initialize activity timer
+        self._cli_last_activity = time.time()
+
+        # Build autocomplete list from DAEMON_TOOLS (with / prefix)
+        all_completions = ["/" + cmd for cmd in self.DAEMON_TOOLS.keys()]
+
+        # Check Ollama status
+        ollama_status = "connected" if (self._ollama_client and self._ollama_client.is_available()) else "offline"
 
         # Available commands help
         cli_help = [
-            "BOUNDARY DAEMON CLI - Press [F1] or type 'help <cmd>' for tool help",
+            "BOUNDARY DAEMON CLI + OLLAMA CHAT",
             "=" * 60,
             "",
-            "COMMANDS:",
+            f"  Ollama: {ollama_status}",
+            "",
+            "  Type a message to chat with Ollama",
+            "  Use /command for daemon commands (e.g., /help, /status)",
+            "",
+            "COMMANDS (prefix with /):",
         ]
         for cmd, info in self.DAEMON_TOOLS.items():
-            cli_help.append(f"  {cmd:12} - {info['desc']}")
+            cli_help.append(f"  /{cmd:11} - {info['desc']}")
         cli_help.extend([
             "",
-            "QUERY FILTERS:",
-            "  type:<TYPE>        - Filter by event type",
-            "  severity:>=HIGH    - Minimum severity",
-            "  contains:<text>    - Full text search",
-            "  --last 24h         - Time range",
+            "EXAMPLES:",
+            "  What is a security violation?     (chat with Ollama)",
+            "  /alerts                           (show daemon alerts)",
+            "  /query type:VIOLATION --last 24h  (search events)",
             "",
-            "Press [Tab] to autocomplete, [F1] for tool help",
+            "Auto-hides after 5 minutes of inactivity",
         ])
 
         while True:
+            # Check for inactivity timeout
+            if time.time() - self._cli_last_activity > self._cli_timeout:
+                # Clear results and exit
+                self._cli_results = []
+                self._cli_chat_history = []
+                break
+
             self.screen.clear()
 
-            # Draw CLI header
+            # Draw CLI header with Ollama status
             header = "─" * (self.width - 1)
             self._addstr(0, 0, " BOUNDARY CLI ", Colors.HEADER)
-            self._addstr(0, 15, header[15:], Colors.MUTED)
+            ollama_indicator = f" [Ollama: {ollama_status}] "
+            self._addstr(0, 15, ollama_indicator, Colors.STATUS_OK if ollama_status == "connected" else Colors.STATUS_WARN)
+            self._addstr(0, 15 + len(ollama_indicator), header[15 + len(ollama_indicator):], Colors.MUTED)
 
             # Draw results area (scrollable)
             results_height = self.height - 5
@@ -7444,6 +7535,8 @@ class Dashboard:
                         color = Colors.STATUS_ERROR
                     elif line.startswith("OK:") or "SUCCESS" in line:
                         color = Colors.STATUS_OK
+                    elif line.startswith("You:"):
+                        color = Colors.ACCENT
                     elif line.startswith("  ") or line.startswith("│"):
                         color = Colors.MUTED
                     elif "HIGH" in line:
@@ -7466,16 +7559,28 @@ class Dashboard:
 
             # Draw command line at bottom
             prompt_y = self.height - 2
-            self._addstr(prompt_y, 0, ":" + cmd_text + " ", Colors.HEADER)
+            prompt_char = ">" if not cmd_text.startswith("/") else ":"
+            self._addstr(prompt_y, 0, prompt_char + cmd_text + " ", Colors.HEADER)
             self._addstr(prompt_y, len(cmd_text) + 1, "_", Colors.ACCENT)
 
-            # Draw shortcuts
-            shortcuts = "[Enter] Run  [Tab] Complete  [F1] Help  [↑↓] History  [ESC] Exit"
+            # Draw shortcuts with timeout indicator
+            remaining = max(0, int(self._cli_timeout - (time.time() - self._cli_last_activity)))
+            timeout_str = f" [{remaining//60}:{remaining%60:02d}]"
+            shortcuts = f"[Enter] Send  [Tab] Complete  [F1] Help  [ESC] Exit{timeout_str}"
             self._addstr(self.height - 1, 0, shortcuts[:self.width-1], Colors.MUTED)
 
             self.screen.refresh()
 
+            # Use timeout to allow checking inactivity
+            self.screen.timeout(1000)  # 1 second timeout
             key = self.screen.getch()
+
+            if key == -1:  # Timeout, no key pressed
+                continue
+
+            # Key pressed - reset activity timer
+            self._cli_last_activity = time.time()
+
             if key == 27:  # ESC
                 break
             elif key in (curses.KEY_ENTER, 10, 13):
@@ -7485,10 +7590,17 @@ class Dashboard:
                         self._cli_history.append(cmd_text)
                     self._cli_history_index = len(self._cli_history)
 
-                    # Execute command
-                    self._execute_cli_command(cmd_text.strip())
+                    text = cmd_text.strip()
+                    if text.startswith("/"):
+                        # Execute as daemon command (strip the /)
+                        self._execute_cli_command(text[1:])
+                    else:
+                        # Send to Ollama
+                        response_lines = self._send_to_ollama(text)
+                        self._cli_results.extend(response_lines)
+
                     cmd_text = ""
-                    self._cli_results_scroll = 0
+                    self._cli_results_scroll = max(0, len(self._cli_results) - (self.height - 6))
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 cmd_text = cmd_text[:-1]
             elif key == curses.KEY_UP:
@@ -7516,8 +7628,8 @@ class Dashboard:
                     max_scroll = max(0, len(self._cli_results) - (self.height - 6))
                     self._cli_results_scroll = min(max_scroll, self._cli_results_scroll + 10)
             elif key == curses.KEY_F1 or key == 265:  # F1 - show help for current command
-                # Get the first word being typed
-                first_word = cmd_text.split()[0] if cmd_text.split() else ""
+                # Get the first word being typed (strip / for command lookup)
+                first_word = cmd_text.split()[0].lstrip("/") if cmd_text.split() else ""
                 if first_word in self.DAEMON_TOOLS:
                     help_popup_tool = first_word
                     show_help_popup = True
@@ -7525,26 +7637,27 @@ class Dashboard:
                     # Show general help
                     show_help_popup = True
                     help_popup_tool = None
-            elif key == 9:  # Tab - smart autocomplete
-                parts = cmd_text.split()
-                if len(parts) == 0 or (len(parts) == 1 and not cmd_text.endswith(' ')):
-                    # Complete command name
-                    prefix = parts[0] if parts else ""
-                    for comp in all_completions:
-                        if comp.startswith(prefix):
-                            cmd_text = comp + " "
-                            break
-                elif len(parts) >= 1:
-                    # Complete subcommand
-                    base_cmd = parts[0]
-                    if base_cmd in self.DAEMON_TOOLS:
-                        subcommands = self.DAEMON_TOOLS[base_cmd].get('subcommands', [])
-                        if subcommands:
-                            prefix = parts[1] if len(parts) > 1 else ""
-                            for sub in subcommands:
-                                if sub.startswith(prefix):
-                                    cmd_text = f"{base_cmd} {sub} "
-                                    break
+            elif key == 9:  # Tab - smart autocomplete (only for /commands)
+                if cmd_text.startswith("/"):
+                    parts = cmd_text.split()
+                    if len(parts) == 0 or (len(parts) == 1 and not cmd_text.endswith(' ')):
+                        # Complete command name
+                        prefix = parts[0] if parts else "/"
+                        for comp in all_completions:
+                            if comp.startswith(prefix):
+                                cmd_text = comp + " "
+                                break
+                    elif len(parts) >= 1:
+                        # Complete subcommand
+                        base_cmd = parts[0].lstrip("/")
+                        if base_cmd in self.DAEMON_TOOLS:
+                            subcommands = self.DAEMON_TOOLS[base_cmd].get('subcommands', [])
+                            if subcommands:
+                                prefix = parts[1] if len(parts) > 1 else ""
+                                for sub in subcommands:
+                                    if sub.startswith(prefix):
+                                        cmd_text = f"/{base_cmd} {sub} "
+                                        break
             elif 32 <= key <= 126:  # Printable characters
                 cmd_text += chr(key)
 
