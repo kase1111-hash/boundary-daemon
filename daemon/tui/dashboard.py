@@ -28,6 +28,7 @@ Keyboard Shortcuts:
 
 import json
 import logging
+import math
 import os
 import random
 import signal
@@ -117,6 +118,10 @@ class Colors:
     ACCENT = 7
     MATRIX_BRIGHT = 8
     MATRIX_DIM = 9
+    MATRIX_FADE1 = 10
+    MATRIX_FADE2 = 11
+    MATRIX_FADE3 = 12
+    LIGHTNING = 13  # Inverted flash for lightning bolt
 
     @staticmethod
     def init_colors(matrix_mode: bool = False):
@@ -145,56 +150,113 @@ class Colors:
         curses.init_pair(Colors.SELECTED, curses.COLOR_BLACK, curses.COLOR_GREEN)
         curses.init_pair(Colors.MUTED, curses.COLOR_GREEN, curses.COLOR_BLACK)
         curses.init_pair(Colors.ACCENT, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        # Matrix rain colors - bright to dim gradient
         curses.init_pair(Colors.MATRIX_BRIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(Colors.MATRIX_DIM, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.MATRIX_FADE1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.MATRIX_FADE2, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.MATRIX_FADE3, curses.COLOR_BLACK, curses.COLOR_BLACK)
+        # Lightning flash - inverted bright white on green
+        curses.init_pair(Colors.LIGHTNING, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
 
 class MatrixRain:
-    """Digital rain effect from The Matrix."""
+    """Digital rain effect from The Matrix with depth simulation."""
 
-    # Characters used in the Matrix digital rain (mix of half-width katakana and symbols)
-    MATRIX_CHARS = (
-        "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ"
-        "0123456789"
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "+-*/<>=$#@&"
-    )
+    # 5 depth layers - each with different character sets (simple=far, complex=near)
+    # Layer 0: Farthest - simple dots and lines
+    # Layer 4: Nearest - full katakana and symbols
+    DEPTH_CHARS = [
+        ".-·:;",  # Layer 0: Farthest - minimal
+        ".|!:;+-=",  # Layer 1: Simple ASCII
+        "0123456789+-*/<>=$#",  # Layer 2: Numbers and symbols
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",  # Layer 3: Alphanumeric
+        "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789$#@&",  # Layer 4: Nearest - full
+    ]
+
+    # Speed ranges for each depth layer (min, max) - farther = slower, nearer = faster
+    DEPTH_SPEEDS = [
+        (0.3, 0.5),   # Layer 0: Slowest (farthest)
+        (0.5, 0.8),   # Layer 1
+        (0.8, 1.2),   # Layer 2: Medium
+        (1.2, 1.8),   # Layer 3
+        (1.8, 2.5),   # Layer 4: Fastest (nearest)
+    ]
+
+    # Tail lengths for each depth (shorter = farther, longer = nearer)
+    DEPTH_LENGTHS = [
+        (3, 6),    # Layer 0
+        (4, 8),    # Layer 1
+        (6, 12),   # Layer 2
+        (8, 16),   # Layer 3
+        (12, 20),  # Layer 4
+    ]
+
+    # Distribution of drops across layers (more in middle layers for balance)
+    DEPTH_WEIGHTS = [0.10, 0.15, 0.30, 0.25, 0.20]
 
     def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
         self.drops: List[Dict] = []
+        self._target_drops = max(5, width // 10)  # More drops overall
         self._init_drops()
 
+        # Flicker state
+        self._frame_count = 0
+        self._global_flicker = 0.0  # 0-1 intensity of global flicker
+        self._intermittent_flicker = False  # Major flicker event active
+
     def _init_drops(self):
-        """Initialize rain drops at random positions."""
+        """Initialize rain drops at random positions across all depth layers."""
         self.drops = []
-        # Start with a few drops
-        for _ in range(max(3, self.width // 20)):
+        for _ in range(self._target_drops):
             self._add_drop()
 
-    def _add_drop(self):
-        """Add a new rain drop."""
+    def _add_drop(self, depth: Optional[int] = None):
+        """Add a new rain drop at a random or specified depth layer."""
+        if self.width <= 0:
+            return
+
+        # Choose depth layer based on weights if not specified
+        if depth is None:
+            depth = random.choices(range(5), weights=self.DEPTH_WEIGHTS)[0]
+
+        speed_min, speed_max = self.DEPTH_SPEEDS[depth]
+        len_min, len_max = self.DEPTH_LENGTHS[depth]
+
         self.drops.append({
             'x': random.randint(0, self.width - 1),
             'y': random.randint(-self.height, 0),
-            'speed': random.uniform(0.3, 1.0),
-            'length': random.randint(4, min(12, self.height // 2)),
-            'chars': [random.choice(self.MATRIX_CHARS) for _ in range(15)],
+            'speed': random.uniform(speed_min, speed_max),
+            'length': random.randint(len_min, min(len_max, self.height // 2)),
+            'char_offset': random.randint(0, len(self.DEPTH_CHARS[depth]) - 1),
+            'depth': depth,
             'phase': 0.0,
         })
 
     def update(self):
-        """Update rain drop positions."""
+        """Update rain drop positions and flicker state."""
+        self._frame_count += 1
+
+        # Update flicker states
+        # Rapid low-level flicker - subtle constant shimmer (sine wave oscillation)
+        self._global_flicker = 0.15 + 0.1 * math.sin(self._frame_count * 0.3)
+
+        # Intermittent major flicker - brief stutter every few seconds (2-8% chance per frame)
+        if random.random() < 0.003:
+            self._intermittent_flicker = True
+        elif self._intermittent_flicker and random.random() < 0.3:
+            self._intermittent_flicker = False
+
         new_drops = []
         for drop in self.drops:
             drop['phase'] += drop['speed']
             drop['y'] = int(drop['phase'])
 
-            # Randomly change characters for that flickering effect
-            if random.random() < 0.3:
-                idx = random.randint(0, len(drop['chars']) - 1)
-                drop['chars'][idx] = random.choice(self.MATRIX_CHARS)
+            # Roll through characters as the drop falls (faster roll for nearer drops)
+            roll_speed = 1 + drop['depth']  # Layers 0-4 roll at speeds 1-5
+            drop['char_offset'] = (drop['char_offset'] + roll_speed) % len(self.DEPTH_CHARS[drop['depth']])
 
             # Keep drop if still on screen
             if drop['y'] - drop['length'] < self.height:
@@ -202,95 +264,510 @@ class MatrixRain:
 
         self.drops = new_drops
 
-        # Occasionally add new drops
-        if random.random() < 0.15 and len(self.drops) < self.width // 8:
+        # Add new drops to maintain density
+        while len(self.drops) < self._target_drops:
             self._add_drop()
 
     def resize(self, width: int, height: int):
         """Handle terminal resize."""
+        old_width = self.width
         self.width = width
         self.height = height
+        self._target_drops = max(5, width // 10)
+
         # Remove drops that are now out of bounds
         self.drops = [d for d in self.drops if d['x'] < width]
 
+        # Add more drops if window got bigger
+        if width > old_width:
+            for _ in range(max(1, (width - old_width) // 10)):
+                self._add_drop()
+
     def render(self, screen):
-        """Render rain drops to screen."""
-        for drop in self.drops:
+        """Render rain drops with depth-based visual effects and flicker."""
+        # Sort drops by depth so farther ones render first (get overwritten by nearer)
+        sorted_drops = sorted(self.drops, key=lambda d: d['depth'])
+
+        for drop in sorted_drops:
+            depth = drop['depth']
+            chars = self.DEPTH_CHARS[depth]
+
+            # During intermittent flicker, skip rendering some drops randomly
+            if self._intermittent_flicker and random.random() < 0.4:
+                continue
+
             for i in range(drop['length']):
                 y = drop['y'] - i
                 if 0 <= y < self.height and 0 <= drop['x'] < self.width:
-                    char = drop['chars'][i % len(drop['chars'])]
+                    # Rapid low-level flicker - randomly skip some chars
+                    if random.random() < self._global_flicker * 0.3:
+                        continue
+
+                    # Character rolls through the charset as it falls
+                    char_idx = (drop['char_offset'] + i * 2) % len(chars)
+                    char = chars[char_idx]
+
+                    # More character mutation flicker for nearer drops
+                    if random.random() < 0.02 * (depth + 1):
+                        char = random.choice(chars)
+
+                    # Rapid flicker can also swap characters briefly
+                    if random.random() < self._global_flicker * 0.15:
+                        char = random.choice(chars)
+
                     try:
-                        if i == 0:
-                            # Bright white head of the drop
-                            screen.attron(curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD)
-                            screen.addstr(y, drop['x'], char)
-                            screen.attroff(curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD)
-                        elif i < 3:
-                            # Bright green near the head
-                            screen.attron(curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD)
-                            screen.addstr(y, drop['x'], char)
-                            screen.attroff(curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD)
-                        else:
-                            # Dimmer green for the tail
-                            screen.attron(curses.color_pair(Colors.MATRIX_DIM))
-                            screen.addstr(y, drop['x'], char)
-                            screen.attroff(curses.color_pair(Colors.MATRIX_DIM))
+                        self._render_char(screen, y, drop['x'], char, i, depth)
                     except curses.error:
                         pass
 
+    def _render_char(self, screen, y: int, x: int, char: str, pos: int, depth: int):
+        """Render a single character with depth-appropriate styling."""
+        # Depth 0 = farthest/dimmest, Depth 4 = nearest/brightest
+
+        if depth == 0:
+            # Farthest layer - very dim, no head highlight
+            if pos < 2:
+                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+            else:
+                attr = curses.color_pair(Colors.MATRIX_FADE3) | curses.A_DIM
+        elif depth == 1:
+            # Far layer - dim
+            if pos == 0:
+                attr = curses.color_pair(Colors.MATRIX_FADE1)
+            elif pos < 3:
+                attr = curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM
+            else:
+                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+        elif depth == 2:
+            # Middle layer - normal
+            if pos == 0:
+                attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+            elif pos < 3:
+                attr = curses.color_pair(Colors.MATRIX_DIM)
+            elif pos < 6:
+                attr = curses.color_pair(Colors.MATRIX_FADE1) | curses.A_DIM
+            else:
+                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+        elif depth == 3:
+            # Near layer - bright
+            if pos == 0:
+                attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+            elif pos == 1:
+                attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+            elif pos < 5:
+                attr = curses.color_pair(Colors.MATRIX_DIM)
+            elif pos < 9:
+                attr = curses.color_pair(Colors.MATRIX_FADE1)
+            else:
+                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
+        else:  # depth == 4
+            # Nearest layer - brightest, boldest
+            if pos == 0:
+                attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+            elif pos == 1:
+                attr = curses.color_pair(Colors.MATRIX_BRIGHT)
+            elif pos < 4:
+                attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+            elif pos < 8:
+                attr = curses.color_pair(Colors.MATRIX_DIM)
+            elif pos < 12:
+                attr = curses.color_pair(Colors.MATRIX_FADE1)
+            else:
+                attr = curses.color_pair(Colors.MATRIX_FADE2)
+
+        screen.attron(attr)
+        screen.addstr(y, x, char)
+        screen.attroff(attr)
+
+
+class LightningBolt:
+    """
+    Generates and renders dramatic lightning bolt across the screen.
+
+    Creates a jagged lightning bolt path from top to bottom with
+    screen flash and rapid flicker effect.
+    """
+
+    # Lightning bolt segment characters
+    BOLT_CHARS = ['/', '\\', '|', '⚡', '╲', '╱', '│', '┃']
+
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        self.path: List[Tuple[int, int]] = []  # (y, x) coordinates
+        self._generate_bolt()
+
+    def _generate_bolt(self):
+        """Generate a jagged lightning bolt path from top to bottom."""
+        self.path = []
+        if self.width <= 0 or self.height <= 0:
+            return
+
+        # Start from random position in top third
+        x = random.randint(self.width // 4, 3 * self.width // 4)
+        y = 0
+
+        while y < self.height:
+            self.path.append((y, x))
+
+            # Move down 1-3 rows
+            y += random.randint(1, 3)
+
+            # Jag left or right randomly
+            direction = random.choice([-2, -1, -1, 0, 1, 1, 2])
+            x = max(1, min(self.width - 2, x + direction))
+
+            # Occasionally add a branch
+            if random.random() < 0.15 and len(self.path) > 3:
+                branch_x = x + random.choice([-3, -2, 2, 3])
+                branch_y = y
+                for _ in range(random.randint(2, 5)):
+                    if 0 <= branch_x < self.width and branch_y < self.height:
+                        self.path.append((branch_y, branch_x))
+                        branch_y += 1
+                        branch_x += random.choice([-1, 0, 1])
+
+    def render(self, screen, flash_intensity: float = 1.0):
+        """
+        Render the lightning bolt with optional flash intensity.
+
+        Args:
+            screen: curses screen object
+            flash_intensity: 0.0-1.0, controls visibility (for flicker effect)
+        """
+        if flash_intensity < 0.3:
+            return  # Don't render during dim phase
+
+        for y, x in self.path:
+            if 0 <= y < self.height and 0 <= x < self.width:
+                try:
+                    char = random.choice(self.BOLT_CHARS)
+                    attr = curses.color_pair(Colors.LIGHTNING) | curses.A_BOLD
+                    if flash_intensity < 0.7:
+                        attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+                    screen.attron(attr)
+                    screen.addstr(y, x, char)
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
+    @staticmethod
+    def flash_screen(screen, width: int, height: int):
+        """Flash the entire screen white briefly."""
+        attr = curses.color_pair(Colors.LIGHTNING)
+        try:
+            for y in range(height):
+                screen.attron(attr)
+                screen.addstr(y, 0, ' ' * (width - 1))
+                screen.attroff(attr)
+        except curses.error:
+            pass
+
 
 class DashboardClient:
-    """Client for communicating with daemon."""
+    """Client for communicating with daemon via socket API."""
 
-    def __init__(self, socket_path: str = "/var/run/boundary-daemon/boundary.sock"):
+    # Socket paths to try in order
+    SOCKET_PATHS = [
+        '/var/run/boundary-daemon/boundary.sock',
+        os.path.expanduser('~/.agent-os/api/boundary.sock'),
+        './api/boundary.sock',
+    ]
+
+    # Windows TCP fallback
+    WINDOWS_HOST = '127.0.0.1'
+    WINDOWS_PORT = 19847
+
+    def __init__(self, socket_path: Optional[str] = None):
         self.socket_path = socket_path
         self._connected = False
+        self._demo_mode = False
+        self._token = self._resolve_token()
+        self._demo_event_offset = 0
+
+        # Try to find working socket
+        if not self.socket_path:
+            self.socket_path = self._find_socket()
+
+        # Test connection
+        self._connected = self._test_connection()
+        if not self._connected:
+            self._demo_mode = True
+            logger.info("Daemon not available, running in demo mode")
+
+    def _resolve_token(self) -> Optional[str]:
+        """Resolve API token from environment or file."""
+        # Environment variable
+        token = os.environ.get('BOUNDARY_API_TOKEN')
+        if token:
+            return token.strip()
+
+        # Token file
+        token_paths = [
+            './config/api_tokens.json',
+            os.path.expanduser('~/.agent-os/api_token'),
+            '/etc/boundary-daemon/api_token',
+        ]
+        for path in token_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r') as f:
+                        content = f.read().strip()
+                        if path.endswith('.json'):
+                            data = json.loads(content)
+                            if isinstance(data, dict) and 'token' in data:
+                                return data['token']
+                            elif isinstance(data, list) and data:
+                                return data[0].get('token')
+                        else:
+                            return content
+                except (IOError, json.JSONDecodeError):
+                    pass
+        return None
+
+    def _find_socket(self) -> str:
+        """Find available socket path."""
+        for path in self.SOCKET_PATHS:
+            if os.path.exists(path):
+                return path
+        return self.SOCKET_PATHS[0]  # Default
+
+    def _test_connection(self) -> bool:
+        """Test if daemon is reachable."""
+        try:
+            response = self._send_request('status')
+            return response.get('success', False)
+        except Exception:
+            return False
+
+    def _send_request(self, command: str, params: Optional[Dict] = None) -> Dict:
+        """Send request to daemon API."""
+        request = {
+            'command': command,
+            'params': params or {},
+        }
+        if self._token:
+            request['token'] = self._token
+
+        try:
+            if sys.platform == 'win32':
+                return self._send_tcp(request)
+            else:
+                return self._send_unix(request)
+        except Exception as e:
+            logger.debug(f"Request failed: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _send_unix(self, request: Dict) -> Dict:
+        """Send request via Unix socket."""
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        try:
+            sock.connect(self.socket_path)
+            sock.sendall(json.dumps(request).encode('utf-8'))
+            data = sock.recv(65536)
+            return json.loads(data.decode('utf-8'))
+        finally:
+            sock.close()
+
+    def _send_tcp(self, request: Dict) -> Dict:
+        """Send request via TCP (Windows)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        try:
+            sock.connect((self.WINDOWS_HOST, self.WINDOWS_PORT))
+            sock.sendall(json.dumps(request).encode('utf-8'))
+            data = sock.recv(65536)
+            return json.loads(data.decode('utf-8'))
+        finally:
+            sock.close()
 
     def connect(self) -> bool:
         """Test connection to daemon."""
-        try:
-            if os.path.exists(self.socket_path):
-                self._connected = True
-                return True
-        except:
-            pass
-        self._connected = False
-        return False
+        self._connected = self._test_connection()
+        self._demo_mode = not self._connected
+        return self._connected
+
+    def is_demo_mode(self) -> bool:
+        """Check if running in demo mode."""
+        return self._demo_mode
 
     def get_status(self) -> Dict:
         """Get daemon status."""
-        # In production, this would use Unix socket
-        # For now, return mock data
+        if self._demo_mode:
+            return self._demo_status()
+
+        response = self._send_request('status')
+        if response.get('success'):
+            status = response.get('status', {})
+            # Map API response to dashboard format
+            return {
+                'mode': status.get('mode', 'UNKNOWN').upper(),
+                'mode_since': datetime.utcnow().isoformat(),
+                'uptime': status.get('uptime_seconds', 0),
+                'events_today': status.get('events_today', 0),
+                'violations': status.get('tripwire_count', 0),
+                'tripwire_enabled': True,
+                'clock_monitor_enabled': status.get('online', False),
+                'network_attestation_enabled': status.get('network_state', 'unknown') != 'isolated',
+                'is_frozen': status.get('lockdown_active', False),
+            }
+        return self._demo_status()
+
+    def get_events(self, limit: int = 20) -> List[DashboardEvent]:
+        """Get recent events."""
+        if self._demo_mode:
+            return self._demo_events(limit)
+
+        response = self._send_request('get_events', {'count': limit})
+        if response.get('success'):
+            events = []
+            for e in response.get('events', []):
+                events.append(DashboardEvent(
+                    timestamp=e.get('timestamp', datetime.utcnow().isoformat()),
+                    event_type=e.get('event_type', 'UNKNOWN'),
+                    details=e.get('details', ''),
+                    severity=e.get('severity', 'INFO'),
+                    metadata=e.get('metadata', {}),
+                ))
+            return events
+        return self._demo_events(limit)
+
+    def get_alerts(self) -> List[DashboardAlert]:
+        """Get active alerts."""
+        if self._demo_mode:
+            return self._demo_alerts()
+
+        # Try to get alerts from daemon
+        response = self._send_request('get_alerts')
+        if response.get('success'):
+            alerts = []
+            for a in response.get('alerts', []):
+                alerts.append(DashboardAlert(
+                    alert_id=a.get('alert_id', ''),
+                    timestamp=a.get('timestamp', datetime.utcnow().isoformat()),
+                    severity=a.get('severity', 'MEDIUM'),
+                    message=a.get('message', ''),
+                    status=a.get('status', 'NEW'),
+                    source=a.get('source', ''),
+                ))
+            return alerts
+        return self._demo_alerts()
+
+    def get_sandboxes(self) -> List[SandboxStatus]:
+        """Get active sandboxes."""
+        if self._demo_mode:
+            return self._demo_sandboxes()
+
+        response = self._send_request('get_sandboxes')
+        if response.get('success'):
+            sandboxes = []
+            for s in response.get('sandboxes', []):
+                sandboxes.append(SandboxStatus(
+                    sandbox_id=s.get('sandbox_id', ''),
+                    profile=s.get('profile', 'standard'),
+                    status=s.get('status', 'unknown'),
+                    memory_used=s.get('memory_used', 0),
+                    memory_limit=s.get('memory_limit', 0),
+                    cpu_percent=s.get('cpu_percent', 0),
+                    uptime=s.get('uptime', 0),
+                ))
+            return sandboxes
+        return self._demo_sandboxes()
+
+    def get_siem_status(self) -> Dict:
+        """Get SIEM shipping status."""
+        if self._demo_mode:
+            return self._demo_siem()
+
+        response = self._send_request('get_siem_status')
+        if response.get('success'):
+            return response.get('siem_status', self._demo_siem())
+        return self._demo_siem()
+
+    def set_mode(self, mode: str, reason: str = '') -> Tuple[bool, str]:
+        """Request mode change."""
+        if self._demo_mode:
+            return False, "Demo mode - daemon not connected"
+
+        response = self._send_request('set_mode', {
+            'mode': mode.lower(),
+            'operator': 'human',
+            'reason': reason,
+        })
+        if response.get('success'):
+            return True, response.get('message', 'Mode changed')
+        return False, response.get('error', 'Mode change failed')
+
+    def acknowledge_alert(self, alert_id: str) -> Tuple[bool, str]:
+        """Acknowledge an alert."""
+        if self._demo_mode:
+            return True, "Demo mode - alert acknowledged locally"
+
+        response = self._send_request('acknowledge_alert', {'alert_id': alert_id})
+        if response.get('success'):
+            return True, response.get('message', 'Alert acknowledged')
+        return False, response.get('error', 'Failed to acknowledge alert')
+
+    def export_events(self, start_time: Optional[str] = None,
+                      end_time: Optional[str] = None) -> List[Dict]:
+        """Export events for a time range."""
+        if self._demo_mode:
+            return [e.__dict__ for e in self._demo_events(100)]
+
+        params = {}
+        if start_time:
+            params['start_time'] = start_time
+        if end_time:
+            params['end_time'] = end_time
+        params['count'] = 1000
+
+        response = self._send_request('get_events', params)
+        if response.get('success'):
+            return response.get('events', [])
+        return []
+
+    # Demo mode data generators
+    def _demo_status(self) -> Dict:
+        """Generate demo status."""
+        modes = ['TRUSTED', 'RESTRICTED', 'AIRGAP']
         return {
-            'mode': 'TRUSTED',
+            'mode': modes[int(time.time() / 30) % len(modes)],
             'mode_since': datetime.utcnow().isoformat(),
-            'uptime': 3600,
-            'events_today': 1247,
-            'violations': 0,
+            'uptime': int(time.time()) % 86400,
+            'events_today': 1247 + int(time.time()) % 100,
+            'violations': random.randint(0, 2),
             'tripwire_enabled': True,
             'clock_monitor_enabled': True,
             'network_attestation_enabled': True,
             'is_frozen': False,
         }
 
-    def get_events(self, limit: int = 20) -> List[DashboardEvent]:
-        """Get recent events."""
-        # Mock data for demonstration
+    def _demo_events(self, limit: int) -> List[DashboardEvent]:
+        """Generate demo events with variety."""
         events = []
         base_time = datetime.utcnow()
+        self._demo_event_offset = (self._demo_event_offset + 1) % 100
+
         event_types = [
             ("MODE_CHANGE", "INFO", "Mode transitioned to TRUSTED"),
             ("POLICY_DECISION", "INFO", "Tool request approved: file_read"),
-            ("SANDBOX_START", "INFO", "Sandbox sandbox-001 started"),
+            ("SANDBOX_START", "INFO", "Sandbox sandbox-{:03d} started"),
             ("TOOL_REQUEST", "INFO", "Agent requested network access"),
             ("HEALTH_CHECK", "INFO", "Health check passed"),
+            ("API_REQUEST", "INFO", "API request from integration"),
+            ("TRIPWIRE", "WARN", "File modification detected: /etc/passwd"),
+            ("CLOCK_DRIFT", "WARN", "Clock drift detected: 45s"),
+            ("VIOLATION", "ERROR", "Unauthorized tool access attempt"),
+            ("PII_DETECTED", "WARN", "PII detected in agent output"),
         ]
 
-        for i in range(min(limit, 10)):
-            etype, sev, details = event_types[i % len(event_types)]
+        for i in range(min(limit, 15)):
+            idx = (i + self._demo_event_offset) % len(event_types)
+            etype, sev, details = event_types[idx]
+            details = details.format(i) if '{' in details else details
             events.append(DashboardEvent(
-                timestamp=(base_time - timedelta(seconds=i*30)).isoformat(),
+                timestamp=(base_time - timedelta(seconds=i*30 + random.randint(0, 10))).isoformat(),
                 event_type=etype,
                 details=details,
                 severity=sev,
@@ -298,15 +775,14 @@ class DashboardClient:
 
         return events
 
-    def get_alerts(self) -> List[DashboardAlert]:
-        """Get active alerts."""
-        # Mock data
-        return [
+    def _demo_alerts(self) -> List[DashboardAlert]:
+        """Generate demo alerts."""
+        alerts = [
             DashboardAlert(
                 alert_id="alert-001",
                 timestamp=datetime.utcnow().isoformat(),
                 severity="HIGH",
-                message="Prompt injection attempt detected",
+                message="Prompt injection attempt detected in agent input",
                 status="NEW",
                 source="prompt_injection",
             ),
@@ -314,34 +790,61 @@ class DashboardClient:
                 alert_id="alert-002",
                 timestamp=(datetime.utcnow() - timedelta(hours=1)).isoformat(),
                 severity="MEDIUM",
-                message="Clock drift warning (150s)",
+                message="Clock drift warning (150s) - NTP sync recommended",
                 status="ACKNOWLEDGED",
                 source="clock_monitor",
             ),
         ]
+        # Randomly add more alerts
+        if random.random() < 0.3:
+            alerts.append(DashboardAlert(
+                alert_id=f"alert-{random.randint(100, 999)}",
+                timestamp=(datetime.utcnow() - timedelta(minutes=random.randint(5, 60))).isoformat(),
+                severity=random.choice(["LOW", "MEDIUM", "HIGH"]),
+                message=random.choice([
+                    "Unusual network activity detected",
+                    "Memory usage threshold exceeded",
+                    "Configuration file modified",
+                    "Authentication failure detected",
+                ]),
+                status="NEW",
+                source="monitor",
+            ))
+        return alerts
 
-    def get_sandboxes(self) -> List[SandboxStatus]:
-        """Get active sandboxes."""
-        return [
+    def _demo_sandboxes(self) -> List[SandboxStatus]:
+        """Generate demo sandbox status."""
+        sandboxes = [
             SandboxStatus(
                 sandbox_id="sandbox-001",
                 profile="standard",
                 status="running",
-                memory_used=256*1024*1024,
+                memory_used=256*1024*1024 + random.randint(0, 100*1024*1024),
                 memory_limit=1024*1024*1024,
-                cpu_percent=25.5,
-                uptime=1800,
+                cpu_percent=25.5 + random.random() * 20,
+                uptime=1800 + int(time.time()) % 3600,
             ),
         ]
+        if random.random() < 0.5:
+            sandboxes.append(SandboxStatus(
+                sandbox_id="sandbox-002",
+                profile="restricted",
+                status="running",
+                memory_used=128*1024*1024 + random.randint(0, 50*1024*1024),
+                memory_limit=512*1024*1024,
+                cpu_percent=10.0 + random.random() * 15,
+                uptime=600 + random.randint(0, 600),
+            ))
+        return sandboxes
 
-    def get_siem_status(self) -> Dict:
-        """Get SIEM shipping status."""
+    def _demo_siem(self) -> Dict:
+        """Generate demo SIEM status."""
         return {
             'connected': True,
             'backend': 'kafka',
             'last_shipped': datetime.utcnow().isoformat(),
-            'queue_depth': 12,
-            'events_shipped_today': 5432,
+            'queue_depth': random.randint(5, 50),
+            'events_shipped_today': 5432 + int(time.time()) % 1000,
         }
 
 
@@ -380,6 +883,13 @@ class Dashboard:
         # Layout
         self.height = 0
         self.width = 0
+
+        # Lightning effect state (for matrix mode)
+        self._lightning_next_time = 0.0  # When to trigger next lightning
+        self._lightning_active = False
+        self._lightning_bolt: Optional[LightningBolt] = None
+        self._lightning_flickers_remaining = 0
+        self._lightning_flash_phase = 0
 
     def run(self):
         """Run the dashboard."""
@@ -506,6 +1016,8 @@ class Dashboard:
             screen.bkgd(' ', curses.color_pair(Colors.MATRIX_DIM))
             self._update_dimensions()
             self.matrix_rain = MatrixRain(self.width, self.height)
+            # Schedule first lightning strike (5-30 minutes from now)
+            self._lightning_next_time = time.time() + random.uniform(300, 1800)
         else:
             screen.timeout(int(self.refresh_interval * 1000))
 
@@ -518,11 +1030,17 @@ class Dashboard:
 
         while self.running:
             try:
+                old_width, old_height = self.width, self.height
                 self._update_dimensions()
 
-                # Update matrix rain animation
+                # Sync matrix rain dimensions if window resized
                 if self.matrix_mode and self.matrix_rain:
+                    if self.width != old_width or self.height != old_height:
+                        self.matrix_rain.resize(self.width, self.height)
                     self.matrix_rain.update()
+
+                    # Check for lightning strike
+                    self._update_lightning()
 
                 self._draw()
 
@@ -551,6 +1069,51 @@ class Dashboard:
         """Update terminal dimensions."""
         self.height, self.width = self.screen.getmaxyx()
 
+    def _update_lightning(self):
+        """Check and update lightning strike state."""
+        current_time = time.time()
+
+        # Check if it's time for a lightning strike
+        if not self._lightning_active and current_time >= self._lightning_next_time:
+            # Start lightning strike!
+            self._lightning_active = True
+            self._lightning_bolt = LightningBolt(self.width, self.height)
+            self._lightning_flickers_remaining = random.randint(3, 5)
+            self._lightning_flash_phase = 0
+
+        # Update active lightning
+        if self._lightning_active:
+            self._lightning_flash_phase += 1
+
+            # Each flicker cycle: bright(2) -> dim(1) -> off(1) = 4 frames per flicker
+            # At 100ms per frame, 4 frames = 400ms, so 3-5 flickers = 1.2-2 seconds total
+            # But we want 3-5 flickers in ~0.5 second, so faster: 2 frames per flicker
+            cycle_length = 2
+            cycles_done = self._lightning_flash_phase // cycle_length
+
+            if cycles_done >= self._lightning_flickers_remaining:
+                # Lightning is done
+                self._lightning_active = False
+                self._lightning_bolt = None
+                # Schedule next lightning (5-30 minutes from now)
+                self._lightning_next_time = current_time + random.uniform(300, 1800)
+
+    def _render_lightning(self):
+        """Render the lightning bolt with flicker effect."""
+        if not self._lightning_bolt:
+            return
+
+        # Calculate flash intensity based on phase
+        # Alternate between bright and dim for flicker effect
+        cycle_pos = self._lightning_flash_phase % 2
+        if cycle_pos == 0:
+            # Bright flash
+            LightningBolt.flash_screen(self.screen, self.width, self.height)
+            self._lightning_bolt.render(self.screen, 1.0)
+        else:
+            # Dim phase - just show the bolt, no full screen flash
+            self._lightning_bolt.render(self.screen, 0.5)
+
     def _refresh_data(self):
         """Refresh all data from daemon."""
         try:
@@ -574,8 +1137,12 @@ class Dashboard:
             self._show_mode_ceremony()
         elif key == ord('a') or key == ord('A'):
             self._acknowledge_alert()
+        elif key == ord('e') or key == ord('E'):
+            self._export_events()
         elif key == ord('/'):
             self._start_search()
+        elif key == 27:  # ESC - clear search filter
+            self.event_filter = ""
         elif key == curses.KEY_UP:
             self.scroll_offset = max(0, self.scroll_offset - 1)
         elif key == curses.KEY_DOWN:
@@ -597,6 +1164,10 @@ class Dashboard:
         if self.matrix_mode and self.matrix_rain:
             self.matrix_rain.render(self.screen)
 
+            # Render lightning bolt if active
+            if self._lightning_active and self._lightning_bolt:
+                self._render_lightning()
+
         if self.show_help:
             self._draw_help()
         else:
@@ -608,10 +1179,15 @@ class Dashboard:
 
     def _draw_header(self):
         """Draw the header bar."""
-        header = f" BOUNDARY DAEMON  │  Mode: {self.status.get('mode', 'UNKNOWN')}  │  "
+        header = " BOUNDARY DAEMON"
+        if self.client.is_demo_mode():
+            header += " [DEMO]"
+        header += f"  │  Mode: {self.status.get('mode', 'UNKNOWN')}  │  "
         if self.status.get('is_frozen'):
             header += "⚠ MODE FROZEN  │  "
         header += f"Uptime: {self._format_duration(self.status.get('uptime', 0))}"
+        if self.event_filter:
+            header += f"  │  Filter: {self.event_filter}"
 
         # Pad to full width
         header = header.ljust(self.width - 1)
@@ -828,7 +1404,7 @@ class Dashboard:
 
     def _draw_footer(self):
         """Draw the footer bar."""
-        shortcuts = "[m]Mode [a]Ack [r]Refresh [/]Search [?]Help [q]Quit"
+        shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
         footer = f" {shortcuts} ".ljust(self.width - 1)
 
         row = self.height - 1
@@ -929,26 +1505,139 @@ class Dashboard:
             pass
 
     def _show_mode_ceremony(self):
-        """Show mode change ceremony dialog."""
-        # In production, this would integrate with ceremony manager
-        self.screen.clear()
-        self._addstr(self.height // 2, self.width // 2 - 10, "Mode ceremony not implemented", Colors.STATUS_WARN)
-        self.screen.refresh()
-        time.sleep(1)
+        """Show mode change dialog and allow mode selection."""
+        modes = ['OPEN', 'RESTRICTED', 'TRUSTED', 'AIRGAP', 'COLDROOM', 'LOCKDOWN']
+        current_mode = self.status.get('mode', 'UNKNOWN')
+        selected = 0
+
+        # Find current mode index
+        for i, m in enumerate(modes):
+            if m == current_mode:
+                selected = i
+                break
+
+        while True:
+            self.screen.clear()
+
+            # Draw mode selection dialog
+            box_width = 40
+            box_height = len(modes) + 6
+            start_y = (self.height - box_height) // 2
+            start_x = (self.width - box_width) // 2
+
+            self._draw_box(start_y, start_x, box_width, box_height, "MODE CHANGE")
+
+            # Instructions
+            self._addstr(start_y + 1, start_x + 2, "Select mode (↑↓) Enter to confirm", Colors.MUTED)
+            self._addstr(start_y + 2, start_x + 2, "Press ESC to cancel", Colors.MUTED)
+
+            # Mode options
+            for i, mode in enumerate(modes):
+                row = start_y + 4 + i
+                if i == selected:
+                    self._addstr(row, start_x + 2, f"> {mode}", Colors.SELECTED, bold=True)
+                else:
+                    color = Colors.STATUS_OK if mode == current_mode else Colors.NORMAL
+                    self._addstr(row, start_x + 4, mode, color)
+
+            # Render matrix rain if in matrix mode
+            if self.matrix_mode and self.matrix_rain:
+                self.matrix_rain.render(self.screen)
+
+            self.screen.refresh()
+
+            key = self.screen.getch()
+            if key == 27:  # ESC
+                return
+            elif key == curses.KEY_UP:
+                selected = (selected - 1) % len(modes)
+            elif key == curses.KEY_DOWN:
+                selected = (selected + 1) % len(modes)
+            elif key in (curses.KEY_ENTER, 10, 13):
+                new_mode = modes[selected]
+                if new_mode != current_mode:
+                    success, message = self.client.set_mode(new_mode)
+                    self._show_message(message, Colors.STATUS_OK if success else Colors.STATUS_ERROR)
+                    if success:
+                        self._refresh_data()
+                return
 
     def _acknowledge_alert(self):
-        """Acknowledge selected alert."""
-        # In production, this would integrate with alert manager
-        if self.alerts:
-            for alert in self.alerts:
-                if alert.status == "NEW":
+        """Acknowledge the first unacknowledged alert."""
+        for alert in self.alerts:
+            if alert.status == "NEW":
+                success, message = self.client.acknowledge_alert(alert.alert_id)
+                if success:
                     alert.status = "ACKNOWLEDGED"
-                    break
+                    self._show_message(f"Alert {alert.alert_id} acknowledged", Colors.STATUS_OK)
+                else:
+                    self._show_message(message, Colors.STATUS_ERROR)
+                return
+        self._show_message("No unacknowledged alerts", Colors.MUTED)
+
+    def _export_events(self):
+        """Export events to a JSON file."""
+        export_path = f"boundary_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        try:
+            events = self.client.export_events()
+            with open(export_path, 'w') as f:
+                json.dump(events, f, indent=2, default=str)
+            self._show_message(f"Exported {len(events)} events to {export_path}", Colors.STATUS_OK)
+        except Exception as e:
+            self._show_message(f"Export failed: {e}", Colors.STATUS_ERROR)
 
     def _start_search(self):
-        """Start event search/filter."""
-        # In production, this would show a search input
-        pass
+        """Start event search/filter with text input."""
+        curses.curs_set(1)  # Show cursor
+        search_text = ""
+
+        while True:
+            self.screen.clear()
+
+            # Draw search bar at top
+            self._addstr(0, 0, "Search: ", Colors.HEADER)
+            self._addstr(0, 8, search_text + "_", Colors.NORMAL)
+            self._addstr(0, self.width - 20, "[Enter] Apply [ESC] Cancel", Colors.MUTED)
+
+            # Show filtered events preview
+            filtered = [e for e in self.events if search_text.lower() in e.event_type.lower()
+                       or search_text.lower() in e.details.lower()]
+            self._addstr(2, 0, f"Matching events: {len(filtered)}", Colors.MUTED)
+
+            for i, event in enumerate(filtered[:10]):
+                row = 4 + i
+                if row >= self.height - 1:
+                    break
+                self._addstr(row, 2, event.time_short, Colors.MUTED)
+                self._addstr(row, 12, event.event_type[:15], Colors.ACCENT)
+                self._addstr(row, 28, event.details[:self.width-30], Colors.NORMAL)
+
+            self.screen.refresh()
+
+            key = self.screen.getch()
+            if key == 27:  # ESC
+                self.event_filter = ""
+                break
+            elif key in (curses.KEY_ENTER, 10, 13):
+                self.event_filter = search_text
+                break
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                search_text = search_text[:-1]
+            elif 32 <= key <= 126:  # Printable characters
+                search_text += chr(key)
+
+        curses.curs_set(0)  # Hide cursor
+
+    def _show_message(self, message: str, color: int = Colors.NORMAL):
+        """Show a temporary message overlay."""
+        msg_width = min(len(message) + 4, self.width - 4)
+        msg_x = (self.width - msg_width) // 2
+        msg_y = self.height // 2
+
+        self._draw_box(msg_y - 1, msg_x - 2, msg_width + 4, 3, "")
+        self._addstr(msg_y, msg_x, message[:msg_width], color)
+        self.screen.refresh()
+        time.sleep(1.5)
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
