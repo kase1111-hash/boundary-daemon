@@ -1609,7 +1609,7 @@ class AlleyScene:
         # OPEN sign animation state
         self._open_sign_phase = 0  # 0=off, 1=O, 2=OP, 3=OPE, 4=OPEN, 5-9=flash
         self._open_sign_timer = 0
-        self._open_sign_speed = 20  # Frames per phase
+        self._open_sign_speed = 2  # Frames per phase (10x faster)
         # Cloud layer with wisps
         self._clouds: List[Dict] = []
         self._init_clouds()
@@ -1674,14 +1674,14 @@ class AlleyScene:
                 ]),
             })
 
-        # Create smaller main clouds - move slower
-        num_clouds = max(2, self.width // 50)
+        # Create smaller main clouds - move very slow
+        num_clouds = max(3, self.width // 40)  # More clouds
         for i in range(num_clouds):
-            # Main cloud body - slow
+            # Main cloud body - very slow
             self._clouds.append({
                 'x': random.uniform(0, self.width),
                 'y': random.randint(3, 6),  # Upper area
-                'speed': random.uniform(0.03, 0.08),  # Slow movement for small clouds
+                'speed': random.uniform(0.01, 0.03),  # Very slow movement for small clouds
                 'type': 'main',
                 'chars': random.choice([
                     ['  ___  ', ' (   ) ', '(_____)', '  ~~~  '],
@@ -1694,11 +1694,27 @@ class AlleyScene:
                 self._clouds.append({
                     'x': random.uniform(0, self.width),
                     'y': random.randint(6, 12),
-                    'speed': random.uniform(0.02, 0.05),  # Slowest for wisps
+                    'speed': random.uniform(0.005, 0.02),  # Even slower wisps
                     'type': 'wisp',
                     'char': random.choice(['~', '≈', '-', '.']),
                     'length': random.randint(3, 8),
                 })
+
+        # Create additional lower clouds - slowest, drift near buildings
+        num_low_clouds = max(2, self.width // 60)
+        for i in range(num_low_clouds):
+            self._clouds.append({
+                'x': random.uniform(0, self.width),
+                'y': random.randint(10, 18),  # Lower on screen, near building tops
+                'speed': random.uniform(0.008, 0.02),  # Very slow drift
+                'type': 'main',
+                'chars': random.choice([
+                    ['  ___  ', ' (   ) ', '(_____)', '  ~~~  '],
+                    [' ~~~ ', '(   )', ' ~~~ '],
+                    ['_____', '(   )', '~~~~~'],
+                    ['   ~~~   ', ' (     ) ', '(       )', ' ~~~~~~~ '],
+                ]),
+            })
 
         # Create HUGE foreground clouds - biggest, fastest, rendered on top
         num_foreground = max(1, self.width // 100)
@@ -2610,7 +2626,7 @@ class AlleyScene:
         self._draw_crosswalk(self._crosswalk_x, curb_y, street_y)
 
         # Draw street sign near crosswalk (shifted 12 chars right)
-        sign_x = self._crosswalk_x + self._crosswalk_width // 2 - len(self.STREET_SIGN[0]) // 2 + 12
+        sign_x = self._crosswalk_x + self._crosswalk_width // 2 - len(self.STREET_SIGN[0]) // 2 + 16
         sign_y = ground_y - len(self.STREET_SIGN) + 1
         self._draw_street_sign(sign_x, sign_y)
 
@@ -2631,42 +2647,42 @@ class AlleyScene:
                         self.scene[py][px] = (char, Colors.MATRIX_DIM)
 
     def _draw_building_numbers(self, ground_y: int):
-        """Draw building street numbers near doorways."""
-        # Building 1 numbers - "1742" and "1744" for the two doors
+        """Draw building street numbers beside doorways in gold."""
+        # Building 1 numbers - to the side of doors
         # Find door positions in BUILDING sprite
-        door_row = len(self.BUILDING) - 7  # Row with doors
-        # Draw numbers above doors
-        number1_x = self._building_x + 14  # Above first door
-        number2_x = self._building_x + 42  # Above second door
-        number_y = self._building_y + door_row - 1
+        door_row = len(self.BUILDING) - 5  # Row beside doors (middle of door)
+        # Draw numbers to the LEFT side of each door
+        number1_x = self._building_x + 8  # Left side of first door
+        number2_x = self._building_x + 36  # Left side of second door
+        number_y = self._building_y + door_row
 
-        # Building 1 - odd side (1741, 1743)
+        # Building 1 - odd side (1741, 1743) - vertical numbers beside door
         numbers1 = "1741"
         numbers2 = "1743"
         for i, char in enumerate(numbers1):
-            px = number1_x + i
-            if 0 <= px < self.width - 1 and 0 <= number_y < self.height:
-                self.scene[number_y][px] = (char, Colors.ALLEY_LIGHT)
+            py = number_y + i
+            if 0 <= number1_x < self.width - 1 and 0 <= py < self.height:
+                self.scene[py][number1_x] = (char, Colors.DOOR_KNOB_GOLD)
         for i, char in enumerate(numbers2):
-            px = number2_x + i
-            if 0 <= px < self.width - 1 and 0 <= number_y < self.height:
-                self.scene[number_y][px] = (char, Colors.ALLEY_LIGHT)
+            py = number_y + i
+            if 0 <= number2_x < self.width - 1 and 0 <= py < self.height:
+                self.scene[py][number2_x] = (char, Colors.DOOR_KNOB_GOLD)
 
         # Building 2 numbers - even side (1742, 1744)
         if self._building2_x > 0:
-            number3_x = self._building2_x + 14
-            number4_x = self._building2_x + 42
-            number_y2 = self._building2_y + door_row - 1
+            number3_x = self._building2_x + 8  # Left side of first door
+            number4_x = self._building2_x + 36  # Left side of second door
+            number_y2 = self._building2_y + door_row
             numbers3 = "1742"
             numbers4 = "1744"
             for i, char in enumerate(numbers3):
-                px = number3_x + i
-                if 0 <= px < self.width - 1 and 0 <= number_y2 < self.height:
-                    self.scene[number_y2][px] = (char, Colors.ALLEY_LIGHT)
+                py = number_y2 + i
+                if 0 <= number3_x < self.width - 1 and 0 <= py < self.height:
+                    self.scene[py][number3_x] = (char, Colors.DOOR_KNOB_GOLD)
             for i, char in enumerate(numbers4):
-                px = number4_x + i
-                if 0 <= px < self.width - 1 and 0 <= number_y2 < self.height:
-                    self.scene[number_y2][px] = (char, Colors.ALLEY_LIGHT)
+                py = number_y2 + i
+                if 0 <= number4_x < self.width - 1 and 0 <= py < self.height:
+                    self.scene[py][number4_x] = (char, Colors.DOOR_KNOB_GOLD)
 
     def _draw_street_lights(self, ground_y: int):
         """Draw street lights along the scene and store positions for flicker effect."""
@@ -4025,8 +4041,8 @@ class AlleyScene:
             draw_character(self._woman_red_x, woman_sprite, Colors.SHADOW_RED, is_blonde=True)
 
         elif self._woman_red_state == 'woman_waves':
-            # Draw Woman waving
-            wave_frame = (self._woman_red_timer // 10) % len(self.WOMAN_RED_WAVE_FRAMES)
+            # Draw Woman waving (10x faster)
+            wave_frame = (self._woman_red_timer // 1) % len(self.WOMAN_RED_WAVE_FRAMES)
             woman_sprite = self.WOMAN_RED_WAVE_FRAMES[wave_frame]
             draw_character(self._woman_red_x, woman_sprite, Colors.SHADOW_RED, is_blonde=True)
 
