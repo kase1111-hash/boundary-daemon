@@ -4826,15 +4826,23 @@ class DashboardClient:
         # Resolve token after finding socket (token might be near socket)
         self._token = self._resolve_token()
 
-        # Test connection - try socket first, then TCP
-        self._connected = self._test_connection()
-
-        # On Windows (or if socket fails), try TCP connection
-        if not self._connected:
+        # On Windows, try TCP first (more reliable than Unix sockets)
+        if sys.platform == 'win32':
             if self._try_tcp_connection():
                 self._connected = True
                 self._use_tcp = True
                 logger.info(f"Connected to daemon via TCP on port {self.WINDOWS_PORT}")
+            else:
+                # Fallback to socket test (unlikely to work on Windows)
+                self._connected = self._test_connection()
+        else:
+            # On Unix, try socket first, then TCP as fallback
+            self._connected = self._test_connection()
+            if not self._connected:
+                if self._try_tcp_connection():
+                    self._connected = True
+                    self._use_tcp = True
+                    logger.info(f"Connected to daemon via TCP on port {self.WINDOWS_PORT}")
 
         if not self._connected:
             self._demo_mode = True
@@ -5442,9 +5450,10 @@ class Dashboard:
     """
 
     def __init__(self, refresh_interval: float = 2.0, socket_path: Optional[str] = None,
-                 matrix_mode: bool = False):
+                 matrix_mode: bool = False, client: Optional['DashboardClient'] = None):
         self.refresh_interval = refresh_interval
-        self.client = DashboardClient(socket_path or "/var/run/boundary-daemon/boundary.sock")
+        # Use pre-created client if provided, otherwise create new one
+        self.client = client or DashboardClient(socket_path)
         self.running = False
         self.screen = None
         self.selected_panel = PanelType.STATUS
@@ -6032,6 +6041,22 @@ class Dashboard:
         row = y + 1
         col = x + 2
 
+        # Connection status
+        if self.client.is_demo_mode():
+            self._addstr(row, col, "Connection: ", Colors.MUTED)
+            self._addstr(row, col + 12, "DEMO MODE", Colors.STATUS_ERROR, bold=True)
+            row += 1
+            self._addstr(row, col, "(No daemon)", Colors.MUTED)
+            row += 1
+        else:
+            self._addstr(row, col, "Connection: ", Colors.MUTED)
+            if self.client._use_tcp:
+                conn_text = f"TCP:{self.client.WINDOWS_PORT}"
+            else:
+                conn_text = "Socket"
+            self._addstr(row, col + 12, conn_text, Colors.STATUS_OK)
+            row += 1
+
         # Mode
         mode = self.status.get('mode', 'UNKNOWN')
         mode_color = Colors.STATUS_OK if mode in ('TRUSTED', 'AIRGAP', 'COLDROOM') else Colors.STATUS_WARN
@@ -6511,8 +6536,35 @@ def run_dashboard(refresh_interval: float = 2.0, socket_path: Optional[str] = No
         socket_path: Path to daemon socket
         matrix_mode: Enable Matrix-style theme with digital rain
     """
+    # Show connection status before entering curses mode
+    print("Connecting to Boundary Daemon...")
+
+    # Create client first to check connection
+    client = DashboardClient(socket_path)
+
+    if client.is_demo_mode():
+        print("\n" + "=" * 60)
+        print("WARNING: Could not connect to Boundary Daemon")
+        print("=" * 60)
+        print("\nSearched for daemon at:")
+        for path in client._socket_paths[:5]:
+            exists = "FOUND" if os.path.exists(path) else "not found"
+            print(f"  - {path} [{exists}]")
+        if sys.platform == 'win32':
+            print(f"  - TCP 127.0.0.1:{client.WINDOWS_PORT} [not responding]")
+        print("\nRunning in DEMO MODE with simulated data.")
+        print("To connect to real daemon, start boundary-daemon.exe first.")
+        print("=" * 60 + "\n")
+        import time
+        time.sleep(2)  # Give user time to read
+    else:
+        if client._use_tcp:
+            print(f"Connected to daemon via TCP on port {client.WINDOWS_PORT}")
+        else:
+            print(f"Connected to daemon at {client.socket_path}")
+
     dashboard = Dashboard(refresh_interval=refresh_interval, socket_path=socket_path,
-                         matrix_mode=matrix_mode)
+                         matrix_mode=matrix_mode, client=client)
     dashboard.run()
 
 
