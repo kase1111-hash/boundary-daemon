@@ -1137,16 +1137,27 @@ class AlleyScene:
         "   ||  ",
     ]
 
-    # Car sprites - large side views (3 rows tall, longer)
+    # Car sprites - larger side views (4 rows tall, wider) with filled body panels
+    # Body panels use █ (solid block) to be colored, structure uses regular chars
     CAR_RIGHT = [
-        "    ___[######]___    ",
-        "   |   |====|    |    ",
-        "  (o)============(o)  ",
+        "     ___[########]____     ",
+        "    |███|  ====  |████|    ",
+        "    |███|________|████|    ",
+        "   (@)================(@)  ",
     ]
     CAR_LEFT = [
-        "    ___[######]___    ",
-        "   |    |====|   |    ",
-        "  (o)============(o)  ",
+        "     ____[########]___     ",
+        "    |████|  ====  |███|    ",
+        "    |████|________|███|    ",
+        "  (@)================(@)   ",
+    ]
+    # Car body colors for variety
+    CAR_COLORS = [
+        Colors.SHADOW_RED,      # Red
+        Colors.ALLEY_BLUE,      # Blue
+        Colors.RAT_YELLOW,      # Yellow
+        Colors.MATRIX_DIM,      # Green
+        Colors.ALLEY_LIGHT,     # White
     ]
 
     # Manhole cover (on street)
@@ -3313,14 +3324,17 @@ class AlleyScene:
 
     def _spawn_car(self):
         """Spawn a new car on the street."""
+        # Pick a random body color for this car
+        body_color = random.choice(self.CAR_COLORS)
         # Randomly choose direction
         if random.random() < 0.5:
             # Car going right (spawn on left)
             self._cars.append({
-                'x': -8.0,
+                'x': -10.0,
                 'direction': 1,
                 'speed': random.uniform(0.8, 1.5),
                 'sprite': self.CAR_RIGHT,
+                'color': body_color,
             })
         else:
             # Car going left (spawn on right)
@@ -3329,6 +3343,7 @@ class AlleyScene:
                 'direction': -1,
                 'speed': random.uniform(0.8, 1.5),
                 'sprite': self.CAR_LEFT,
+                'color': body_color,
             })
 
     def update(self):
@@ -3982,6 +3997,26 @@ class AlleyScene:
         # Render QTE event (meteors, missiles, explosions, NPC) on top of everything
         self._render_qte(screen)
 
+        # Render solid fog layer at top (on top of EVERYTHING)
+        self._render_fog_layer(screen)
+
+    def _render_fog_layer(self, screen):
+        """Render solid fog layer at top of screen - on top of everything."""
+        # Render solid cloud cover at rows 1-2, on top of all other rendering
+        for row in range(1, 3):
+            for x in range(self.width - 1):
+                if 0 <= row < self.height:
+                    try:
+                        # Get the stored fog character from scene
+                        char, color = self.scene[row][x] if x < len(self.scene[row]) else ('█', Colors.GREY_BLOCK)
+                        if char in '█▓▒░':  # Only render fog characters
+                            attr = curses.color_pair(color)
+                            screen.attron(attr)
+                            screen.addstr(row, x, char)
+                            screen.attroff(attr)
+                    except curses.error:
+                        pass
+
     def _render_window_frames(self, screen):
         """Render window frames on top of window people for proper layering."""
         for px, py, char in self._window_frame_positions:
@@ -4352,8 +4387,8 @@ class AlleyScene:
             draw_character(self._agent_x, agent_sprite, Colors.ALLEY_MID)
 
     def _render_cars(self, screen):
-        """Render cars on the street."""
-        # Cars are 2 rows tall, bottom row at street level
+        """Render cars on the street with colored body panels."""
+        # Cars are 4 rows tall, bottom row at street level
         street_y = self.height - 1
         # Cars can't render above the 1/5th line
         min_car_y = self.height // 5
@@ -4362,6 +4397,7 @@ class AlleyScene:
             x = int(car['x'])
             sprite = car['sprite']
             sprite_height = len(sprite)
+            body_color = car.get('color', Colors.ALLEY_LIGHT)
 
             for row_idx, row in enumerate(sprite):
                 for col_idx, char in enumerate(row):
@@ -4372,8 +4408,11 @@ class AlleyScene:
                     # Don't render cars above the 1/5th line
                     if 0 <= px < self.width - 1 and min_car_y <= py < self.height and char != ' ':
                         try:
-                            # Cars are white/bright
-                            attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
+                            # Body panels (█) get the car's color, structure is white/bright
+                            if char == '█':
+                                attr = curses.color_pair(body_color) | curses.A_BOLD
+                            else:
+                                attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
                             screen.attron(attr)
                             screen.addstr(py, px, char)
                             screen.attroff(attr)
@@ -4615,15 +4654,16 @@ class AlleyScene:
                 pass
 
     def _render_cafe_people(self, screen):
-        """Render the 3 people in Shell Cafe's lower window with animated arms."""
+        """Render the 3 people in Shell Cafe's first floor (door area) with animated arms."""
         if not hasattr(self, 'cafe_x') or not hasattr(self, 'cafe_y'):
             return
 
-        # Lower window is at rows 17-18 of CAFE sprite (0-indexed)
-        # The window content area starts at column 4 and spans ~20 chars
-        window_row = 17  # Row with people heads (bottom window)
-        body_row = 18    # Row with bodies/arms
-        window_start_col = 4  # Start of window content area
+        # First floor door area is at rows 22-23 of CAFE sprite (0-indexed)
+        # Row 22: "[                  OPEN ]" - visible through door glass
+        # Row 23: "[__________________     ]" - lower door area
+        window_row = 22  # Row with people heads (door glass area)
+        body_row = 23    # Row with bodies/arms
+        window_start_col = 4  # Start of door glass content area
 
         # Arm animation frames (both arms shown)
         # Frame 0: arms down, Frame 1: left up, Frame 2: both up, Frame 3: right up
