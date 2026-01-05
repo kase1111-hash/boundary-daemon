@@ -1190,12 +1190,12 @@ class AlleyScene:
         "|=====|",
     ]
 
-    # Cardboard box ASCII art (5 wide x 4 tall) - filled with hashtags, white label
+    # Cardboard box ASCII art (5 wide x 4 tall) - solid blocks, no outline
     BOX = [
-        " ___ ",
-        "|###|",
-        "|#X#|",
-        "|___|",
+        "▓▓▓▓▓",
+        "▓▓▓▓▓",
+        "▓▒X▒▓",
+        "▓▓▓▓▓",
     ]
 
     # Blue street mailbox (6 wide x 5 tall)
@@ -1276,6 +1276,35 @@ class AlleyScene:
         ["~~   ", " ~~~ ", "~~~~ "],
     ]
 
+    # Tree sprites for windy city effect
+    TREE = [
+        "   (@@)   ",
+        "  (@@@@@) ",
+        " (@@@@@@@@)",
+        "  (@@@@@) ",
+        "    ||    ",
+        "    ||    ",
+        "   _||_   ",
+    ]
+
+    TREE_WINDY = [
+        "    (@@)  ",
+        "   (@@@@@)",
+        "  (@@@@@@@)",
+        "   (@@@@) ",
+        "    ||    ",
+        "    ||    ",
+        "   _||_   ",
+    ]
+
+    # Debris sprites for windy weather
+    DEBRIS_NEWSPAPER = ['▪', '▫', '□', '▢']
+    DEBRIS_TRASH = ['~', '°', '·', '∘']
+    DEBRIS_LEAVES = ['*', '✦', '✧', '⁕']
+
+    # Wind wisp characters
+    WIND_WISPS = ['~', '≈', '≋', '～', '-', '=']
+
     # Person walking animation frames (arm swinging) - basic person
     # Pedestrian sprites with leg animation (4 frames for walking cycle)
     PERSON_RIGHT_FRAMES = [
@@ -1347,6 +1376,91 @@ class AlleyScene:
         PERSON_SKIRT_LEFT_FRAMES,
     ]
 
+    # ==========================================
+    # WOMAN IN RED EVENT - Matrix iconic scene
+    # ==========================================
+
+    # Woman in red - blonde hair, red dress (walking right)
+    WOMAN_RED_RIGHT_FRAMES = [
+        ["~o~", "/|\\", "/A\\", "> |"],   # Walking frame 1
+        ["~o~", "\\|/", "/A\\", "| |"],   # Walking frame 2
+        ["~o~", "/|\\", "/A\\", "| <"],   # Walking frame 3
+        ["~o~", "\\|/", "/A\\", "| |"],   # Walking frame 4
+    ]
+
+    # Woman in red - walking left
+    WOMAN_RED_LEFT_FRAMES = [
+        ["~o~", "\\|/", "/A\\", "| <"],   # Walking frame 1
+        ["~o~", "/|\\", "/A\\", "| |"],   # Walking frame 2
+        ["~o~", "\\|/", "/A\\", "> |"],   # Walking frame 3
+        ["~o~", "/|\\", "/A\\", "| |"],   # Walking frame 4
+    ]
+
+    # Woman in red - waving (stationary, arm raised)
+    WOMAN_RED_WAVE_FRAMES = [
+        ["~o~", "\\|/", "/A\\", "| |"],   # Wave down
+        ["~o~", "\\|_", "/A\\", "| |"],   # Wave mid
+        ["~o~", "\\|^", "/A\\", "| |"],   # Wave up
+        ["~o~", "\\|_", "/A\\", "| |"],   # Wave mid
+    ]
+
+    # Agent Smith - suit and sunglasses (walking/running right)
+    AGENT_SMITH_RIGHT_FRAMES = [
+        ["[=]", "/|\\", "[H]", "/ \\"],   # Running frame 1
+        ["[=]", "\\|/", "[H]", " | "],    # Running frame 2
+        ["[=]", "/|\\", "[H]", "\\ /"],   # Running frame 3
+        ["[=]", "\\|/", "[H]", " | "],    # Running frame 4
+    ]
+
+    # Agent Smith - suit and sunglasses (walking/running left)
+    AGENT_SMITH_LEFT_FRAMES = [
+        ["[=]", "\\|/", "[H]", "/ \\"],   # Running frame 1
+        ["[=]", "/|\\", "[H]", " | "],    # Running frame 2
+        ["[=]", "\\|/", "[H]", "\\ /"],   # Running frame 3
+        ["[=]", "/|\\", "[H]", " | "],    # Running frame 4
+    ]
+
+    # Neo - long coat, sunglasses (walking right)
+    NEO_RIGHT_FRAMES = [
+        ["(O)", "/|\\", "###", "/ \\"],   # Walking frame 1
+        ["(O)", "\\|/", "###", " | "],    # Walking frame 2
+        ["(O)", "/|\\", "###", "\\ /"],   # Walking frame 3
+        ["(O)", "\\|/", "###", " | "],    # Walking frame 4
+    ]
+
+    # Neo - long coat, sunglasses (walking left / running away)
+    NEO_LEFT_FRAMES = [
+        ["(O)", "\\|/", "###", "/ \\"],   # Running frame 1
+        ["(O)", "/|\\", "###", " | "],    # Running frame 2
+        ["(O)", "\\|/", "###", "\\ /"],   # Running frame 3
+        ["(O)", "/|\\", "###", " | "],    # Running frame 4
+    ]
+
+    # Morpheus - bald, long coat (walking right)
+    MORPHEUS_RIGHT_FRAMES = [
+        ["(0)", "/|\\", "%%%", "/ \\"],   # Walking frame 1
+        ["(0)", "\\|/", "%%%", " | "],    # Walking frame 2
+        ["(0)", "/|\\", "%%%", "\\ /"],   # Walking frame 3
+        ["(0)", "\\|/", "%%%", " | "],    # Walking frame 4
+    ]
+
+    # Morpheus - bald, long coat (walking left / running away)
+    MORPHEUS_LEFT_FRAMES = [
+        ["(0)", "\\|/", "%%%", "/ \\"],   # Running frame 1
+        ["(0)", "/|\\", "%%%", " | "],    # Running frame 2
+        ["(0)", "\\|/", "%%%", "\\ /"],   # Running frame 3
+        ["(0)", "/|\\", "%%%", " | "],    # Running frame 4
+    ]
+
+    # Transform effect frames (woman to agent glitch)
+    TRANSFORM_FRAMES = [
+        ["~o~", "/|\\", "/A\\", "| |"],   # Woman
+        ["###", "###", "###", "###"],     # Glitch 1
+        ["[=]", "???", "[H]", "???"],     # Partial transform
+        ["###", "###", "###", "###"],     # Glitch 2
+        ["[=]", "\\|/", "[H]", " | "],    # Agent Smith
+    ]
+
     # Street light - taller pole
     STREET_LIGHT = [
         " ___ ",
@@ -1359,115 +1473,113 @@ class AlleyScene:
         "  |  ",
     ]
 
-    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors, porch & chairs
+    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors with stoops
     BUILDING = [
-        "                        _____                                   ",
-        "                       |     |                                  ",
-        "        _O_            |     |  [===]          _O_              ",
-        "       (/ \\)           |_____|  [===]         (/ \\)             ",
-        ".---------------------------------------------------------------.",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|                                                               |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [        ]    [    ]  [    ]    [        ]    [    ]         |",
-        "|  [========]    [====]  [====]    [========]    [====]         |",
-        "|            .------.                    .------.               |",
-        "|            |[####]|                    |[####]|               |",
-        "|            |[####]|                    |[####]|               |",
-        "|            |      |                    |      |               |",
-        "|            | [==] |                    | [==] |               |",
-        "|            |______|                    |______|   {~}   {~}   |",
-        "|___________|______|____________________|______|___ H ___ H ___|",
-        "             ======                      ======                 ",
+        "                        _____                                  ",
+        "       __O__           |     |                  __O__          ",
+        "      / === \\          |     |  [===]          / === \\         ",
+        "     (==//\\==)         |_____|  [===]         (==//\\==)        ",
+        ".--------------------------------------------------------------.",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "                                                                ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [        ]    [    ]  [    ]    [        ]    [    ]         ",
+        "   [========]    [====]  [====]    [========]    [====]         ",
+        "            .------.                    .------.                ",
+        "            |[####]|                    |[####]|                ",
+        "            |[####]|                    |[####]|                ",
+        "            |      |                    |      |                ",
+        "            | [==] |                    | [==] |                ",
+        "____________|______|____________________|______|________________",
+        "      ______======______          ______======______            ",
     ]
 
-    # Second building (right side) - 2X TALL, 2X WIDE with two doors, porch & chairs
+    # Second building (right side) - 2X TALL, 2X WIDE with two doors with stoops
     BUILDING2 = [
-        "              _____                                  ___    ",
-        "             |     |                                |   |   ",
-        "      [===]  |     |    _O_                  _O_    |   |   ",
-        "      [===]  |_____|   (/ \\)                (/ \\)   |___|   ",
-        ".-----------------------------------------------------------.",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|                                                           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [        ]    [    ]    [        ]    [    ]           |",
-        "|    [========]    [====]    [========]    [====]           |",
-        "|           .------.                    .------.            |",
-        "|           |[####]|                    |[####]|            |",
-        "|           |[####]|                    |[####]|            |",
-        "|           |      |                    |      |            |",
-        "|           | [==] |                    | [==] |            |",
-        "|  {~} {~}  |______|                    |______|            |",
-        "|__ H _ H __|______|____________________|______|____________|",
-        "            ======                      ======               ",
+        "              _____                                  ___   ",
+        "             |     |     __O__              __O__   |   |  ",
+        "      [===]  |     |    / === \\            / === \\  |   |  ",
+        "      [===]  |_____|   (==//\\==)          (==//\\==) |___|  ",
+        ".----------------------------------------------------------.",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "                                                            ",
+        "     [========]    [====]    [========]    [====]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [        ]    [    ]    [        ]    [    ]           ",
+        "     [========]    [====]    [========]    [====]           ",
+        "            .------.                    .------.            ",
+        "            |[####]|                    |[####]|            ",
+        "            |[####]|                    |[####]|            ",
+        "            |      |                    |      |            ",
+        "            | [==] |                    | [==] |            ",
+        "____________|______|____________________|______|____________",
+        "      ______======______          ______======______        ",
     ]
 
     # Window positions for people animation (relative to building sprite)
     # Each entry is (row_offset, col_offset) for the middle of a window
     BUILDING_WINDOW_POSITIONS = [
-        (4, 5), (4, 20), (4, 30), (4, 45),     # First row
-        (10, 5), (10, 20), (10, 30), (10, 45), # Second row
-        (16, 5), (16, 20), (16, 30), (16, 45), # Third row
-        (22, 5), (22, 20), (22, 30), (22, 45), # Fourth row
-        (28, 5), (28, 20), (28, 30), (28, 45), # Fifth row
+        (8, 7), (8, 22), (8, 30), (8, 44),      # First row (row 8 is middle of window)
+        (14, 7), (14, 22), (14, 30), (14, 44),  # Second row
+        (20, 7), (20, 22), (20, 30), (20, 44),  # Third row
+        (26, 7), (26, 22), (26, 30), (26, 44),  # Fourth row
+        (32, 7), (32, 22), (32, 30), (32, 44),  # Fifth row
     ]
     BUILDING2_WINDOW_POSITIONS = [
-        (4, 7), (4, 22), (4, 37), (4, 52),     # First row
-        (10, 7), (10, 22), (10, 37), (10, 52), # Second row
-        (16, 7), (16, 22), (16, 37), (16, 52), # Third row
-        (22, 7), (22, 22), (22, 37), (22, 52), # Fourth row
-        (28, 7), (28, 22), (28, 37), (28, 52), # Fifth row
+        (8, 9), (8, 24), (8, 38), (8, 52),      # First row
+        (14, 9), (14, 24), (14, 38), (14, 52),  # Second row
+        (20, 9), (20, 24), (20, 38), (20, 52),  # Third row
+        (26, 9), (26, 24), (26, 38), (26, 52),  # Fourth row
+        (32, 9), (32, 24), (32, 38), (32, 52),  # Fifth row
     ]
 
     def __init__(self, width: int, height: int):
@@ -1514,6 +1626,29 @@ class AlleyScene:
         self._drain_positions: List[Tuple[int, int]] = []  # (x, y)
         self._steam_effects: List[Dict] = []  # {x, y, frame, timer, duration}
         self._steam_spawn_timer = 0
+        # Windy city weather - debris, leaves, wind wisps
+        self._debris: List[Dict] = []  # {x, y, char, type, speed}
+        self._leaves: List[Dict] = []  # {x, y, char, speed, wobble}
+        self._wind_wisps: List[Dict] = []  # {x, y, chars, speed}
+        self._debris_spawn_timer = 0
+        self._wind_wisp_timer = 0
+        self._tree_positions: List[Tuple[int, int]] = []  # (x, y) for trees
+        self._tree_sway_frame = 0
+        # Woman in Red event - rare Matrix scene
+        self._woman_red_active = False
+        self._woman_red_state = 'idle'  # idle, neo_morpheus_enter, woman_enters, woman_passes, woman_waves, woman_pauses, transform, chase, cooldown
+        self._woman_red_timer = 0
+        self._woman_red_cooldown = 0
+        self._woman_red_x = 0.0  # Woman's x position
+        self._neo_x = 0.0  # Neo's x position
+        self._morpheus_x = 0.0  # Morpheus's x position
+        self._agent_x = 0.0  # Agent Smith's x position (after transform)
+        self._woman_red_frame = 0
+        self._neo_frame = 0
+        self._morpheus_frame = 0
+        self._agent_frame = 0
+        self._transform_frame = 0
+        self._frame_timer = 0
         # Cloud layer with wisps
         self._clouds: List[Dict] = []
         self._init_clouds()
@@ -1526,6 +1661,8 @@ class AlleyScene:
         self._cars = []  # Clear cars on resize
         self._closeup_car = None  # Clear close-up car on resize
         self._pedestrians = []  # Clear pedestrians on resize
+        self._woman_red_active = False  # Reset woman in red event
+        self._woman_red_state = 'idle'
         self._init_clouds()  # Reinit clouds for new size
         self._generate_scene()
 
@@ -1603,6 +1740,179 @@ class AlleyScene:
                 new_steam.append(steam)
         self._steam_effects = new_steam
 
+    def _update_woman_red(self):
+        """Update the Woman in Red event - rare Matrix iconic scene."""
+        # Handle cooldown
+        if self._woman_red_cooldown > 0:
+            self._woman_red_cooldown -= 1
+            return
+
+        # If idle, check for rare trigger
+        if self._woman_red_state == 'idle':
+            # Rare trigger - about 1 in 2000 frames when not in cooldown
+            if random.randint(1, 2000) == 1:
+                self._woman_red_active = True
+                self._woman_red_state = 'neo_morpheus_enter'
+                self._woman_red_timer = 0
+                # Neo and Morpheus enter from left
+                self._neo_x = -10.0
+                self._morpheus_x = -16.0  # Morpheus slightly behind
+                # Woman starts off screen right
+                self._woman_red_x = float(self.width + 10)
+            return
+
+        # Update timer and frame animation
+        self._woman_red_timer += 1
+        self._frame_timer += 1
+        if self._frame_timer >= 4:  # Animation speed
+            self._frame_timer = 0
+            self._woman_red_frame = (self._woman_red_frame + 1) % 4
+            self._neo_frame = (self._neo_frame + 1) % 4
+            self._morpheus_frame = (self._morpheus_frame + 1) % 4
+            self._agent_frame = (self._agent_frame + 1) % 4
+
+        screen_center = self.width // 2
+
+        if self._woman_red_state == 'neo_morpheus_enter':
+            # Neo and Morpheus walk in from left and stop near center-left
+            self._neo_x += 0.5
+            self._morpheus_x += 0.5
+            # Stop when Neo reaches about 1/3 of screen
+            if self._neo_x >= screen_center - 20:
+                self._woman_red_state = 'woman_enters'
+                self._woman_red_timer = 0
+
+        elif self._woman_red_state == 'woman_enters':
+            # Woman in red walks from right toward center
+            self._woman_red_x -= 0.4
+            # When she reaches center, transition to passing
+            if self._woman_red_x <= screen_center + 10:
+                self._woman_red_state = 'woman_passes'
+                self._woman_red_timer = 0
+
+        elif self._woman_red_state == 'woman_passes':
+            # Woman walks past Neo and Morpheus
+            self._woman_red_x -= 0.4
+            # When past them, stop and wave
+            if self._woman_red_x <= self._neo_x - 5:
+                self._woman_red_state = 'woman_waves'
+                self._woman_red_timer = 0
+
+        elif self._woman_red_state == 'woman_waves':
+            # Woman stops and waves at Neo and Morpheus
+            if self._woman_red_timer >= 60:  # Wave for about 60 frames
+                self._woman_red_state = 'woman_pauses'
+                self._woman_red_timer = 0
+
+        elif self._woman_red_state == 'woman_pauses':
+            # Brief pause before transformation
+            if self._woman_red_timer >= 30:
+                self._woman_red_state = 'transform'
+                self._woman_red_timer = 0
+                self._transform_frame = 0
+
+        elif self._woman_red_state == 'transform':
+            # Woman transforms into Agent Smith (glitch effect)
+            if self._woman_red_timer % 8 == 0:
+                self._transform_frame += 1
+            if self._transform_frame >= len(self.TRANSFORM_FRAMES):
+                self._woman_red_state = 'chase'
+                self._woman_red_timer = 0
+                self._agent_x = self._woman_red_x
+
+        elif self._woman_red_state == 'chase':
+            # Agent Smith chases Neo and Morpheus off screen left
+            self._agent_x -= 0.8  # Agent runs fast
+            self._neo_x -= 1.0  # Neo runs faster (escaping)
+            self._morpheus_x -= 1.0  # Morpheus runs too
+            # End when everyone is off screen
+            if self._agent_x < -15 and self._neo_x < -15:
+                self._woman_red_state = 'idle'
+                self._woman_red_active = False
+                self._woman_red_cooldown = 3000  # Long cooldown before next event
+
+    def _update_wind(self):
+        """Update windy city weather - debris, leaves, and wind wisps."""
+        curb_y = self.height - 4
+        street_y = self.height - 3
+
+        # Update tree sway animation
+        self._tree_sway_frame = (self._tree_sway_frame + 1) % 20
+
+        # Spawn debris (newspapers, trash) on streets
+        self._debris_spawn_timer += 1
+        if self._debris_spawn_timer >= random.randint(15, 40):
+            self._debris_spawn_timer = 0
+            if len(self._debris) < 8:
+                debris_type = random.choice(['newspaper', 'trash'])
+                chars = self.DEBRIS_NEWSPAPER if debris_type == 'newspaper' else self.DEBRIS_TRASH
+                self._debris.append({
+                    'x': float(self.width + 5) if random.random() < 0.5 else -5.0,
+                    'y': float(random.choice([curb_y, street_y, street_y - 1])),
+                    'char': random.choice(chars),
+                    'type': debris_type,
+                    'speed': random.uniform(0.8, 2.0),
+                    'wobble': random.uniform(0, 6.28),
+                })
+
+        # Spawn wind wisps in sky
+        self._wind_wisp_timer += 1
+        if self._wind_wisp_timer >= random.randint(30, 60):
+            self._wind_wisp_timer = 0
+            if len(self._wind_wisps) < 5:
+                wisp_length = random.randint(3, 8)
+                wisp_chars = ''.join([random.choice(self.WIND_WISPS) for _ in range(wisp_length)])
+                self._wind_wisps.append({
+                    'x': float(self.width + 5),
+                    'y': float(random.randint(3, self.height // 3)),
+                    'chars': wisp_chars,
+                    'speed': random.uniform(1.0, 2.5),
+                })
+
+        # Spawn leaves from trees
+        for tree_x, tree_y in self._tree_positions:
+            if random.random() < 0.03:  # 3% chance per tree per frame
+                if len(self._leaves) < 15:
+                    self._leaves.append({
+                        'x': float(tree_x + random.randint(2, 7)),
+                        'y': float(tree_y + random.randint(0, 3)),
+                        'char': random.choice(self.DEBRIS_LEAVES),
+                        'speed': random.uniform(0.5, 1.5),
+                        'fall_speed': random.uniform(0.1, 0.3),
+                        'wobble': random.uniform(0, 6.28),
+                    })
+
+        # Update debris positions
+        new_debris = []
+        for d in self._debris:
+            d['x'] -= d['speed']  # Blow left
+            d['wobble'] += 0.3
+            d['y'] += math.sin(d['wobble']) * 0.2  # Wobble up/down
+            # Keep on screen
+            if d['x'] > -10:
+                new_debris.append(d)
+        self._debris = new_debris
+
+        # Update wind wisps
+        new_wisps = []
+        for w in self._wind_wisps:
+            w['x'] -= w['speed']
+            if w['x'] > -len(w['chars']) - 5:
+                new_wisps.append(w)
+        self._wind_wisps = new_wisps
+
+        # Update leaves
+        new_leaves = []
+        for leaf in self._leaves:
+            leaf['x'] -= leaf['speed']  # Blow left
+            leaf['y'] += leaf['fall_speed']  # Fall down
+            leaf['wobble'] += 0.2
+            leaf['x'] += math.sin(leaf['wobble']) * 0.3  # Wobble
+            # Keep if on screen and above street
+            if leaf['x'] > -5 and leaf['y'] < street_y + 2:
+                new_leaves.append(leaf)
+        self._leaves = new_leaves
+
     def _render_clouds(self, screen):
         """Render cloud layer."""
         for cloud in self._clouds:
@@ -1663,12 +1973,17 @@ class AlleyScene:
         building1_right = self._building_x + len(self.BUILDING[0])
         self._building2_x = self.width - len(self.BUILDING2[0]) - 11 if self.width > 60 else self.width
 
-        # Draw distant buildings FIRST (furthest back) - only in gap between buildings
+        # Calculate cafe position early for overlap avoidance
         gap_center = (building1_right + self._building2_x) // 2
+        cafe_width = len(self.CAFE[0])
+        cafe_left = gap_center - cafe_width // 2 - 11
+        cafe_right = cafe_left + cafe_width
+
+        # Draw distant buildings FIRST (furthest back) - only in gap between buildings
         self._draw_distant_buildings(gap_center, ground_y, building1_right, self._building2_x)
 
-        # Draw mid-range buildings (behind big buildings)
-        self._draw_midrange_buildings(ground_y)
+        # Draw mid-range buildings (behind big buildings, avoid cafe area)
+        self._draw_midrange_buildings(ground_y, cafe_left, cafe_right)
 
         # Draw first building wireframe in background (left side)
         # Position building so its bottom edge is at ground level
@@ -1694,17 +2009,19 @@ class AlleyScene:
         for x in range(self.width - 1):
             self.scene[curb_y][x] = ('▄', Colors.ALLEY_MID)
 
-        # Draw street with lane markings at the very bottom row
+        # Draw street surface (two rows)
         for x in range(self.width - 1):
-            # Street surface
             self.scene[street_y][x] = ('▓', Colors.ALLEY_DARK)
+            if street_y + 1 < self.height:
+                self.scene[street_y + 1][x] = ('▓', Colors.ALLEY_DARK)
 
-        # Add dashed lane markings if width allows (every 4 chars, 2 on 2 off)
+        # Add dashed lane markings on bottom street row (every 4 chars, 2 on 2 off)
         if self.width > 30:
+            lane_y = street_y + 1 if street_y + 1 < self.height else street_y
             for x in range(0, self.width - 1, 4):
                 if x + 1 < self.width - 1:
-                    self.scene[street_y][x] = ('=', Colors.RAT_YELLOW)
-                    self.scene[street_y][x + 1] = ('=', Colors.RAT_YELLOW)
+                    self.scene[lane_y][x] = ('=', Colors.RAT_YELLOW)
+                    self.scene[lane_y][x + 1] = ('=', Colors.RAT_YELLOW)
 
         # Add manholes to the street (every ~30 chars)
         self._manhole_positions = []
@@ -1728,6 +2045,18 @@ class AlleyScene:
                     if drain_x + i < self.width - 1:
                         self.scene[curb_y][drain_x + i] = (char, Colors.ALLEY_DARK)
 
+        # Place trees in the gap between buildings
+        self._tree_positions = []
+        tree_height = len(self.TREE)
+        # Place two trees - one on each side of the gap
+        tree1_x = building1_right + 15
+        tree2_x = self._building2_x - 20
+        for tree_x in [tree1_x, tree2_x]:
+            if building1_right < tree_x < self._building2_x - len(self.TREE[0]):
+                tree_y = ground_y - tree_height + 1
+                self._tree_positions.append((tree_x, tree_y))
+                self._draw_tree(tree_x, tree_y)
+
         # Place dumpster to the LEFT of building 1 (above curb)
         self.dumpster_x = 2
         self.dumpster_y = ground_y - len(self.DUMPSTER) + 1
@@ -1746,8 +2075,8 @@ class AlleyScene:
         self.mailbox_y = ground_y - len(self.MAILBOX) + 1
         self._draw_sprite(self.MAILBOX, self.mailbox_x, self.mailbox_y, Colors.ALLEY_BLUE)
 
-        # Calculate cafe position first (shifted 8 chars left)
-        self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 8
+        # Calculate cafe position first (shifted 11 chars left)
+        self.cafe_x = gap_center - len(self.CAFE[0]) // 2 - 11
         self.cafe_y = ground_y - len(self.CAFE) + 1
 
         # Place well-lit Cafe between buildings (center of gap)
@@ -1755,8 +2084,9 @@ class AlleyScene:
 
         # Draw crosswalk between cafe and right building
         cafe_right = self.cafe_x + len(self.CAFE[0])
-        crosswalk_x = cafe_right + 1
-        self._draw_crosswalk(crosswalk_x, curb_y, street_y)
+        self._crosswalk_x = cafe_right + 1
+        self._crosswalk_width = 32  # Store for car occlusion
+        self._draw_crosswalk(self._crosswalk_x, curb_y, street_y)
 
     def _draw_street_lights(self, ground_y: int):
         """Draw street lights along the scene and store positions for flicker effect."""
@@ -1857,7 +2187,7 @@ class AlleyScene:
                 if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
                     self.scene[py][px] = (char, color)
 
-    def _draw_midrange_buildings(self, ground_y: int):
+    def _draw_midrange_buildings(self, ground_y: int, cafe_left: int = 0, cafe_right: int = 0):
         """Draw mid-range buildings above 1/5 of screen, behind big buildings."""
         # Mid-range building sprites - larger than distant, outline style
         midrange_buildings = [
@@ -1898,9 +2228,12 @@ class AlleyScene:
         # Position at 1/5 from bottom of screen
         midrange_y = self.height - (self.height // 5)
 
-        # Draw across the screen
+        # Draw across the screen, but skip cafe area
         positions = list(range(0, self.width, 20))
         for i, pos_x in enumerate(positions):
+            # Skip if overlapping with cafe area
+            if cafe_left - 10 < pos_x < cafe_right + 5:
+                continue
             building = midrange_buildings[i % len(midrange_buildings)]
             building_height = len(building)
             by = midrange_y - building_height
@@ -1909,6 +2242,28 @@ class AlleyScene:
                     px = pos_x + col_idx
                     py = by + row_idx
                     if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        self.scene[py][px] = (char, Colors.ALLEY_MID)
+
+    def _draw_tree(self, x: int, y: int):
+        """Draw a tree at the given position."""
+        # Use the windy tree sprite (animated during render based on sway frame)
+        tree_sprite = self.TREE
+        for row_idx, row in enumerate(tree_sprite):
+            for col_idx, char in enumerate(row):
+                px = x + col_idx
+                py = y + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    # Use different colors for different parts
+                    if char == '@':
+                        # Leaves - green
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)
+                    elif char in '()|':
+                        # Trunk and outline - brown/dark
+                        self.scene[py][px] = (char, Colors.SAND_DIM)
+                    elif char == '_':
+                        # Base
+                        self.scene[py][px] = (char, Colors.ALLEY_MID)
+                    else:
                         self.scene[py][px] = (char, Colors.ALLEY_MID)
 
     def _draw_cafe(self, x: int, y: int):
@@ -2081,6 +2436,12 @@ class AlleyScene:
 
         # Update steam effects from manholes/drains
         self._update_steam()
+
+        # Update woman in red event
+        self._update_woman_red()
+
+        # Update windy weather effects
+        self._update_wind()
 
     def _update_cars(self):
         """Update car positions and spawn new cars."""
@@ -2353,10 +2714,13 @@ class AlleyScene:
         for cx in range(crosswalk_width):
             px = x + cx
             if 0 <= px < self.width - 1:
-                # Draw white stripes on the street only (removed curb row)
+                # Draw white stripes on street and blank out sidewalk every other tile
                 if cx % 2 == 0:
                     if street_y < self.height:
                         self.scene[street_y][px] = ('█', Colors.ALLEY_LIGHT)
+                    # Blank out sidewalk (curb) every other tile for crosswalk effect
+                    if curb_y < self.height:
+                        self.scene[curb_y][px] = (' ', Colors.ALLEY_DARK)
 
         # Draw vanishing street effect above crosswalk
         # Starts at curb and ends at lower 1/5th of screen
@@ -2382,9 +2746,12 @@ class AlleyScene:
                             self.scene[row_y][px] = ('=', Colors.RAT_YELLOW)
                         else:
                             self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
-                    elif abs(offset) == half_width:
-                        # Edge lines (white)
-                        self.scene[row_y][px] = ('|', Colors.ALLEY_MID)
+                    elif offset == -half_width:
+                        # Left edge line (use backslash for perspective)
+                        self.scene[row_y][px] = ('\\', Colors.ALLEY_MID)
+                    elif offset == half_width:
+                        # Right edge line (use forward slash for perspective)
+                        self.scene[row_y][px] = ('/', Colors.ALLEY_MID)
                     else:
                         # Street surface
                         self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
@@ -2541,8 +2908,14 @@ class AlleyScene:
         # Render steam effects from manholes/drains
         self._render_steam(screen)
 
+        # Render wind effects (debris, leaves, wisps)
+        self._render_wind(screen)
+
         # Render pedestrians on the sidewalk
         self._render_pedestrians(screen)
+
+        # Render Woman in Red event (on top of regular pedestrians)
+        self._render_woman_red(screen)
 
         # Render traffic light (dynamic - lights change)
         self._render_traffic_light(screen)
@@ -2586,6 +2959,134 @@ class AlleyScene:
                             screen.attroff(attr)
                         except curses.error:
                             pass
+
+    def _render_wind(self, screen):
+        """Render wind effects - debris, leaves, and wisps."""
+        # Render debris (newspapers, trash) on streets
+        for d in self._debris:
+            px = int(d['x'])
+            py = int(d['y'])
+            if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                try:
+                    if d['type'] == 'newspaper':
+                        attr = curses.color_pair(Colors.ALLEY_LIGHT)
+                    else:
+                        attr = curses.color_pair(Colors.ALLEY_MID)
+                    screen.attron(attr)
+                    screen.addstr(py, px, d['char'])
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
+        # Render wind wisps in sky
+        for w in self._wind_wisps:
+            px = int(w['x'])
+            py = int(w['y'])
+            for i, char in enumerate(w['chars']):
+                cx = px + i
+                if 0 <= cx < self.width - 1 and 0 <= py < self.height:
+                    try:
+                        attr = curses.color_pair(Colors.ALLEY_MID) | curses.A_DIM
+                        screen.attron(attr)
+                        screen.addstr(py, cx, char)
+                        screen.attroff(attr)
+                    except curses.error:
+                        pass
+
+        # Render leaves blowing from trees
+        for leaf in self._leaves:
+            px = int(leaf['x'])
+            py = int(leaf['y'])
+            if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                try:
+                    attr = curses.color_pair(Colors.MATRIX_DIM)
+                    screen.attron(attr)
+                    screen.addstr(py, px, leaf['char'])
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
+    def _render_woman_red(self, screen):
+        """Render the Woman in Red event characters."""
+        if not self._woman_red_active:
+            return
+
+        curb_y = self.height - 4  # Same as pedestrians
+
+        def draw_character(x, sprite, color, is_blonde=False, is_transform=False):
+            """Helper to draw a character sprite at position."""
+            px_start = int(x)
+            sprite_height = len(sprite)
+
+            for row_idx, row in enumerate(sprite):
+                for col_idx, char in enumerate(row):
+                    px = px_start + col_idx
+                    py = curb_y - (sprite_height - 1 - row_idx)
+
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        try:
+                            # Special coloring for woman in red
+                            if is_blonde and row_idx == 0 and char == '~':
+                                # Blonde hair - yellow
+                                attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+                            elif is_transform and char == '#':
+                                # Glitch effect - flashing
+                                attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+                            elif is_transform and char == '?':
+                                # Partial transform - dim
+                                attr = curses.color_pair(Colors.ALLEY_MID)
+                            else:
+                                attr = curses.color_pair(color)
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
+
+        # Render based on current state
+        if self._woman_red_state in ['neo_morpheus_enter', 'woman_enters', 'woman_passes', 'woman_waves', 'woman_pauses']:
+            # Draw Neo (dark coat)
+            neo_sprite = self.NEO_RIGHT_FRAMES[self._neo_frame]
+            draw_character(self._neo_x, neo_sprite, Colors.ALLEY_BLUE)
+
+            # Draw Morpheus (slightly behind Neo)
+            morpheus_sprite = self.MORPHEUS_RIGHT_FRAMES[self._morpheus_frame]
+            draw_character(self._morpheus_x, morpheus_sprite, Colors.GREY_BLOCK)
+
+        if self._woman_red_state in ['woman_enters', 'woman_passes']:
+            # Draw Woman in Red walking left
+            woman_sprite = self.WOMAN_RED_LEFT_FRAMES[self._woman_red_frame]
+            draw_character(self._woman_red_x, woman_sprite, Colors.SHADOW_RED, is_blonde=True)
+
+        elif self._woman_red_state == 'woman_waves':
+            # Draw Woman waving
+            wave_frame = (self._woman_red_timer // 10) % len(self.WOMAN_RED_WAVE_FRAMES)
+            woman_sprite = self.WOMAN_RED_WAVE_FRAMES[wave_frame]
+            draw_character(self._woman_red_x, woman_sprite, Colors.SHADOW_RED, is_blonde=True)
+
+        elif self._woman_red_state == 'woman_pauses':
+            # Draw Woman standing still (last wave frame)
+            woman_sprite = self.WOMAN_RED_WAVE_FRAMES[0]
+            draw_character(self._woman_red_x, woman_sprite, Colors.SHADOW_RED, is_blonde=True)
+
+        elif self._woman_red_state == 'transform':
+            # Draw transform effect
+            frame_idx = min(self._transform_frame, len(self.TRANSFORM_FRAMES) - 1)
+            transform_sprite = self.TRANSFORM_FRAMES[frame_idx]
+            draw_character(self._woman_red_x, transform_sprite, Colors.MATRIX_BRIGHT, is_transform=True)
+
+        elif self._woman_red_state == 'chase':
+            # Draw Neo running away (left)
+            neo_sprite = self.NEO_LEFT_FRAMES[self._neo_frame]
+            draw_character(self._neo_x, neo_sprite, Colors.ALLEY_BLUE)
+
+            # Draw Morpheus running away (left)
+            morpheus_sprite = self.MORPHEUS_LEFT_FRAMES[self._morpheus_frame]
+            draw_character(self._morpheus_x, morpheus_sprite, Colors.GREY_BLOCK)
+
+            # Draw Agent Smith chasing (left)
+            agent_sprite = self.AGENT_SMITH_LEFT_FRAMES[self._agent_frame]
+            draw_character(self._agent_x, agent_sprite, Colors.ALLEY_MID)
 
     def _render_cars(self, screen):
         """Render cars on the street."""
@@ -2730,12 +3231,23 @@ class AlleyScene:
         street_y = self.height - 3 - y_offset
         sprite_height = len(sprite)
 
+        # Calculate vanishing street bounds for occlusion
+        curb_y = self.height - 4
+        vanish_end_y = self.height - (self.height // 5)
+        crosswalk_center = getattr(self, '_crosswalk_x', 0) + getattr(self, '_crosswalk_width', 32) // 2
+
         for row_idx, row in enumerate(sprite):
             for col_idx, char in enumerate(row):
                 px = x + col_idx
                 py = street_y - (sprite_height - 1 - row_idx)
 
                 if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    # Check if this pixel is in the vanishing street area (car goes behind)
+                    if vanish_end_y <= py < curb_y - 1:
+                        progress = (curb_y - 1 - py) / max(1, curb_y - 1 - vanish_end_y)
+                        half_width = int(16 * (1.0 - progress * 0.7))
+                        if abs(px - crosswalk_center) <= half_width:
+                            continue  # Skip - car is behind vanishing street
                     try:
                         # Close-up car in bright white
                         attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
