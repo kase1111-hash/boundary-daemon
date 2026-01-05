@@ -7448,56 +7448,171 @@ class Dashboard:
         },
     }
 
+    def _gather_command_data(self, commands: List[str]) -> Dict[str, Any]:
+        """Execute commands and gather their results for Ollama analysis."""
+        results = {}
+
+        for cmd in commands:
+            cmd = cmd.strip().lower()
+            try:
+                if cmd == 'status':
+                    status = self.client.get_status()
+                    results['status'] = {
+                        'mode': status.get('mode', 'UNKNOWN'),
+                        'frozen': status.get('is_frozen', False),
+                        'uptime': self._format_duration(status.get('uptime', 0)),
+                        'events': status.get('total_events', 0),
+                        'violations': status.get('violations', 0),
+                        'demo_mode': self.client.is_demo_mode(),
+                    }
+                elif cmd == 'alerts':
+                    alerts = self.client.get_alerts()
+                    results['alerts'] = [
+                        {'severity': a.severity, 'message': a.message, 'time': a.time_str, 'acked': a.acknowledged}
+                        for a in alerts
+                    ]
+                elif cmd == 'violations':
+                    violations = [e for e in self.events if 'VIOLATION' in e.event_type.upper()]
+                    results['violations'] = [
+                        {'time': v.time_short, 'type': v.event_type, 'details': v.details[:100]}
+                        for v in violations[:20]
+                    ]
+                elif cmd == 'events':
+                    events = self.client.get_events(limit=30)
+                    results['events'] = [
+                        {'time': e.time_short, 'type': e.event_type, 'details': e.details[:80]}
+                        for e in events
+                    ]
+                elif cmd == 'mode':
+                    status = self.client.get_status()
+                    results['mode'] = {
+                        'current': status.get('mode', 'UNKNOWN'),
+                        'frozen': status.get('is_frozen', False),
+                    }
+                elif cmd == 'sandbox' or cmd == 'sandboxes':
+                    results['sandboxes'] = [
+                        {'id': s.id[:8], 'name': s.name, 'status': s.status, 'uptime': s.uptime_str}
+                        for s in self.sandboxes
+                    ]
+            except Exception as e:
+                results[cmd] = {'error': str(e)}
+
+        return results
+
     def _send_to_ollama(self, message: str) -> List[str]:
-        """Send a message to Ollama and return response lines."""
+        """Send a message to Ollama with automatic command execution."""
         if not self._ollama_client:
             return ["ERROR: Ollama not available. Start with: ollama serve"]
 
-        # Check if Ollama is running
         if not self._ollama_client.is_available():
             return ["ERROR: Ollama not running. Start with: ollama serve"]
 
-        # Build context from chat history (last 10 exchanges)
-        context = ""
-        for entry in self._cli_chat_history[-10:]:
-            context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+        lines = ["", f"You: {message}", ""]
 
-        # System prompt for the daemon assistant
-        system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
-You help users understand system security, daemon operations, and answer questions.
-Keep responses concise (2-4 sentences) since this is a terminal interface.
-If the user asks about daemon commands, remind them to use /command syntax (e.g., /help, /status, /alerts)."""
+        # Step 1: Ask Ollama if commands are needed
+        command_detection_prompt = f"""User request: "{message}"
 
-        prompt = f"{context}User: {message}\nAssistant:"
+You are an assistant for the Boundary Daemon security system. Determine if the user's request requires running system commands to answer.
+
+AVAILABLE COMMANDS:
+- status: Get daemon status (mode, uptime, event count, violations)
+- alerts: Get active security alerts
+- violations: Get recent security violations
+- events: Get recent system events
+- mode: Get current security mode
+- sandboxes: Get active sandbox information
+
+If the user is asking about system health, security status, problems, alerts, or wants to check/diagnose their system, you MUST specify which commands to run.
+
+RESPOND WITH ONLY ONE OF THESE FORMATS:
+1. If commands needed: COMMANDS: status, alerts, violations
+2. If no commands needed: NONE
+
+Examples:
+- "what's wrong with my computer" -> COMMANDS: status, alerts, violations, events
+- "check my system" -> COMMANDS: status, alerts, violations
+- "any security issues?" -> COMMANDS: alerts, violations
+- "hello" -> NONE
+- "what is a sandbox?" -> NONE
+
+Your response (COMMANDS: ... or NONE):"""
 
         try:
+            # Detect if commands are needed
+            detection_response = self._ollama_client.generate(command_detection_prompt, system="You are a command router. Respond only with COMMANDS: list or NONE.")
+
+            commands_to_run = []
+            if detection_response and 'COMMANDS:' in detection_response.upper():
+                # Parse commands from response
+                cmd_part = detection_response.upper().split('COMMANDS:')[1].strip()
+                cmd_part = cmd_part.split('\n')[0]  # Take first line only
+                commands_to_run = [c.strip().lower() for c in cmd_part.split(',') if c.strip()]
+
+            # Step 2: Execute commands if needed
+            command_results = {}
+            if commands_to_run:
+                lines.append("  [Gathering system information...]")
+                command_results = self._gather_command_data(commands_to_run)
+
+            # Step 3: Generate natural language response
+            context = ""
+            for entry in self._cli_chat_history[-5:]:
+                context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+
+            if command_results:
+                # Build response with command data
+                system_prompt = """You are a helpful security assistant for the Boundary Daemon system.
+You have access to real system data and should analyze it to answer the user's question.
+Be conversational but informative. Highlight any issues or concerns.
+Keep responses concise (3-6 sentences) for the terminal interface.
+If there are problems, explain what they mean and suggest actions."""
+
+                data_summary = json.dumps(command_results, indent=2, default=str)
+                prompt = f"""{context}User: {message}
+
+SYSTEM DATA COLLECTED:
+{data_summary}
+
+Based on this data, provide a helpful natural language response to the user's question. If there are issues, explain them clearly. If everything looks good, say so."""
+
+            else:
+                # Regular chat without command data
+                system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
+You help users understand system security, daemon operations, and answer questions.
+Keep responses concise (2-4 sentences) since this is a terminal interface.
+If the user asks you to check their system or look for problems, tell them you can do that - just ask!"""
+
+                prompt = f"{context}User: {message}\nAssistant:"
+
             response = self._ollama_client.generate(prompt, system=system_prompt)
+
             if response:
                 # Store in chat history
                 self._cli_chat_history.append({'user': message, 'assistant': response})
-                # Keep only last 20 exchanges
                 if len(self._cli_chat_history) > 20:
                     self._cli_chat_history = self._cli_chat_history[-20:]
 
-                # Format response for display
-                lines = ["", f"You: {message}", ""]
                 # Word wrap response
-                words = response.split()
-                current_line = "  "
-                for word in words:
-                    if len(current_line) + len(word) + 1 > self.width - 4:
+                for paragraph in response.split('\n'):
+                    if not paragraph.strip():
+                        lines.append("")
+                        continue
+                    words = paragraph.split()
+                    current_line = "  "
+                    for word in words:
+                        if len(current_line) + len(word) + 1 > self.width - 4:
+                            lines.append(current_line)
+                            current_line = "  " + word
+                        else:
+                            current_line += (" " if len(current_line) > 2 else "") + word
+                    if current_line.strip():
                         lines.append(current_line)
-                        current_line = "  " + word
-                    else:
-                        current_line += (" " if len(current_line) > 2 else "") + word
-                if current_line.strip():
-                    lines.append(current_line)
                 lines.append("")
                 return lines
             else:
-                return ["ERROR: No response from Ollama"]
+                return lines + ["ERROR: No response from Ollama"]
         except Exception as e:
-            return [f"ERROR: Ollama error: {e}"]
+            return lines + [f"ERROR: Ollama error: {e}"]
 
     def _analyze_logs_with_ollama(self, num_events: int = 50) -> List[str]:
         """Analyze daemon logs using Ollama and return analysis lines."""
