@@ -888,6 +888,10 @@ class MatrixRain:
             depth = drop['depth']
             chars = weather_chars[depth]
 
+            # Skip rendering if no characters for this weather mode (e.g., CALM mode)
+            if not chars:
+                continue
+
             # During intermittent flicker, skip rendering some drops randomly
             if self._intermittent_flicker and random.random() < 0.4:
                 continue
@@ -1833,6 +1837,26 @@ class AlleyScene:
                 ]),
             })
 
+        # Create DISTANT background clouds - behind everything, very slow, dim
+        num_distant = max(2, self.width // 50)
+        for i in range(num_distant):
+            self._clouds.append({
+                'x': random.uniform(0, self.width),
+                'y': random.randint(5, 15),  # Mid-sky area behind buildings
+                'speed': random.uniform(0.003, 0.01),  # Extremely slow drift
+                'type': 'distant',
+                'chars': random.choice([
+                    # Hazy distant cloud
+                    ['  .---.  ', ' (     ) ', '(       )', ' ~~~~~~~ '],
+                    # Stretched distant cloud
+                    ['    ~~~~    ', '  (      )  ', ' (        ) ', '~~~~~~~~~~~~'],
+                    # Small distant puff
+                    ['  ~~~  ', ' (   ) ', '~~~~~~'],
+                    # Wispy distant cloud
+                    ['   .~~~.   ', ' ~~     ~~ ', '~~~~~~~~~~~'],
+                ]),
+            })
+
         # Create HUGE foreground clouds - biggest, fastest, rendered on top
         num_foreground = max(1, self.width // 100)
         for i in range(num_foreground):
@@ -1879,7 +1903,7 @@ class AlleyScene:
             cloud['x'] += cloud['speed'] * self._wind_direction
 
             # Wrap around based on wind direction
-            if cloud['type'] in ['main', 'cumulus', 'foreground']:
+            if cloud['type'] in ['main', 'cumulus', 'foreground', 'distant']:
                 cloud_width = len(cloud['chars'][0]) if cloud['chars'] else 5
                 if self._wind_direction > 0:
                     # Wind blowing right - wrap from left
@@ -2680,6 +2704,25 @@ class AlleyScene:
                             try:
                                 # Foreground clouds are brightest white
                                 attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
+                                screen.attron(attr)
+                                screen.addstr(py, px, char)
+                                screen.attroff(attr)
+                            except curses.error:
+                                pass
+
+    def _render_distant_clouds(self, screen):
+        """Render distant background clouds - behind everything, very dim."""
+        for cloud in self._clouds:
+            if cloud['type'] == 'distant':
+                # Render distant cloud - very dim, behind everything
+                for row_idx, row in enumerate(cloud['chars']):
+                    for col_idx, char in enumerate(row):
+                        px = int(cloud['x']) + col_idx
+                        py = cloud['y'] + row_idx
+                        if 0 <= px < self.width - 1 and 0 <= py < self.height and char not in ' ':
+                            try:
+                                # Distant clouds are very dim grey
+                                attr = curses.color_pair(Colors.MATRIX_FADE2) | curses.A_DIM
                                 screen.attron(attr)
                                 screen.addstr(py, px, char)
                                 screen.attroff(attr)
@@ -3924,7 +3967,10 @@ class AlleyScene:
 
     def render(self, screen):
         """Render the alley scene to the screen with proper layering."""
-        # Render clouds first (behind everything)
+        # Render distant clouds first (furthest back, behind everything)
+        self._render_distant_clouds(screen)
+
+        # Render main clouds (behind buildings)
         self._render_clouds(screen)
 
         # Render UFO event (in sky, behind buildings)
