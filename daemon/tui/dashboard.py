@@ -1718,6 +1718,9 @@ class AlleyScene:
         self._qte_wave = 0  # Current wave of meteors
         self._qte_total_waves = 5  # Total waves per event
         self._qte_pending_keys: List[str] = []  # Keys player needs to press
+        # Skyline buildings with animated window lights
+        self._skyline_windows: List[Dict] = []  # {x, y, on, timer, toggle_time}
+        self._skyline_buildings: List[Dict] = []  # {x, y, width, height, windows}
         # Cloud layer with wisps
         self._clouds: List[Dict] = []
         self._init_clouds()
@@ -2223,6 +2226,24 @@ class AlleyScene:
 
         return False
 
+    def _update_skyline_windows(self):
+        """Update animated skyline windows - toggle lights on/off."""
+        for window in self._skyline_windows:
+            if not window['animated']:
+                continue
+
+            window['timer'] += 1
+            if window['timer'] >= window['toggle_time']:
+                window['timer'] = 0
+                window['on'] = not window['on']
+                # Update the scene with new window state
+                px, py = window['x'], window['y']
+                if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                    if window['on']:
+                        self.scene[py][px] = ('▪', Colors.RAT_YELLOW)
+                    else:
+                        self.scene[py][px] = ('▫', Colors.ALLEY_DARK)
+
     def _render_clouds(self, screen):
         """Render cloud layer."""
         for cloud in self._clouds:
@@ -2355,14 +2376,18 @@ class AlleyScene:
                     if drain_x + i < self.width - 1:
                         self.scene[curb_y][drain_x + i] = (char, Colors.ALLEY_DARK)
 
-        # Place trees in the gap between buildings
+        # Place trees - one on left side, two on far right of screen
         self._tree_positions = []
         tree_height = len(self.TREE)
-        # Place two trees - one on each side of the gap
+        tree_width = len(self.TREE[0])
+        # Tree 1: left side in the gap
         tree1_x = building1_right + 15
-        tree2_x = self._building2_x - 20
-        for tree_x in [tree1_x, tree2_x]:
-            if building1_right < tree_x < self._building2_x - len(self.TREE[0]):
+        # Tree 2 and 3: far right of screen (past building 2)
+        building2_right = self._building2_x + len(self.BUILDING2[0]) if self._building2_x > 0 else self.width
+        tree2_x = building2_right + 3
+        tree3_x = building2_right + 15
+        for tree_x in [tree1_x, tree2_x, tree3_x]:
+            if tree_x > 0 and tree_x + tree_width < self.width - 2:
                 tree_y = ground_y - tree_height + 1
                 self._tree_positions.append((tree_x, tree_y))
                 self._draw_tree(tree_x, tree_y)
@@ -2437,54 +2462,150 @@ class AlleyScene:
                 self.scene[row][x] = (char, Colors.GREY_BLOCK)
 
     def _draw_distant_buildings(self, center_x: int, ground_y: int, left_boundary: int, right_boundary: int):
-        """Draw distant building skyline only in the gap between big buildings."""
-        # Distant building sprites - OUTLINE ONLY (no fill)
-        distant_buildings = [
-            # Tall narrow
-            [" _ ", "| |", "| |", "| |", "|_|"],
-            # Wide short
-            [" ___ ", "|   |", "|___|"],
-            # Medium
-            ["  _  ", " | | ", "|   |", "|___|"],
-            # Small
-            [" __ ", "|  |", "|__|"],
-            # Tall wide
-            [" ____ ", "|    |", "|    |", "|    |", "|____|"],
-            # Tiny
-            [" _ ", "|_|"],
-        ]
+        """Draw distant building skyline across the full screen with skyscrapers and window lights."""
+        # Initialize skyline windows list
+        self._skyline_windows = []
+        self._skyline_buildings = []
 
         # Calculate cafe position to avoid overlap
-        cafe_width = len(self.CAFE[0]) + 4  # Cafe will be widened
-        cafe_left = center_x - cafe_width // 2 - 8
+        cafe_width = len(self.CAFE[0]) + 4
+        cafe_left = center_x - cafe_width // 2 - 11
         cafe_right = cafe_left + cafe_width
 
-        # Back row (further away, higher up) - only in gap, avoid cafe
-        back_row_y = ground_y - 20  # Higher up
-        for pos_x in range(left_boundary + 5, right_boundary - 5, 10):
-            # Skip if overlapping with cafe area
-            if cafe_left - 5 < pos_x < cafe_right + 5:
-                continue
-            building = distant_buildings[random.randint(0, len(distant_buildings) - 1)]
-            self._draw_outline_building(building, pos_x, back_row_y, Colors.ALLEY_DARK)
+        # Skyline base y (where buildings touch the "horizon")
+        skyline_y = ground_y - 8
 
-        # Middle row - slightly lower, staggered
-        mid_row_y = ground_y - 16
-        for pos_x in range(left_boundary + 10, right_boundary - 5, 10):
-            # Skip if overlapping with cafe area
-            if cafe_left - 5 < pos_x < cafe_right + 5:
-                continue
-            building = distant_buildings[random.randint(0, len(distant_buildings) - 1)]
-            self._draw_outline_building(building, pos_x, mid_row_y, Colors.ALLEY_DARK)
+        # Generate buildings across the FULL width of the screen
+        pos_x = 2
+        while pos_x < self.width - 5:
+            # Randomly choose building type
+            btype = random.choice(['tiny', 'small', 'medium', 'tall', 'skyscraper', 'wide'])
 
-        # Front row (closer, lower) - staggered to show back row in gaps
-        front_row_y = ground_y - 12
-        for pos_x in range(left_boundary + 7, right_boundary - 5, 12):
-            # Skip if overlapping with cafe area
-            if cafe_left - 5 < pos_x < cafe_right + 5:
+            # Determine building dimensions based on type
+            if btype == 'tiny':
+                width = random.randint(3, 4)
+                height = random.randint(3, 5)
+            elif btype == 'small':
+                width = random.randint(4, 6)
+                height = random.randint(5, 8)
+            elif btype == 'medium':
+                width = random.randint(5, 8)
+                height = random.randint(8, 12)
+            elif btype == 'tall':
+                width = random.randint(4, 6)
+                height = random.randint(12, 18)
+            elif btype == 'skyscraper':
+                width = random.randint(6, 10)
+                height = random.randint(18, 28)
+            else:  # wide
+                width = random.randint(8, 12)
+                height = random.randint(6, 10)
+
+            # Calculate building position
+            building_top = skyline_y - height
+            building_bottom = skyline_y
+
+            # Skip if this would overlap with cafe
+            if not (cafe_left - 3 < pos_x < cafe_right + 3):
+                # Draw the building silhouette
+                self._draw_skyline_building(pos_x, building_top, width, height, btype)
+
+            # Move to next position with slight gap
+            pos_x += width + random.randint(1, 3)
+
+    def _draw_skyline_building(self, x: int, top_y: int, width: int, height: int, btype: str):
+        """Draw a single skyline building with windows."""
+        # Draw building outline/fill
+        for row in range(height):
+            py = top_y + row
+            if py < 3 or py >= self.height:  # Stay below clouds
                 continue
-            building = distant_buildings[random.randint(0, len(distant_buildings) - 1)]
-            self._draw_outline_building(building, pos_x, front_row_y, Colors.GREY_BLOCK)
+
+            for col in range(width):
+                px = x + col
+                if px < 0 or px >= self.width - 1:
+                    continue
+
+                # Determine character based on position
+                if row == 0:
+                    # Roof
+                    if col == 0:
+                        char = '/'
+                    elif col == width - 1:
+                        char = '\\'
+                    else:
+                        char = '_'
+                elif col == 0 or col == width - 1:
+                    # Walls
+                    char = '|'
+                elif row == height - 1:
+                    # Bottom
+                    char = '_'
+                else:
+                    # Interior - mostly empty, some windows
+                    char = ' '
+
+                if char != ' ':
+                    self.scene[py][px] = (char, Colors.ALLEY_DARK)
+
+        # Add windows to the building
+        window_start_row = 2
+        window_end_row = height - 2
+        window_start_col = 1
+        window_end_col = width - 1
+
+        # Window spacing based on building type
+        if btype == 'skyscraper':
+            row_spacing = 2
+            col_spacing = 2
+        elif btype in ['tall', 'medium']:
+            row_spacing = 3
+            col_spacing = 2
+        else:
+            row_spacing = 2
+            col_spacing = 2
+
+        for row in range(window_start_row, window_end_row, row_spacing):
+            py = top_y + row
+            if py < 3 or py >= self.height:
+                continue
+
+            for col in range(window_start_col, window_end_col, col_spacing):
+                px = x + col
+                if px < 0 or px >= self.width - 1:
+                    continue
+
+                # Determine if window is on, off, or animated
+                rand_val = random.random()
+                if rand_val < 0.15:
+                    # Window is on (bright)
+                    is_on = True
+                    is_animated = False
+                elif rand_val < 0.25:
+                    # Window toggles on/off
+                    is_on = random.choice([True, False])
+                    is_animated = True
+                else:
+                    # Window is off (dark)
+                    is_on = False
+                    is_animated = False
+
+                # Store window info for animation
+                toggle_time = random.randint(100, 500) if is_animated else 0
+                self._skyline_windows.append({
+                    'x': px,
+                    'y': py,
+                    'on': is_on,
+                    'animated': is_animated,
+                    'timer': random.randint(0, toggle_time) if is_animated else 0,
+                    'toggle_time': toggle_time,
+                })
+
+                # Draw initial window state
+                if is_on:
+                    self.scene[py][px] = ('▪', Colors.RAT_YELLOW)
+                else:
+                    self.scene[py][px] = ('▫', Colors.ALLEY_DARK)
 
     def _draw_outline_building(self, building: List[str], x: int, base_y: int, color: int):
         """Draw a building outline at the given position."""
@@ -2755,6 +2876,9 @@ class AlleyScene:
 
         # Update meteor QTE event
         self._update_qte()
+
+        # Update skyline window lights
+        self._update_skyline_windows()
 
     def _update_cars(self):
         """Update car positions and spawn new cars."""
@@ -3053,18 +3177,18 @@ class AlleyScene:
                 px = crosswalk_center + offset
                 if 0 <= px < self.width - 1 and vanish_end_y <= row_y < vanish_start_y:
                     # Draw street surface with lane markings
-                    if abs(offset) <= 1:
-                        # Center line (yellow dashes)
-                        if row_y % 3 == 0:
-                            self.scene[row_y][px] = ('=', Colors.RAT_YELLOW)
-                        else:
-                            self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
+                    if offset == 0:
+                        # Center line - vertical II pattern (yellow)
+                        self.scene[row_y][px] = ('I', Colors.RAT_YELLOW)
+                    elif offset == 1:
+                        # Second I of the II center line
+                        self.scene[row_y][px] = ('I', Colors.RAT_YELLOW)
                     elif offset == -half_width:
-                        # Left edge line (use backslash for perspective)
-                        self.scene[row_y][px] = ('\\', Colors.ALLEY_MID)
-                    elif offset == half_width:
-                        # Right edge line (use forward slash for perspective)
+                        # Left edge line (use forward slash for perspective - narrows toward top)
                         self.scene[row_y][px] = ('/', Colors.ALLEY_MID)
+                    elif offset == half_width:
+                        # Right edge line (use backslash for perspective - narrows toward top)
+                        self.scene[row_y][px] = ('\\', Colors.ALLEY_MID)
                     else:
                         # Street surface
                         self.scene[row_y][px] = ('▓', Colors.ALLEY_DARK)
@@ -3687,23 +3811,13 @@ class AlleyScene:
         street_y = self.height - 3 - y_offset
         sprite_height = len(sprite)
 
-        # Calculate vanishing street bounds for occlusion
-        curb_y = self.height - 4
-        vanish_end_y = self.height - (self.height // 5)
-        crosswalk_center = getattr(self, '_crosswalk_x', 0) + getattr(self, '_crosswalk_width', 32) // 2
-
+        # Render car on top of vanishing street (street is background)
         for row_idx, row in enumerate(sprite):
             for col_idx, char in enumerate(row):
                 px = x + col_idx
                 py = street_y - (sprite_height - 1 - row_idx)
 
                 if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
-                    # Check if this pixel is in the vanishing street area (car goes behind)
-                    if vanish_end_y <= py < curb_y - 1:
-                        progress = (curb_y - 1 - py) / max(1, curb_y - 1 - vanish_end_y)
-                        half_width = int(16 * (1.0 - progress * 0.7))
-                        if abs(px - crosswalk_center) <= half_width:
-                            continue  # Skip - car is behind vanishing street
                     try:
                         # Close-up car in bright white
                         attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
