@@ -694,15 +694,15 @@ class MatrixRain:
 
     def _add_stuck_snow(self, x: int, y: int, depth: int, char: str):
         """Add a snowflake that has stuck to the screen."""
-        # Limit total stuck snow to prevent memory issues
-        if len(self._stuck_snow) < 200:
+        # Limit total stuck snow to prevent memory issues (4x accumulation)
+        if len(self._stuck_snow) < 800:
             self._stuck_snow.append({
                 'x': x,
                 'y': y,
                 'depth': depth,
                 'char': char,
-                'life': random.randint(40, 120),  # Frames until fully melted
-                'max_life': 120,
+                'life': random.randint(160, 480),  # Longer melt time (4x)
+                'max_life': 480,
             })
 
     def _update_stuck_snow(self):
@@ -1050,29 +1050,29 @@ class AlleyScene:
         "|____|",
     ]
 
-    # Cardboard box ASCII art (5 wide x 3 tall)
+    # Cardboard box ASCII art (5 wide x 3 tall) - filled to prevent see-through
     BOX = [
         " ___ ",
-        "|   |",
+        "|###|",
         "|___|",
     ]
 
-    # Traffic light showing two sides (corner view) - TALLER version
+    # Traffic light showing two sides (corner view) - compact head, tall pole
     # Left column is N/S direction, right column is E/W direction
     TRAFFIC_LIGHT_TEMPLATE = [
-        " .=====. ",
-        " |     | ",
-        " | L R | ",  # Red lights
-        " |     | ",
-        " | L R | ",  # Yellow lights
-        " |     | ",
-        " | L R | ",  # Green lights
-        " |     | ",
-        " '=====' ",
-        "    ||   ",
-        "    ||   ",
-        "    ||   ",
-        "    ||   ",
+        " .===. ",
+        " |L R| ",  # Red lights
+        " |L R| ",  # Yellow lights
+        " |L R| ",  # Green lights
+        " '===' ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
+        "   ||  ",
     ]
 
     # Car sprites - large side views (4x person size, ~16 chars wide)
@@ -1085,21 +1085,83 @@ class AlleyScene:
         " (o)==========(o) ",
     ]
 
-    # Person walking (bigger than rat, ~4 rows tall)
-    PERSON_RIGHT = [
-        " O ",
-        "/|\\",
-        " | ",
-        "/ >",
+    # Person walking animation frames (arm swinging) - basic person
+    PERSON_RIGHT_FRAMES = [
+        [" O ", "/| ", " | ", "/ >"],   # Right arm back
+        [" O ", " |\\", " | ", "/ >"],   # Left arm back
+        [" O ", " | ", " | ", "/ >"],   # Arms at sides
     ]
-    PERSON_LEFT = [
-        " O ",
-        "/|\\",
-        " | ",
-        "< \\",
+    PERSON_LEFT_FRAMES = [
+        [" O ", " |\\", " | ", "< \\"],  # Left arm back
+        [" O ", "/| ", " | ", "< \\"],  # Right arm back
+        [" O ", " | ", " | ", "< \\"],  # Arms at sides
     ]
 
-    # Street light
+    # Person with hat (= on head)
+    PERSON_HAT_RIGHT_FRAMES = [
+        [" = ", " O ", "/| ", "/ >"],   # Hat, right arm back
+        [" = ", " O ", " |\\", "/ >"],   # Hat, left arm back
+        [" = ", " O ", " | ", "/ >"],   # Hat, arms at sides
+    ]
+    PERSON_HAT_LEFT_FRAMES = [
+        [" = ", " O ", " |\\", "< \\"],  # Hat, left arm back
+        [" = ", " O ", "/| ", "< \\"],  # Hat, right arm back
+        [" = ", " O ", " | ", "< \\"],  # Hat, arms at sides
+    ]
+
+    # Person with briefcase (# carried)
+    PERSON_BRIEFCASE_RIGHT_FRAMES = [
+        [" O ", "/|#", " | ", "/ >"],   # Briefcase in hand
+        [" O ", " |#", " | ", "/ >"],   # Briefcase
+        [" O ", " |#", " | ", "/ >"],   # Briefcase
+    ]
+    PERSON_BRIEFCASE_LEFT_FRAMES = [
+        [" O ", "#|\\", " | ", "< \\"],  # Briefcase in hand
+        [" O ", "#| ", " | ", "< \\"],  # Briefcase
+        [" O ", "#| ", " | ", "< \\"],  # Briefcase
+    ]
+
+    # Person with skirt (A-line shape)
+    PERSON_SKIRT_RIGHT_FRAMES = [
+        [" O ", "/| ", "/A\\", "> |"],   # Skirt, walking
+        [" O ", " |\\", "/A\\", "| <"],   # Skirt, walking
+        [" O ", " | ", "/A\\", "| |"],   # Skirt, standing
+    ]
+    PERSON_SKIRT_LEFT_FRAMES = [
+        [" O ", " |\\", "/A\\", "| <"],  # Skirt, walking
+        [" O ", "/| ", "/A\\", "> |"],  # Skirt, walking
+        [" O ", " | ", "/A\\", "| |"],  # Skirt, standing
+    ]
+
+    # All person types for random selection
+    PERSON_TYPES_RIGHT = [
+        PERSON_RIGHT_FRAMES,
+        PERSON_HAT_RIGHT_FRAMES,
+        PERSON_BRIEFCASE_RIGHT_FRAMES,
+        PERSON_SKIRT_RIGHT_FRAMES,
+    ]
+    PERSON_TYPES_LEFT = [
+        PERSON_LEFT_FRAMES,
+        PERSON_HAT_LEFT_FRAMES,
+        PERSON_BRIEFCASE_LEFT_FRAMES,
+        PERSON_SKIRT_LEFT_FRAMES,
+    ]
+
+    # Vertical car sprites (top-down view, going up/down)
+    CAR_DOWN = [
+        " [=] ",
+        "[###]",
+        "[###]",
+        " [=] ",
+    ]
+    CAR_UP = [
+        " [=] ",
+        "[###]",
+        "[###]",
+        " [=] ",
+    ]
+
+    # Street light - taller pole
     STREET_LIGHT = [
         " ___ ",
         "[___]",
@@ -1107,51 +1169,107 @@ class AlleyScene:
         "  |  ",
         "  |  ",
         "  |  ",
+        "  |  ",
+        "  |  ",
     ]
 
-    # Building wireframe - TALL with BIG windows (2x height, 4x window size)
+    # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, door, porch & steps
     BUILDING = [
-        ".------------------------------.",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|                              |",
-        "|  [====]  [====]  [====]      |",
-        "|  [====]  [====]  [====]      |",
-        "|______________________________|",
+        ".--------------------------------------------------------------.",
+        "|                                                              |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|                                                              |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|                                                              |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|                                                              |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|                                                              |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [        ]    [    ]  [    ]    [        ]    [    ]        |",
+        "|  [========]    [====]  [====]    [========]    [====]        |",
+        "|                              _____________                   |",
+        "|                             |  .------.  |                   |",
+        "|                             |  |  ##  |  |                   |",
+        "|_____________________________|  |  ##  |  |___________________|",
+        "                              |__|______|__|                    ",
+        "                               ===========                      ",
     ]
 
-    # Second building (right side) - TALL with BIG windows
+    # Second building (right side) - 2X TALL, 2X WIDE with door, porch & steps
     BUILDING2 = [
-        ".---------------------------.",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|                           |",
-        "|    [====]  [====]  [====] |",
-        "|    [====]  [====]  [====] |",
-        "|___________________________|",
+        ".----------------------------------------------------------.",
+        "|                                                          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|                                                          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|                                                          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|                                                          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|                                                          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [        ]    [    ]    [        ]    [    ]          |",
+        "|    [========]    [====]    [========]    [====]          |",
+        "|    _____________                                         |",
+        "|   |  .------.  |                                         |",
+        "|   |  |  ##  |  |                                         |",
+        "|___|  |  ##  |  |_________________________________________|",
+        "    |__|______|__|                                          ",
+        "     ===========                                            ",
+    ]
+
+    # Window positions for people animation (relative to building sprite)
+    # Each entry is (row_offset, col_offset) for the middle of a window
+    BUILDING_WINDOW_POSITIONS = [
+        (4, 5), (4, 20), (4, 30), (4, 45),     # First row
+        (10, 5), (10, 20), (10, 30), (10, 45), # Second row
+        (16, 5), (16, 20), (16, 30), (16, 45), # Third row
+        (22, 5), (22, 20), (22, 30), (22, 45), # Fourth row
+        (28, 5), (28, 20), (28, 30), (28, 45), # Fifth row
+    ]
+    BUILDING2_WINDOW_POSITIONS = [
+        (4, 7), (4, 22), (4, 37), (4, 52),     # First row
+        (10, 7), (10, 22), (10, 37), (10, 52), # Second row
+        (16, 7), (16, 22), (16, 37), (16, 52), # Third row
+        (22, 7), (22, 22), (22, 37), (22, 52), # Fourth row
+        (28, 7), (28, 22), (28, 37), (28, 52), # Fifth row
     ]
 
     def __init__(self, width: int, height: int):
@@ -1163,18 +1281,35 @@ class AlleyScene:
         self.dumpster_y = 0
         self.box_x = 0
         self.box_y = 0
+        # Store building positions for window people
+        self._building_x = 0
+        self._building_y = 0
+        self._building2_x = 0
+        self._building2_y = 0
+        # Vertical road position (between buildings)
+        self._vertical_road_x = 0
         # Store building bottom for rat constraints
         self._building_bottom_y = height - 3
         # Traffic light state
         self._traffic_frame = 0
         self._traffic_state = 'NS_GREEN'  # NS_GREEN, NS_YELLOW, EW_GREEN, EW_YELLOW
         self._state_duration = 0
-        # Cars on the street
+        # Horizontal cars on the street
         self._cars: List[Dict] = []
         self._car_spawn_timer = 0
+        # Vertical cars on the cross street
+        self._vertical_cars: List[Dict] = []
+        self._vertical_car_spawn_timer = 0
         # Pedestrians on the street
         self._pedestrians: List[Dict] = []
         self._pedestrian_spawn_timer = 0
+        # Street light flicker effect
+        self._street_light_positions: List[Tuple[int, int]] = []
+        self._street_light_flicker = [1.0, 1.0]  # Brightness per light (0-1)
+        self._flicker_timer = 0
+        # Window people - list of active silhouettes {window_idx, building, direction, progress}
+        self._window_people: List[Dict] = []
+        self._window_spawn_timer = 0
         self._generate_scene()
 
     def resize(self, width: int, height: int):
@@ -1182,6 +1317,7 @@ class AlleyScene:
         self.width = width
         self.height = height
         self._cars = []  # Clear cars on resize
+        self._vertical_cars = []  # Clear vertical cars on resize
         self._pedestrians = []  # Clear pedestrians on resize
         self._generate_scene()
 
@@ -1195,34 +1331,53 @@ class AlleyScene:
         self.scene = [[(' ', Colors.ALLEY_DARK) for _ in range(self.width)]
                       for _ in range(self.height)]
 
-        # Calculate common ground level (where dumpster/box bottom edge is)
-        ground_y = self.height - 3  # -2 for curb/street, -1 for ground level
+        # Street and curb at the very bottom of the window
+        street_y = self.height - 1
+        curb_y = self.height - 2
+
+        # Ground level is just above curb (moved up from previous position)
+        ground_y = curb_y - 1
 
         # Draw first building wireframe in background (left side)
         # Position building so its bottom edge is at ground level
-        building_x = 3
-        building_y = ground_y - len(self.BUILDING) + 1
-        self._draw_sprite(self.BUILDING, building_x, max(1, building_y), Colors.ALLEY_BLUE)
+        self._building_x = 3
+        self._building_y = ground_y - len(self.BUILDING) + 1
+        self._draw_sprite(self.BUILDING, self._building_x, max(1, self._building_y), Colors.ALLEY_BLUE)
         self._building_bottom_y = ground_y  # Store for rat constraint
 
         # Draw second building on the right side
         if self.width > 60:
-            building2_x = self.width - len(self.BUILDING2[0]) - 5
-            building2_y = ground_y - len(self.BUILDING2) + 1
-            self._draw_sprite(self.BUILDING2, building2_x, max(1, building2_y), Colors.ALLEY_BLUE)
+            self._building2_x = self.width - len(self.BUILDING2[0]) - 5
+            self._building2_y = ground_y - len(self.BUILDING2) + 1
+            self._draw_sprite(self.BUILDING2, self._building2_x, max(1, self._building2_y), Colors.ALLEY_BLUE)
+
+        # Draw vertical road between buildings
+        if self.width > 60:
+            # Position vertical road in the gap between buildings
+            self._vertical_road_x = self._building_x + len(self.BUILDING[0]) + 2
+            road_width = 7  # Width of vertical road
+
+            # Draw vertical road from top to curb
+            for y in range(max(1, self._building_y), curb_y):
+                for dx in range(road_width):
+                    rx = self._vertical_road_x + dx
+                    if 0 <= rx < self.width - 1:
+                        self.scene[y][rx] = ('░', Colors.ALLEY_DARK)
+
+                # Draw dotted yellow center line
+                center_x = self._vertical_road_x + road_width // 2
+                if 0 <= center_x < self.width - 1:
+                    if (y % 3) < 2:  # Dashed pattern: 2 on, 1 off
+                        self.scene[y][center_x] = (':', Colors.RAT_YELLOW)
 
         # Draw street lights along the scene
         self._draw_street_lights(ground_y)
 
-        # Draw street at the very bottom (last 2 rows)
-        street_y = self.height - 1
-        curb_y = self.height - 2
-
-        # Draw curb - solid line separating alley from street
+        # Draw curb - solid line separating alley from street (at bottom)
         for x in range(self.width - 1):
             self.scene[curb_y][x] = ('▄', Colors.ALLEY_MID)
 
-        # Draw street with lane markings (dashed yellow line in center)
+        # Draw street with lane markings at the very bottom row
         for x in range(self.width - 1):
             # Street surface
             self.scene[street_y][x] = ('▓', Colors.ALLEY_DARK)
@@ -1236,25 +1391,28 @@ class AlleyScene:
 
         # Place dumpster in lower-left area (above curb) - drawn AFTER buildings (in front)
         self.dumpster_x = 8
-        self.dumpster_y = self.height - len(self.DUMPSTER) - 3  # -3 to be above curb
+        self.dumpster_y = ground_y - len(self.DUMPSTER) + 1
         self._draw_sprite(self.DUMPSTER, self.dumpster_x, self.dumpster_y, Colors.ALLEY_MID)
 
         # Place box to the right of dumpster (above curb) - drawn AFTER buildings (in front)
         self.box_x = self.dumpster_x + len(self.DUMPSTER[0]) + 6
-        self.box_y = self.height - len(self.BOX) - 3  # -3 to be above curb
+        self.box_y = ground_y - len(self.BOX) + 1
         self._draw_sprite(self.BOX, self.box_x, self.box_y, Colors.SAND_DIM)
 
     def _draw_street_lights(self, ground_y: int):
-        """Draw street lights along the scene."""
+        """Draw street lights along the scene and store positions for flicker effect."""
         light_height = len(self.STREET_LIGHT)
         # Position lights so they stand on the ground
         light_y = ground_y - light_height + 1
 
         # Place street lights at intervals
-        light_positions = [45, self.width - 15]  # One in middle-ish, one on right
-        for light_x in light_positions:
+        self._street_light_positions = []
+        light_x_positions = [45, self.width - 15]  # One in middle-ish, one on right
+        for light_x in light_x_positions:
             if 0 < light_x < self.width - len(self.STREET_LIGHT[0]) - 1:
                 self._draw_sprite(self.STREET_LIGHT, light_x, max(1, light_y), Colors.ALLEY_LIGHT)
+                # Store position for flicker effect (center of light head)
+                self._street_light_positions.append((light_x + 2, max(1, light_y) + 1))
 
     def _spawn_car(self):
         """Spawn a new car on the street."""
@@ -1276,8 +1434,33 @@ class AlleyScene:
                 'sprite': self.CAR_LEFT,
             })
 
+    def _spawn_vertical_car(self):
+        """Spawn a new car on the vertical road."""
+        if self._vertical_road_x == 0:
+            return  # No vertical road
+
+        # Randomly choose direction (up or down)
+        if random.random() < 0.5:
+            # Car going down (spawn at top)
+            self._vertical_cars.append({
+                'y': -4.0,
+                'x': self._vertical_road_x + 1,  # Center on road
+                'direction': 1,
+                'speed': random.uniform(0.4, 0.8),
+                'sprite': self.CAR_DOWN,
+            })
+        else:
+            # Car going up (spawn at bottom)
+            self._vertical_cars.append({
+                'y': float(self.height + 2),
+                'x': self._vertical_road_x + 1,
+                'direction': -1,
+                'speed': random.uniform(0.4, 0.8),
+                'sprite': self.CAR_UP,
+            })
+
     def update(self):
-        """Update traffic light state, cars, and pedestrians."""
+        """Update traffic light state, cars, pedestrians, street light flicker, and window people."""
         self._traffic_frame += 1
 
         # State machine for traffic lights
@@ -1303,8 +1486,17 @@ class AlleyScene:
         # Update cars
         self._update_cars()
 
+        # Update vertical cars
+        self._update_vertical_cars()
+
         # Update pedestrians
         self._update_pedestrians()
+
+        # Update street light flicker
+        self._update_street_light_flicker()
+
+        # Update window people
+        self._update_window_people()
 
     def _update_cars(self):
         """Update car positions and spawn new cars."""
@@ -1326,8 +1518,31 @@ class AlleyScene:
 
         self._cars = new_cars
 
+    def _update_vertical_cars(self):
+        """Update vertical car positions and spawn new cars."""
+        # Spawn new vertical cars occasionally
+        self._vertical_car_spawn_timer += 1
+        if self._vertical_car_spawn_timer >= random.randint(60, 150):
+            if len(self._vertical_cars) < 2:  # Max 2 vertical cars at once
+                self._spawn_vertical_car()
+            self._vertical_car_spawn_timer = 0
+
+        # Update vertical car positions
+        new_cars = []
+        for car in self._vertical_cars:
+            car['y'] += car['direction'] * car['speed']
+
+            # Keep car if it's still on screen (with margin)
+            if -10 < car['y'] < self.height + 10:
+                new_cars.append(car)
+
+        self._vertical_cars = new_cars
+
     def _spawn_pedestrian(self):
-        """Spawn a new pedestrian on the sidewalk."""
+        """Spawn a new pedestrian on the sidewalk with random accessories."""
+        # Randomly choose person type (basic, hat, briefcase, skirt)
+        person_type_idx = random.randint(0, len(self.PERSON_TYPES_RIGHT) - 1)
+
         # Randomly choose direction
         if random.random() < 0.5:
             # Pedestrian going right (spawn on left)
@@ -1335,7 +1550,9 @@ class AlleyScene:
                 'x': -5.0,
                 'direction': 1,
                 'speed': random.uniform(0.3, 0.6),  # Slower than cars
-                'sprite': self.PERSON_RIGHT,
+                'frames': self.PERSON_TYPES_RIGHT[person_type_idx],
+                'frame_idx': 0,
+                'frame_timer': 0,
             })
         else:
             # Pedestrian going left (spawn on right)
@@ -1343,7 +1560,9 @@ class AlleyScene:
                 'x': float(self.width + 2),
                 'direction': -1,
                 'speed': random.uniform(0.3, 0.6),
-                'sprite': self.PERSON_LEFT,
+                'frames': self.PERSON_TYPES_LEFT[person_type_idx],
+                'frame_idx': 0,
+                'frame_timer': 0,
             })
 
     def _update_pedestrians(self):
@@ -1355,16 +1574,78 @@ class AlleyScene:
                 self._spawn_pedestrian()
             self._pedestrian_spawn_timer = 0
 
-        # Update pedestrian positions
+        # Update pedestrian positions and arm animation
         new_pedestrians = []
         for ped in self._pedestrians:
             ped['x'] += ped['direction'] * ped['speed']
+
+            # Update arm animation frame
+            ped['frame_timer'] += 1
+            if ped['frame_timer'] >= 8:  # Change arm position every 8 frames
+                ped['frame_timer'] = 0
+                ped['frame_idx'] = (ped['frame_idx'] + 1) % len(ped['frames'])
 
             # Keep pedestrian if still on screen (with margin)
             if -10 < ped['x'] < self.width + 10:
                 new_pedestrians.append(ped)
 
         self._pedestrians = new_pedestrians
+
+    def _update_street_light_flicker(self):
+        """Update street light flicker effect."""
+        self._flicker_timer += 1
+
+        # Randomly adjust flicker brightness for each light
+        for i in range(len(self._street_light_flicker)):
+            # Slight random variation
+            if random.random() < 0.1:  # 10% chance of flicker per frame
+                # Flicker down briefly
+                self._street_light_flicker[i] = random.uniform(0.3, 0.7)
+            elif self._street_light_flicker[i] < 1.0:
+                # Gradually return to full brightness
+                self._street_light_flicker[i] = min(1.0, self._street_light_flicker[i] + 0.1)
+
+    def _update_window_people(self):
+        """Update people walking by windows (rarely)."""
+        self._window_spawn_timer += 1
+
+        # Very rarely spawn a person in a window (about 1 in 500 frames)
+        if self._window_spawn_timer >= random.randint(300, 700):
+            self._window_spawn_timer = 0
+            if len(self._window_people) < 2:  # Max 2 window people at once
+                # Pick a random window from either building
+                building = random.choice([1, 2])
+                if building == 1:
+                    positions = self.BUILDING_WINDOW_POSITIONS
+                    window_idx = random.randint(0, len(positions) - 1)
+                else:
+                    positions = self.BUILDING2_WINDOW_POSITIONS
+                    window_idx = random.randint(0, len(positions) - 1)
+
+                self._window_people.append({
+                    'building': building,
+                    'window_idx': window_idx,
+                    'direction': random.choice([-1, 1]),
+                    'progress': 0.0 if random.random() < 0.5 else 1.0,  # Start from left or right
+                })
+
+        # Update existing window people
+        new_window_people = []
+        for person in self._window_people:
+            # Move person across window
+            speed = 0.05
+            if person['progress'] <= 0.0:
+                person['direction'] = 1
+            elif person['progress'] >= 1.0:
+                person['direction'] = -1
+
+            person['progress'] += person['direction'] * speed
+
+            # Keep person if still in window
+            if -0.5 < person['progress'] < 1.5:
+                new_window_people.append(person)
+
+        self._window_people = new_window_people
 
     def _get_traffic_light_colors(self) -> Tuple[Tuple[str, int], Tuple[str, int], Tuple[str, int],
                                                    Tuple[str, int], Tuple[str, int], Tuple[str, int]]:
@@ -1419,13 +1700,22 @@ class AlleyScene:
                     except curses.error:
                         pass
 
+        # Render window people silhouettes
+        self._render_window_people(screen)
+
+        # Render street light flicker effects
+        self._render_street_light_flicker(screen)
+
         # Render pedestrians on the sidewalk
         self._render_pedestrians(screen)
 
         # Render traffic light (dynamic - lights change)
         self._render_traffic_light(screen)
 
-        # Render cars on the street LAST (on top of everything)
+        # Render vertical cars on the cross street
+        self._render_vertical_cars(screen)
+
+        # Render horizontal cars on the street LAST (on top of everything)
         self._render_cars(screen)
 
     def _render_cars(self, screen):
@@ -1455,13 +1745,20 @@ class AlleyScene:
                             pass
 
     def _render_pedestrians(self, screen):
-        """Render pedestrians on the sidewalk (curb level)."""
+        """Render pedestrians on the sidewalk (curb level) with arm animation."""
         # Pedestrians walk on the curb/sidewalk area
         curb_y = self.height - 2
 
         for ped in self._pedestrians:
             x = int(ped['x'])
-            sprite = ped['sprite']
+            # Get current animation frame
+            frames = ped.get('frames', [])
+            frame_idx = ped.get('frame_idx', 0)
+            if frames and frame_idx < len(frames):
+                sprite = frames[frame_idx]
+            else:
+                continue
+
             sprite_height = len(sprite)
 
             for row_idx, row in enumerate(sprite):
@@ -1480,6 +1777,102 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+    def _render_vertical_cars(self, screen):
+        """Render vertical cars on the cross street."""
+        for car in self._vertical_cars:
+            x = int(car['x'])
+            y = int(car['y'])
+            sprite = car['sprite']
+
+            for row_idx, row in enumerate(sprite):
+                for col_idx, char in enumerate(row):
+                    px = x + col_idx
+                    py = y + row_idx
+
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        try:
+                            # Vertical cars in white/bright
+                            attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
+
+    def _render_street_light_flicker(self, screen):
+        """Render flickering light effects under street lights."""
+        # Light glow characters
+        glow_chars = ['░', '▒', '▓']
+
+        for i, (light_x, light_y) in enumerate(self._street_light_positions):
+            if i >= len(self._street_light_flicker):
+                continue
+
+            brightness = self._street_light_flicker[i]
+
+            # Draw light glow underneath the lamp (cone of light)
+            glow_y = light_y + 1  # Start just below the lamp head
+            for row in range(3):  # 3 rows of glow
+                spread = row + 1  # Wider as it goes down
+                glow_intensity = brightness * (1.0 - row * 0.25)
+
+                for dx in range(-spread, spread + 1):
+                    px = light_x + dx
+                    py = glow_y + row
+
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                        # Pick glow character based on intensity and distance from center
+                        dist_factor = abs(dx) / (spread + 1)
+                        char_idx = min(2, int((1.0 - glow_intensity) * 2 + dist_factor))
+                        glow_char = glow_chars[char_idx] if glow_intensity > 0.3 else ' '
+
+                        if glow_char != ' ':
+                            try:
+                                attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_DIM
+                                screen.attron(attr)
+                                screen.addstr(py, px, glow_char)
+                                screen.attroff(attr)
+                            except curses.error:
+                                pass
+
+    def _render_window_people(self, screen):
+        """Render silhouettes of people walking by windows."""
+        for person in self._window_people:
+            building = person['building']
+            window_idx = person['window_idx']
+            progress = person['progress']
+
+            # Get window position
+            if building == 1:
+                positions = self.BUILDING_WINDOW_POSITIONS
+                base_x = self._building_x
+                base_y = self._building_y
+            else:
+                positions = self.BUILDING2_WINDOW_POSITIONS
+                base_x = self._building2_x
+                base_y = self._building2_y
+
+            if window_idx >= len(positions):
+                continue
+
+            row_offset, col_offset = positions[window_idx]
+            window_x = base_x + col_offset
+            window_y = base_y + row_offset
+
+            # Calculate silhouette position within window (4 chars wide)
+            window_width = 4
+            silhouette_x = window_x + int(progress * window_width)
+
+            # Draw simple silhouette (just a dark blob)
+            if 0 <= silhouette_x < self.width - 1 and 0 <= window_y < self.height:
+                try:
+                    attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
+                    screen.attron(attr)
+                    screen.addstr(window_y, silhouette_x, '█')
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
         # Position traffic light on right side of scene (shifted 25 chars right = 10 + 15)
@@ -1493,7 +1886,7 @@ class AlleyScene:
         ns_red, ns_yellow, ns_green, ew_red, ew_yellow, ew_green = self._get_traffic_light_colors()
 
         # Render each row of traffic light
-        # Taller template has lights at rows 2 (red), 4 (yellow), 6 (green)
+        # Compact template has lights at rows 1 (red), 2 (yellow), 3 (green)
         for row_idx, row in enumerate(self.TRAFFIC_LIGHT_TEMPLATE):
             for col_idx, char in enumerate(row):
                 px = light_x + col_idx
@@ -1509,18 +1902,18 @@ class AlleyScene:
                 render_char = char
 
                 if char == 'L':  # Left side lights (N/S direction)
-                    if row_idx == 2:  # Red position
+                    if row_idx == 1:  # Red position
                         render_char, color = ns_red
-                    elif row_idx == 4:  # Yellow position
+                    elif row_idx == 2:  # Yellow position
                         render_char, color = ns_yellow
-                    elif row_idx == 6:  # Green position
+                    elif row_idx == 3:  # Green position
                         render_char, color = ns_green
                 elif char == 'R':  # Right side lights (E/W direction)
-                    if row_idx == 2:  # Red position
+                    if row_idx == 1:  # Red position
                         render_char, color = ew_red
-                    elif row_idx == 4:  # Yellow position
+                    elif row_idx == 2:  # Yellow position
                         render_char, color = ew_yellow
-                    elif row_idx == 6:  # Green position
+                    elif row_idx == 3:  # Green position
                         render_char, color = ew_green
                 else:
                     render_char = char
@@ -1635,30 +2028,31 @@ class AlleyRat:
     in quick, erratic patterns when there are active warnings.
     """
 
-    # Rat animation frames - bigger sprites when moving
+    # Rat animation frames - no visible eyes
+    # Sitting: 2x2 chars, Moving: 1x2 chars (slim profile)
     RAT_FRAMES = {
         'right': [
-            # Frame 1: running right - 3 rows, bigger body
-            ["  __/~", " /o o\\", " \\_W_/`"],
+            # Frame 1: running right - slim 1x2
+            ["~>", "vv"],
             # Frame 2: running right - legs shifted
-            ["  __/~", " /o o\\", "`\\_W_/ "],
+            ["-)", " v"],
         ],
         'left': [
-            # Frame 1: running left - 3 rows, bigger body
-            ["~\\__  ", "/o o\\ ", "`\\_W_/"],
+            # Frame 1: running left - slim 1x2
+            ["<~", "vv"],
             # Frame 2: running left - legs shifted
-            ["~\\__  ", " /o o\\", " \\_W_/`"],
+            ["(-", "v "],
         ],
         'idle': [
-            # Sitting rat facing camera - 2 feet (vv not vvv)
-            ["<O.O>", "  vv "],  # Alert
-            ["<o.o>", "  vv "],  # Relaxed
+            # Sitting rat - 2x2, no eyes (just fur/shape)
+            ["()", "vv"],  # Curled up
+            ["{}", "vv"],  # Slightly different
         ],
         'look_left': [
-            ["<O.O ", "  vv "],  # Looking left
+            ["<)", "vv"],  # Head turned left
         ],
         'look_right': [
-            [" O.O>", "  vv "],  # Looking right
+            ["(>", "vv"],  # Head turned right
         ],
     }
 
