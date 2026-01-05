@@ -1382,8 +1382,8 @@ class AlleyScene:
         "        |=|              |   ||=|              |=|=|      |   ||=|              |   ||=|        |  ||=|=|         ",  # Row 9
         "        |=|              |[ ]||=|              |=|=|      |[ ]||=|              |[ ]||=|        |[ ]||=|=|         ",  # Row 10
         "        |=|              |[ ]||=|              |=|=|      |[ ]||=|              |[ ]||=|        |[ ]||=|=|         ",  # Row 11
-        "        |=|              |___||=|              |___|      |___||=|              |___||=|        |___||___|         ",  # Row 12
-        "        |_|                  |_|                              |_|                  |_|                            ",  # Row 13
+        "        |=|              |___||=|              |=|=|      |___||=|              |___||=|        |___||=|=|         ",  # Row 12
+        "        |_|                  |_|              |_||_|          |_|                  |_|             |_||_|         ",  # Row 13
     ]
 
     # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors with stoops
@@ -1606,6 +1606,10 @@ class AlleyScene:
         # Skyline buildings with animated window lights
         self._skyline_windows: List[Dict] = []  # {x, y, on, timer, toggle_time}
         self._skyline_buildings: List[Dict] = []  # {x, y, width, height, windows}
+        # OPEN sign animation state
+        self._open_sign_phase = 0  # 0=off, 1=O, 2=OP, 3=OPE, 4=OPEN, 5-9=flash
+        self._open_sign_timer = 0
+        self._open_sign_speed = 20  # Frames per phase
         # Cloud layer with wisps
         self._clouds: List[Dict] = []
         self._init_clouds()
@@ -2252,6 +2256,105 @@ class AlleyScene:
                         self.scene[py][px] = ('▪', Colors.RAT_YELLOW)
                     else:
                         self.scene[py][px] = ('▫', Colors.ALLEY_DARK)
+
+    def _update_open_sign(self):
+        """Update OPEN sign animation - lights up O, P, E, N then flashes."""
+        self._open_sign_timer += 1
+        if self._open_sign_timer >= self._open_sign_speed:
+            self._open_sign_timer = 0
+            self._open_sign_phase += 1
+            if self._open_sign_phase > 9:  # 0-4 = lighting up, 5-9 = flashing
+                self._open_sign_phase = 0
+
+    def _render_cafe_sign(self, screen):
+        """Render cafe sign with green SHELL CAFE and animated OPEN sign."""
+        if not hasattr(self, 'cafe_x') or not hasattr(self, 'cafe_y'):
+            return
+
+        cafe_x = self.cafe_x
+        cafe_y = self.cafe_y
+
+        # Find the SHELL CAFE text in the sprite (row 1)
+        if len(self.CAFE) > 1:
+            sign_row = self.CAFE[1]  # "  |     S H E L L  C A F E   |  "
+            for col_idx, char in enumerate(sign_row):
+                if char in 'SHELLCAFE':
+                    px = cafe_x + col_idx
+                    py = cafe_y + 1
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                        try:
+                            # Green bold for SHELL CAFE
+                            attr = curses.color_pair(Colors.MATRIX_BRIGHT) | curses.A_BOLD
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
+
+        # Find and animate the OPEN sign (row 14 in CAFE sprite)
+        if len(self.CAFE) > 14:
+            open_row = self.CAFE[14]  # "  |[                  OPEN ]|  "
+            open_start = open_row.find('OPEN')
+            if open_start != -1:
+                # Determine which letters are lit based on phase
+                # Phase 0: all off, 1: O, 2: OP, 3: OPE, 4: OPEN, 5-9: flash on/off
+                letters = ['O', 'P', 'E', 'N']
+                for i, letter in enumerate(letters):
+                    px = cafe_x + open_start + i
+                    py = cafe_y + 14
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                        try:
+                            if self._open_sign_phase == 0:
+                                # All off - dim gray
+                                attr = curses.color_pair(Colors.ALLEY_DARK)
+                            elif self._open_sign_phase <= 4:
+                                # Lighting up one by one
+                                if i < self._open_sign_phase:
+                                    # This letter is lit - bright yellow
+                                    attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+                                else:
+                                    # Not lit yet - dim
+                                    attr = curses.color_pair(Colors.ALLEY_DARK)
+                            else:
+                                # Flashing phase (5-9) - alternate on/off
+                                if self._open_sign_phase % 2 == 1:
+                                    attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+                                else:
+                                    attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_DIM
+                            screen.attron(attr)
+                            screen.addstr(py, px, letter)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
+
+    def _render_trees(self, screen):
+        """Render trees on top of buildings (foreground layer)."""
+        for tree_x, tree_y in self._tree_positions:
+            # Use windy tree sprite based on wind direction
+            if self._wind_direction > 0:
+                tree_sprite = self.TREE_WINDY_RIGHT
+            else:
+                tree_sprite = self.TREE_WINDY_LEFT
+
+            for row_idx, row in enumerate(tree_sprite):
+                for col_idx, char in enumerate(row):
+                    px = tree_x + col_idx
+                    py = tree_y + row_idx
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        try:
+                            if char == '@':
+                                # Leaves - bright green
+                                attr = curses.color_pair(Colors.MATRIX_BRIGHT)
+                            elif char in '()|':
+                                # Trunk - brown/dark
+                                attr = curses.color_pair(Colors.SAND_DIM)
+                            else:
+                                attr = curses.color_pair(Colors.ALLEY_MID)
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
 
     def _render_clouds(self, screen):
         """Render cloud layer."""
@@ -2947,6 +3050,9 @@ class AlleyScene:
         # Update skyline window lights
         self._update_skyline_windows()
 
+        # Update OPEN sign animation
+        self._update_open_sign()
+
         # Update meteor damage overlays
         self._update_damage_overlays()
 
@@ -3476,8 +3582,14 @@ class AlleyScene:
         # Render cafe people in Shell Cafe lower window
         self._render_cafe_people(screen)
 
+        # Render cafe sign (green SHELL CAFE and animated OPEN sign)
+        self._render_cafe_sign(screen)
+
         # Render window frames on top of window people (so people appear inside)
         self._render_window_frames(screen)
+
+        # Render trees as foreground layer (in front of buildings)
+        self._render_trees(screen)
 
         # Render sidewalk/curb on top of scene but behind all sprites
         self._render_sidewalk(screen)
