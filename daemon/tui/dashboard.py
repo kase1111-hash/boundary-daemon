@@ -278,56 +278,309 @@ class MatrixRain:
 
 
 class DashboardClient:
-    """Client for communicating with daemon."""
+    """Client for communicating with daemon via socket API."""
 
-    def __init__(self, socket_path: str = "/var/run/boundary-daemon/boundary.sock"):
+    # Socket paths to try in order
+    SOCKET_PATHS = [
+        '/var/run/boundary-daemon/boundary.sock',
+        os.path.expanduser('~/.agent-os/api/boundary.sock'),
+        './api/boundary.sock',
+    ]
+
+    # Windows TCP fallback
+    WINDOWS_HOST = '127.0.0.1'
+    WINDOWS_PORT = 19847
+
+    def __init__(self, socket_path: Optional[str] = None):
         self.socket_path = socket_path
         self._connected = False
+        self._demo_mode = False
+        self._token = self._resolve_token()
+        self._demo_event_offset = 0
+
+        # Try to find working socket
+        if not self.socket_path:
+            self.socket_path = self._find_socket()
+
+        # Test connection
+        self._connected = self._test_connection()
+        if not self._connected:
+            self._demo_mode = True
+            logger.info("Daemon not available, running in demo mode")
+
+    def _resolve_token(self) -> Optional[str]:
+        """Resolve API token from environment or file."""
+        # Environment variable
+        token = os.environ.get('BOUNDARY_API_TOKEN')
+        if token:
+            return token.strip()
+
+        # Token file
+        token_paths = [
+            './config/api_tokens.json',
+            os.path.expanduser('~/.agent-os/api_token'),
+            '/etc/boundary-daemon/api_token',
+        ]
+        for path in token_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r') as f:
+                        content = f.read().strip()
+                        if path.endswith('.json'):
+                            data = json.loads(content)
+                            if isinstance(data, dict) and 'token' in data:
+                                return data['token']
+                            elif isinstance(data, list) and data:
+                                return data[0].get('token')
+                        else:
+                            return content
+                except (IOError, json.JSONDecodeError):
+                    pass
+        return None
+
+    def _find_socket(self) -> str:
+        """Find available socket path."""
+        for path in self.SOCKET_PATHS:
+            if os.path.exists(path):
+                return path
+        return self.SOCKET_PATHS[0]  # Default
+
+    def _test_connection(self) -> bool:
+        """Test if daemon is reachable."""
+        try:
+            response = self._send_request('status')
+            return response.get('success', False)
+        except Exception:
+            return False
+
+    def _send_request(self, command: str, params: Optional[Dict] = None) -> Dict:
+        """Send request to daemon API."""
+        request = {
+            'command': command,
+            'params': params or {},
+        }
+        if self._token:
+            request['token'] = self._token
+
+        try:
+            if sys.platform == 'win32':
+                return self._send_tcp(request)
+            else:
+                return self._send_unix(request)
+        except Exception as e:
+            logger.debug(f"Request failed: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _send_unix(self, request: Dict) -> Dict:
+        """Send request via Unix socket."""
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        try:
+            sock.connect(self.socket_path)
+            sock.sendall(json.dumps(request).encode('utf-8'))
+            data = sock.recv(65536)
+            return json.loads(data.decode('utf-8'))
+        finally:
+            sock.close()
+
+    def _send_tcp(self, request: Dict) -> Dict:
+        """Send request via TCP (Windows)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        try:
+            sock.connect((self.WINDOWS_HOST, self.WINDOWS_PORT))
+            sock.sendall(json.dumps(request).encode('utf-8'))
+            data = sock.recv(65536)
+            return json.loads(data.decode('utf-8'))
+        finally:
+            sock.close()
 
     def connect(self) -> bool:
         """Test connection to daemon."""
-        try:
-            if os.path.exists(self.socket_path):
-                self._connected = True
-                return True
-        except:
-            pass
-        self._connected = False
-        return False
+        self._connected = self._test_connection()
+        self._demo_mode = not self._connected
+        return self._connected
+
+    def is_demo_mode(self) -> bool:
+        """Check if running in demo mode."""
+        return self._demo_mode
 
     def get_status(self) -> Dict:
         """Get daemon status."""
-        # In production, this would use Unix socket
-        # For now, return mock data
+        if self._demo_mode:
+            return self._demo_status()
+
+        response = self._send_request('status')
+        if response.get('success'):
+            status = response.get('status', {})
+            # Map API response to dashboard format
+            return {
+                'mode': status.get('mode', 'UNKNOWN').upper(),
+                'mode_since': datetime.utcnow().isoformat(),
+                'uptime': status.get('uptime_seconds', 0),
+                'events_today': status.get('events_today', 0),
+                'violations': status.get('tripwire_count', 0),
+                'tripwire_enabled': True,
+                'clock_monitor_enabled': status.get('online', False),
+                'network_attestation_enabled': status.get('network_state', 'unknown') != 'isolated',
+                'is_frozen': status.get('lockdown_active', False),
+            }
+        return self._demo_status()
+
+    def get_events(self, limit: int = 20) -> List[DashboardEvent]:
+        """Get recent events."""
+        if self._demo_mode:
+            return self._demo_events(limit)
+
+        response = self._send_request('get_events', {'count': limit})
+        if response.get('success'):
+            events = []
+            for e in response.get('events', []):
+                events.append(DashboardEvent(
+                    timestamp=e.get('timestamp', datetime.utcnow().isoformat()),
+                    event_type=e.get('event_type', 'UNKNOWN'),
+                    details=e.get('details', ''),
+                    severity=e.get('severity', 'INFO'),
+                    metadata=e.get('metadata', {}),
+                ))
+            return events
+        return self._demo_events(limit)
+
+    def get_alerts(self) -> List[DashboardAlert]:
+        """Get active alerts."""
+        if self._demo_mode:
+            return self._demo_alerts()
+
+        # Try to get alerts from daemon
+        response = self._send_request('get_alerts')
+        if response.get('success'):
+            alerts = []
+            for a in response.get('alerts', []):
+                alerts.append(DashboardAlert(
+                    alert_id=a.get('alert_id', ''),
+                    timestamp=a.get('timestamp', datetime.utcnow().isoformat()),
+                    severity=a.get('severity', 'MEDIUM'),
+                    message=a.get('message', ''),
+                    status=a.get('status', 'NEW'),
+                    source=a.get('source', ''),
+                ))
+            return alerts
+        return self._demo_alerts()
+
+    def get_sandboxes(self) -> List[SandboxStatus]:
+        """Get active sandboxes."""
+        if self._demo_mode:
+            return self._demo_sandboxes()
+
+        response = self._send_request('get_sandboxes')
+        if response.get('success'):
+            sandboxes = []
+            for s in response.get('sandboxes', []):
+                sandboxes.append(SandboxStatus(
+                    sandbox_id=s.get('sandbox_id', ''),
+                    profile=s.get('profile', 'standard'),
+                    status=s.get('status', 'unknown'),
+                    memory_used=s.get('memory_used', 0),
+                    memory_limit=s.get('memory_limit', 0),
+                    cpu_percent=s.get('cpu_percent', 0),
+                    uptime=s.get('uptime', 0),
+                ))
+            return sandboxes
+        return self._demo_sandboxes()
+
+    def get_siem_status(self) -> Dict:
+        """Get SIEM shipping status."""
+        if self._demo_mode:
+            return self._demo_siem()
+
+        response = self._send_request('get_siem_status')
+        if response.get('success'):
+            return response.get('siem_status', self._demo_siem())
+        return self._demo_siem()
+
+    def set_mode(self, mode: str, reason: str = '') -> Tuple[bool, str]:
+        """Request mode change."""
+        if self._demo_mode:
+            return False, "Demo mode - daemon not connected"
+
+        response = self._send_request('set_mode', {
+            'mode': mode.lower(),
+            'operator': 'human',
+            'reason': reason,
+        })
+        if response.get('success'):
+            return True, response.get('message', 'Mode changed')
+        return False, response.get('error', 'Mode change failed')
+
+    def acknowledge_alert(self, alert_id: str) -> Tuple[bool, str]:
+        """Acknowledge an alert."""
+        if self._demo_mode:
+            return True, "Demo mode - alert acknowledged locally"
+
+        response = self._send_request('acknowledge_alert', {'alert_id': alert_id})
+        if response.get('success'):
+            return True, response.get('message', 'Alert acknowledged')
+        return False, response.get('error', 'Failed to acknowledge alert')
+
+    def export_events(self, start_time: Optional[str] = None,
+                      end_time: Optional[str] = None) -> List[Dict]:
+        """Export events for a time range."""
+        if self._demo_mode:
+            return [e.__dict__ for e in self._demo_events(100)]
+
+        params = {}
+        if start_time:
+            params['start_time'] = start_time
+        if end_time:
+            params['end_time'] = end_time
+        params['count'] = 1000
+
+        response = self._send_request('get_events', params)
+        if response.get('success'):
+            return response.get('events', [])
+        return []
+
+    # Demo mode data generators
+    def _demo_status(self) -> Dict:
+        """Generate demo status."""
+        modes = ['TRUSTED', 'RESTRICTED', 'AIRGAP']
         return {
-            'mode': 'TRUSTED',
+            'mode': modes[int(time.time() / 30) % len(modes)],
             'mode_since': datetime.utcnow().isoformat(),
-            'uptime': 3600,
-            'events_today': 1247,
-            'violations': 0,
+            'uptime': int(time.time()) % 86400,
+            'events_today': 1247 + int(time.time()) % 100,
+            'violations': random.randint(0, 2),
             'tripwire_enabled': True,
             'clock_monitor_enabled': True,
             'network_attestation_enabled': True,
             'is_frozen': False,
         }
 
-    def get_events(self, limit: int = 20) -> List[DashboardEvent]:
-        """Get recent events."""
-        # Mock data for demonstration
+    def _demo_events(self, limit: int) -> List[DashboardEvent]:
+        """Generate demo events with variety."""
         events = []
         base_time = datetime.utcnow()
+        self._demo_event_offset = (self._demo_event_offset + 1) % 100
+
         event_types = [
             ("MODE_CHANGE", "INFO", "Mode transitioned to TRUSTED"),
             ("POLICY_DECISION", "INFO", "Tool request approved: file_read"),
-            ("SANDBOX_START", "INFO", "Sandbox sandbox-001 started"),
+            ("SANDBOX_START", "INFO", "Sandbox sandbox-{:03d} started"),
             ("TOOL_REQUEST", "INFO", "Agent requested network access"),
             ("HEALTH_CHECK", "INFO", "Health check passed"),
+            ("API_REQUEST", "INFO", "API request from integration"),
+            ("TRIPWIRE", "WARN", "File modification detected: /etc/passwd"),
+            ("CLOCK_DRIFT", "WARN", "Clock drift detected: 45s"),
+            ("VIOLATION", "ERROR", "Unauthorized tool access attempt"),
+            ("PII_DETECTED", "WARN", "PII detected in agent output"),
         ]
 
-        for i in range(min(limit, 10)):
-            etype, sev, details = event_types[i % len(event_types)]
+        for i in range(min(limit, 15)):
+            idx = (i + self._demo_event_offset) % len(event_types)
+            etype, sev, details = event_types[idx]
+            details = details.format(i) if '{' in details else details
             events.append(DashboardEvent(
-                timestamp=(base_time - timedelta(seconds=i*30)).isoformat(),
+                timestamp=(base_time - timedelta(seconds=i*30 + random.randint(0, 10))).isoformat(),
                 event_type=etype,
                 details=details,
                 severity=sev,
@@ -335,15 +588,14 @@ class DashboardClient:
 
         return events
 
-    def get_alerts(self) -> List[DashboardAlert]:
-        """Get active alerts."""
-        # Mock data
-        return [
+    def _demo_alerts(self) -> List[DashboardAlert]:
+        """Generate demo alerts."""
+        alerts = [
             DashboardAlert(
                 alert_id="alert-001",
                 timestamp=datetime.utcnow().isoformat(),
                 severity="HIGH",
-                message="Prompt injection attempt detected",
+                message="Prompt injection attempt detected in agent input",
                 status="NEW",
                 source="prompt_injection",
             ),
@@ -351,34 +603,61 @@ class DashboardClient:
                 alert_id="alert-002",
                 timestamp=(datetime.utcnow() - timedelta(hours=1)).isoformat(),
                 severity="MEDIUM",
-                message="Clock drift warning (150s)",
+                message="Clock drift warning (150s) - NTP sync recommended",
                 status="ACKNOWLEDGED",
                 source="clock_monitor",
             ),
         ]
+        # Randomly add more alerts
+        if random.random() < 0.3:
+            alerts.append(DashboardAlert(
+                alert_id=f"alert-{random.randint(100, 999)}",
+                timestamp=(datetime.utcnow() - timedelta(minutes=random.randint(5, 60))).isoformat(),
+                severity=random.choice(["LOW", "MEDIUM", "HIGH"]),
+                message=random.choice([
+                    "Unusual network activity detected",
+                    "Memory usage threshold exceeded",
+                    "Configuration file modified",
+                    "Authentication failure detected",
+                ]),
+                status="NEW",
+                source="monitor",
+            ))
+        return alerts
 
-    def get_sandboxes(self) -> List[SandboxStatus]:
-        """Get active sandboxes."""
-        return [
+    def _demo_sandboxes(self) -> List[SandboxStatus]:
+        """Generate demo sandbox status."""
+        sandboxes = [
             SandboxStatus(
                 sandbox_id="sandbox-001",
                 profile="standard",
                 status="running",
-                memory_used=256*1024*1024,
+                memory_used=256*1024*1024 + random.randint(0, 100*1024*1024),
                 memory_limit=1024*1024*1024,
-                cpu_percent=25.5,
-                uptime=1800,
+                cpu_percent=25.5 + random.random() * 20,
+                uptime=1800 + int(time.time()) % 3600,
             ),
         ]
+        if random.random() < 0.5:
+            sandboxes.append(SandboxStatus(
+                sandbox_id="sandbox-002",
+                profile="restricted",
+                status="running",
+                memory_used=128*1024*1024 + random.randint(0, 50*1024*1024),
+                memory_limit=512*1024*1024,
+                cpu_percent=10.0 + random.random() * 15,
+                uptime=600 + random.randint(0, 600),
+            ))
+        return sandboxes
 
-    def get_siem_status(self) -> Dict:
-        """Get SIEM shipping status."""
+    def _demo_siem(self) -> Dict:
+        """Generate demo SIEM status."""
         return {
             'connected': True,
             'backend': 'kafka',
             'last_shipped': datetime.utcnow().isoformat(),
-            'queue_depth': 12,
-            'events_shipped_today': 5432,
+            'queue_depth': random.randint(5, 50),
+            'events_shipped_today': 5432 + int(time.time()) % 1000,
         }
 
 
@@ -614,8 +893,12 @@ class Dashboard:
             self._show_mode_ceremony()
         elif key == ord('a') or key == ord('A'):
             self._acknowledge_alert()
+        elif key == ord('e') or key == ord('E'):
+            self._export_events()
         elif key == ord('/'):
             self._start_search()
+        elif key == 27:  # ESC - clear search filter
+            self.event_filter = ""
         elif key == curses.KEY_UP:
             self.scroll_offset = max(0, self.scroll_offset - 1)
         elif key == curses.KEY_DOWN:
@@ -648,10 +931,15 @@ class Dashboard:
 
     def _draw_header(self):
         """Draw the header bar."""
-        header = f" BOUNDARY DAEMON  │  Mode: {self.status.get('mode', 'UNKNOWN')}  │  "
+        header = " BOUNDARY DAEMON"
+        if self.client.is_demo_mode():
+            header += " [DEMO]"
+        header += f"  │  Mode: {self.status.get('mode', 'UNKNOWN')}  │  "
         if self.status.get('is_frozen'):
             header += "⚠ MODE FROZEN  │  "
         header += f"Uptime: {self._format_duration(self.status.get('uptime', 0))}"
+        if self.event_filter:
+            header += f"  │  Filter: {self.event_filter}"
 
         # Pad to full width
         header = header.ljust(self.width - 1)
@@ -868,7 +1156,7 @@ class Dashboard:
 
     def _draw_footer(self):
         """Draw the footer bar."""
-        shortcuts = "[m]Mode [a]Ack [r]Refresh [/]Search [?]Help [q]Quit"
+        shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
         footer = f" {shortcuts} ".ljust(self.width - 1)
 
         row = self.height - 1
@@ -969,26 +1257,139 @@ class Dashboard:
             pass
 
     def _show_mode_ceremony(self):
-        """Show mode change ceremony dialog."""
-        # In production, this would integrate with ceremony manager
-        self.screen.clear()
-        self._addstr(self.height // 2, self.width // 2 - 10, "Mode ceremony not implemented", Colors.STATUS_WARN)
-        self.screen.refresh()
-        time.sleep(1)
+        """Show mode change dialog and allow mode selection."""
+        modes = ['OPEN', 'RESTRICTED', 'TRUSTED', 'AIRGAP', 'COLDROOM', 'LOCKDOWN']
+        current_mode = self.status.get('mode', 'UNKNOWN')
+        selected = 0
+
+        # Find current mode index
+        for i, m in enumerate(modes):
+            if m == current_mode:
+                selected = i
+                break
+
+        while True:
+            self.screen.clear()
+
+            # Draw mode selection dialog
+            box_width = 40
+            box_height = len(modes) + 6
+            start_y = (self.height - box_height) // 2
+            start_x = (self.width - box_width) // 2
+
+            self._draw_box(start_y, start_x, box_width, box_height, "MODE CHANGE")
+
+            # Instructions
+            self._addstr(start_y + 1, start_x + 2, "Select mode (↑↓) Enter to confirm", Colors.MUTED)
+            self._addstr(start_y + 2, start_x + 2, "Press ESC to cancel", Colors.MUTED)
+
+            # Mode options
+            for i, mode in enumerate(modes):
+                row = start_y + 4 + i
+                if i == selected:
+                    self._addstr(row, start_x + 2, f"> {mode}", Colors.SELECTED, bold=True)
+                else:
+                    color = Colors.STATUS_OK if mode == current_mode else Colors.NORMAL
+                    self._addstr(row, start_x + 4, mode, color)
+
+            # Render matrix rain if in matrix mode
+            if self.matrix_mode and self.matrix_rain:
+                self.matrix_rain.render(self.screen)
+
+            self.screen.refresh()
+
+            key = self.screen.getch()
+            if key == 27:  # ESC
+                return
+            elif key == curses.KEY_UP:
+                selected = (selected - 1) % len(modes)
+            elif key == curses.KEY_DOWN:
+                selected = (selected + 1) % len(modes)
+            elif key in (curses.KEY_ENTER, 10, 13):
+                new_mode = modes[selected]
+                if new_mode != current_mode:
+                    success, message = self.client.set_mode(new_mode)
+                    self._show_message(message, Colors.STATUS_OK if success else Colors.STATUS_ERROR)
+                    if success:
+                        self._refresh_data()
+                return
 
     def _acknowledge_alert(self):
-        """Acknowledge selected alert."""
-        # In production, this would integrate with alert manager
-        if self.alerts:
-            for alert in self.alerts:
-                if alert.status == "NEW":
+        """Acknowledge the first unacknowledged alert."""
+        for alert in self.alerts:
+            if alert.status == "NEW":
+                success, message = self.client.acknowledge_alert(alert.alert_id)
+                if success:
                     alert.status = "ACKNOWLEDGED"
-                    break
+                    self._show_message(f"Alert {alert.alert_id} acknowledged", Colors.STATUS_OK)
+                else:
+                    self._show_message(message, Colors.STATUS_ERROR)
+                return
+        self._show_message("No unacknowledged alerts", Colors.MUTED)
+
+    def _export_events(self):
+        """Export events to a JSON file."""
+        export_path = f"boundary_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        try:
+            events = self.client.export_events()
+            with open(export_path, 'w') as f:
+                json.dump(events, f, indent=2, default=str)
+            self._show_message(f"Exported {len(events)} events to {export_path}", Colors.STATUS_OK)
+        except Exception as e:
+            self._show_message(f"Export failed: {e}", Colors.STATUS_ERROR)
 
     def _start_search(self):
-        """Start event search/filter."""
-        # In production, this would show a search input
-        pass
+        """Start event search/filter with text input."""
+        curses.curs_set(1)  # Show cursor
+        search_text = ""
+
+        while True:
+            self.screen.clear()
+
+            # Draw search bar at top
+            self._addstr(0, 0, "Search: ", Colors.HEADER)
+            self._addstr(0, 8, search_text + "_", Colors.NORMAL)
+            self._addstr(0, self.width - 20, "[Enter] Apply [ESC] Cancel", Colors.MUTED)
+
+            # Show filtered events preview
+            filtered = [e for e in self.events if search_text.lower() in e.event_type.lower()
+                       or search_text.lower() in e.details.lower()]
+            self._addstr(2, 0, f"Matching events: {len(filtered)}", Colors.MUTED)
+
+            for i, event in enumerate(filtered[:10]):
+                row = 4 + i
+                if row >= self.height - 1:
+                    break
+                self._addstr(row, 2, event.time_short, Colors.MUTED)
+                self._addstr(row, 12, event.event_type[:15], Colors.ACCENT)
+                self._addstr(row, 28, event.details[:self.width-30], Colors.NORMAL)
+
+            self.screen.refresh()
+
+            key = self.screen.getch()
+            if key == 27:  # ESC
+                self.event_filter = ""
+                break
+            elif key in (curses.KEY_ENTER, 10, 13):
+                self.event_filter = search_text
+                break
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                search_text = search_text[:-1]
+            elif 32 <= key <= 126:  # Printable characters
+                search_text += chr(key)
+
+        curses.curs_set(0)  # Hide cursor
+
+    def _show_message(self, message: str, color: int = Colors.NORMAL):
+        """Show a temporary message overlay."""
+        msg_width = min(len(message) + 4, self.width - 4)
+        msg_x = (self.width - msg_width) // 2
+        msg_y = self.height // 2
+
+        self._draw_box(msg_y - 1, msg_x - 2, msg_width + 4, 3, "")
+        self._addstr(msg_y, msg_x, message[:msg_width], color)
+        self.screen.refresh()
+        time.sleep(1.5)
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
