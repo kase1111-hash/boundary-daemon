@@ -590,9 +590,9 @@ class MatrixRain:
             start_x = random.randint(-10, 0)
             start_y = random.randint(0, self.height - 1)
         else:
-            # Normal: spawn across width, start above screen
+            # Normal: spawn across width, start from cloud layer (row 2)
             start_x = random.randint(0, self.width - 1)
-            start_y = random.randint(-self.height, 0)
+            start_y = random.randint(1, 3)  # Start from middle of cloud layer
 
         # Ensure length range is valid (max >= min)
         effective_max_len = max(len_min, min(len_max, max(1, self.height // 2)))
@@ -1227,51 +1227,60 @@ class AlleyScene:
     ]
 
     # Person walking animation frames (arm swinging) - basic person
+    # Pedestrian sprites with leg animation (4 frames for walking cycle)
     PERSON_RIGHT_FRAMES = [
-        [" O ", "/| ", " | ", "/ >"],   # Right arm back
-        [" O ", " |\\", " | ", "/ >"],   # Left arm back
-        [" O ", " | ", " | ", "/ >"],   # Arms at sides
+        [" O ", "/| ", " | ", "/ \\"],   # Right arm back, legs apart
+        [" O ", " |\\", " | ", " | "],   # Left arm back, legs together
+        [" O ", "/| ", " | ", "\\ /"],   # Right arm back, legs crossed
+        [" O ", " |\\", " | ", " | "],   # Left arm back, legs together
     ]
     PERSON_LEFT_FRAMES = [
-        [" O ", " |\\", " | ", "< \\"],  # Left arm back
-        [" O ", "/| ", " | ", "< \\"],  # Right arm back
-        [" O ", " | ", " | ", "< \\"],  # Arms at sides
+        [" O ", " |\\", " | ", "/ \\"],  # Left arm back, legs apart
+        [" O ", "/| ", " | ", " | "],   # Right arm back, legs together
+        [" O ", " |\\", " | ", "\\ /"],  # Left arm back, legs crossed
+        [" O ", "/| ", " | ", " | "],   # Right arm back, legs together
     ]
 
-    # Person with hat (= on head)
+    # Person with hat (= on head) - with leg animation
     PERSON_HAT_RIGHT_FRAMES = [
-        [" = ", " O ", "/| ", "/ >"],   # Hat, right arm back
-        [" = ", " O ", " |\\", "/ >"],   # Hat, left arm back
-        [" = ", " O ", " | ", "/ >"],   # Hat, arms at sides
+        [" = ", " O ", "/| ", "/ \\"],   # Hat, legs apart
+        [" = ", " O ", " |\\", " | "],   # Hat, legs together
+        [" = ", " O ", "/| ", "\\ /"],   # Hat, legs crossed
+        [" = ", " O ", " |\\", " | "],   # Hat, legs together
     ]
     PERSON_HAT_LEFT_FRAMES = [
-        [" = ", " O ", " |\\", "< \\"],  # Hat, left arm back
-        [" = ", " O ", "/| ", "< \\"],  # Hat, right arm back
-        [" = ", " O ", " | ", "< \\"],  # Hat, arms at sides
+        [" = ", " O ", " |\\", "/ \\"],  # Hat, legs apart
+        [" = ", " O ", "/| ", " | "],   # Hat, legs together
+        [" = ", " O ", " |\\", "\\ /"],  # Hat, legs crossed
+        [" = ", " O ", "/| ", " | "],   # Hat, legs together
     ]
 
-    # Person with briefcase (# carried)
+    # Person with briefcase (# carried) - with leg animation
     PERSON_BRIEFCASE_RIGHT_FRAMES = [
-        [" O ", "/|#", " | ", "/ >"],   # Briefcase in hand
-        [" O ", " |#", " | ", "/ >"],   # Briefcase
-        [" O ", " |#", " | ", "/ >"],   # Briefcase
+        [" O ", "/|#", " | ", "/ \\"],   # Briefcase, legs apart
+        [" O ", " |#", " | ", " | "],   # Briefcase, legs together
+        [" O ", "/|#", " | ", "\\ /"],   # Briefcase, legs crossed
+        [" O ", " |#", " | ", " | "],   # Briefcase, legs together
     ]
     PERSON_BRIEFCASE_LEFT_FRAMES = [
-        [" O ", "#|\\", " | ", "< \\"],  # Briefcase in hand
-        [" O ", "#| ", " | ", "< \\"],  # Briefcase
-        [" O ", "#| ", " | ", "< \\"],  # Briefcase
+        [" O ", "#|\\", " | ", "/ \\"],  # Briefcase, legs apart
+        [" O ", "#| ", " | ", " | "],   # Briefcase, legs together
+        [" O ", "#|\\", " | ", "\\ /"],  # Briefcase, legs crossed
+        [" O ", "#| ", " | ", " | "],   # Briefcase, legs together
     ]
 
-    # Person with skirt (A-line shape)
+    # Person with skirt (A-line shape) - with leg animation
     PERSON_SKIRT_RIGHT_FRAMES = [
-        [" O ", "/| ", "/A\\", "> |"],   # Skirt, walking
-        [" O ", " |\\", "/A\\", "| <"],   # Skirt, walking
-        [" O ", " | ", "/A\\", "| |"],   # Skirt, standing
+        [" O ", "/| ", "/A\\", "> |"],   # Skirt, walking right
+        [" O ", " |\\", "/A\\", "| |"],   # Skirt, legs together
+        [" O ", "/| ", "/A\\", "| <"],   # Skirt, walking left
+        [" O ", " |\\", "/A\\", "| |"],   # Skirt, legs together
     ]
     PERSON_SKIRT_LEFT_FRAMES = [
-        [" O ", " |\\", "/A\\", "| <"],  # Skirt, walking
-        [" O ", "/| ", "/A\\", "> |"],  # Skirt, walking
-        [" O ", " | ", "/A\\", "| |"],  # Skirt, standing
+        [" O ", " |\\", "/A\\", "| <"],  # Skirt, walking left
+        [" O ", "/| ", "/A\\", "| |"],  # Skirt, legs together
+        [" O ", " |\\", "/A\\", "> |"],  # Skirt, walking right
+        [" O ", "/| ", "/A\\", "| |"],  # Skirt, legs together
     ]
 
     # All person types for random selection
@@ -1553,6 +1562,12 @@ class AlleyScene:
         # Ground level is just above curb (moved up from previous position)
         ground_y = curb_y - 1
 
+        # Draw solid cloud cover at top (double line)
+        self._draw_cloud_cover()
+
+        # Draw mid-range buildings first (behind big buildings)
+        self._draw_midrange_buildings(ground_y)
+
         # Draw first building wireframe in background (left side)
         # Position building so its bottom edge is at ground level
         # Shifted 6 chars toward center (right)
@@ -1642,63 +1657,111 @@ class AlleyScene:
                 # Store position for flicker effect (center of light head)
                 self._street_light_positions.append((light_x + 2, max(1, light_y) + 1))
 
+    def _draw_cloud_cover(self):
+        """Draw solid double-line cloud cover at top of screen."""
+        # Draw two solid lines of clouds right below the status area (rows 1-2)
+        cloud_chars = ['▓', '░', '▒', '█']
+        for row in range(1, 3):  # Rows 1 and 2
+            for x in range(self.width - 1):
+                char = cloud_chars[(x + row) % len(cloud_chars)]
+                self.scene[row][x] = (char, Colors.GREY_BLOCK)
+
     def _draw_distant_buildings(self, center_x: int, cafe_y: int):
-        """Draw small, dark grey distant buildings above the cafe area."""
-        # Distant building sprites - small and simple
+        """Draw distant building skyline across the entire background."""
+        # Distant building sprites - OUTLINE ONLY (no fill)
         distant_buildings = [
-            # Tall narrow building
+            # Tall narrow
+            [" _ ", "| |", "| |", "| |", "|_|"],
+            # Wide short
+            [" ___ ", "|   |", "|___|"],
+            # Medium
+            ["  _  ", " | | ", "|   |", "|___|"],
+            # Small
+            [" __ ", "|  |", "|__|"],
+            # Tall wide
+            [" ____ ", "|    |", "|    |", "|    |", "|____|"],
+            # Tiny
+            [" _ ", "|_|"],
+        ]
+
+        # Back row (further away, higher up) - spread across entire width
+        back_row_y = cafe_y - 8
+        back_positions = list(range(5, self.width - 5, 12))  # Every 12 chars
+        for i, pos_x in enumerate(back_positions):
+            building = distant_buildings[(i + 2) % len(distant_buildings)]
+            self._draw_outline_building(building, pos_x, back_row_y, Colors.ALLEY_DARK)
+
+        # Front row (closer, lower) - staggered to show back row in gaps
+        front_row_y = cafe_y - 4
+        front_positions = list(range(11, self.width - 5, 12))  # Offset by 6 from back
+        for i, pos_x in enumerate(front_positions):
+            building = distant_buildings[i % len(distant_buildings)]
+            self._draw_outline_building(building, pos_x, front_row_y, Colors.GREY_BLOCK)
+
+    def _draw_outline_building(self, building: List[str], x: int, base_y: int, color: int):
+        """Draw a building outline at the given position."""
+        building_height = len(building)
+        by = base_y - building_height + 1
+        for row_idx, row in enumerate(building):
+            for col_idx, char in enumerate(row):
+                px = x + col_idx
+                py = by + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    self.scene[py][px] = (char, color)
+
+    def _draw_midrange_buildings(self, ground_y: int):
+        """Draw mid-range buildings above 1/5 of screen, behind big buildings."""
+        # Mid-range building sprites - larger than distant, outline style
+        midrange_buildings = [
             [
-                " _ ",
-                "|█|",
-                "|█|",
-                "|█|",
-                "|_|",
+                "  ____  ",
+                " |    | ",
+                " | [] | ",
+                " |    | ",
+                " | [] | ",
+                " |____| ",
             ],
-            # Wide short building
             [
-                " ___ ",
-                "|███|",
-                "|___|",
+                " _______ ",
+                "|       |",
+                "| [] [] |",
+                "|       |",
+                "| [] [] |",
+                "|_______|",
             ],
-            # Medium building with detail
             [
-                "  _  ",
-                " |█| ",
-                "|███|",
-                "|___|",
+                "  ___  ",
+                " |   | ",
+                " | o | ",
+                " |   | ",
+                " |___| ",
             ],
-            # Small building
             [
-                " __ ",
-                "|██|",
-                "|__|",
+                " _________ ",
+                "|         |",
+                "| []   [] |",
+                "|         |",
+                "| []   [] |",
+                "|         |",
+                "|_________|",
             ],
         ]
 
-        # Position distant buildings above cafe, spread across the gap
-        # They should appear behind (above) the cafe
-        distant_y = cafe_y - 3  # Above cafe (closer to cafe for visibility)
+        # Position at 1/5 from bottom of screen
+        midrange_y = self.height - (self.height // 5)
 
-        # Draw several distant buildings spread out
-        positions = [center_x - 20, center_x - 10, center_x, center_x + 10, center_x + 18]
-
+        # Draw across the screen
+        positions = list(range(0, self.width, 20))
         for i, pos_x in enumerate(positions):
-            building = distant_buildings[i % len(distant_buildings)]
+            building = midrange_buildings[i % len(midrange_buildings)]
             building_height = len(building)
-            building_width = len(building[0])
-
-            # Position building
-            bx = pos_x - building_width // 2
-            by = distant_y - building_height + 1
-
-            # Draw building in grey (visible but dim)
+            by = midrange_y - building_height
             for row_idx, row in enumerate(building):
                 for col_idx, char in enumerate(row):
-                    px = bx + col_idx
+                    px = pos_x + col_idx
                     py = by + row_idx
                     if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
-                        # Use grey block color for distant buildings (more visible)
-                        self.scene[py][px] = (char, Colors.GREY_BLOCK)
+                        self.scene[py][px] = (char, Colors.ALLEY_MID)
 
     def _draw_cafe(self, x: int, y: int):
         """Draw a well-lit cafe storefront."""
@@ -1894,9 +1957,13 @@ class AlleyScene:
         self._closeup_car_timer += 1
         if self._closeup_car is None and self._closeup_car_timer >= random.randint(200, 400):
             self._closeup_car_timer = 0
-            # Spawn a car that stays in place and grows/shrinks
+            # Calculate position between cafe and right building
+            cafe_right = self.cafe_x + len(self.CAFE[0]) if hasattr(self, 'cafe_x') else self.width // 2
+            building2_x = self._building2_x if hasattr(self, '_building2_x') else self.width - 50
+            # Position car in the gap between cafe and right building
+            car_x = (cafe_right + building2_x) // 2
             self._closeup_car = {
-                'x': float(random.randint(self.width // 3, 2 * self.width // 3)),  # Random position in middle third
+                'x': float(car_x),
                 'direction': random.choice([-1, 1]),  # Face left or right
                 'scale': 0.5,  # Start small
                 'phase': 0,    # 0=growing, 1=shrinking
@@ -1987,13 +2054,13 @@ class AlleyScene:
                 self._street_light_flicker[i] = min(1.0, self._street_light_flicker[i] + 0.1)
 
     def _update_window_people(self):
-        """Update people walking by windows (rarely)."""
+        """Update people walking by windows with walk/stare/wave animations."""
         self._window_spawn_timer += 1
 
-        # Very rarely spawn a person in a window (about 1 in 500 frames)
-        if self._window_spawn_timer >= random.randint(300, 700):
+        # Spawn people more frequently (about every 150-400 frames)
+        if self._window_spawn_timer >= random.randint(150, 400):
             self._window_spawn_timer = 0
-            if len(self._window_people) < 2:  # Max 2 window people at once
+            if len(self._window_people) < 4:  # Max 4 window people at once
                 # Pick a random window from either building
                 building = random.choice([1, 2])
                 if building == 1:
@@ -2003,28 +2070,67 @@ class AlleyScene:
                     positions = self.BUILDING2_WINDOW_POSITIONS
                     window_idx = random.randint(0, len(positions) - 1)
 
+                # Start from edge, walking state
+                start_left = random.random() < 0.5
                 self._window_people.append({
                     'building': building,
                     'window_idx': window_idx,
-                    'direction': random.choice([-1, 1]),
-                    'progress': 0.0 if random.random() < 0.5 else 1.0,  # Start from left or right
+                    'direction': 1 if start_left else -1,
+                    'progress': 0.0 if start_left else 1.0,
+                    'state': 'walking',  # walking, staring, waving, leaving
+                    'state_timer': 0,
+                    'stare_duration': random.randint(80, 200),  # Long stare
+                    'wave_count': 0,
+                    'wave_frame': 0,
                 })
 
         # Update existing window people
         new_window_people = []
         for person in self._window_people:
-            # Move person across window
-            speed = 0.05
-            if person['progress'] <= 0.0:
-                person['direction'] = 1
-            elif person['progress'] >= 1.0:
-                person['direction'] = -1
+            person['state_timer'] += 1
 
-            person['progress'] += person['direction'] * speed
+            if person['state'] == 'walking':
+                # Move person across window
+                speed = 0.03
+                person['progress'] += person['direction'] * speed
 
-            # Keep person if still in window
-            if -0.5 < person['progress'] < 1.5:
-                new_window_people.append(person)
+                # Check if reached center of window - stop to stare
+                if 0.35 < person['progress'] < 0.65 and random.random() < 0.02:
+                    person['state'] = 'staring'
+                    person['state_timer'] = 0
+                    person['progress'] = 0.5  # Center in window
+
+                # Keep walking if not done
+                if person['progress'] < -0.3 or person['progress'] > 1.3:
+                    continue  # Remove person - walked off
+
+            elif person['state'] == 'staring':
+                # Person stares out window for a long time
+                if person['state_timer'] >= person['stare_duration']:
+                    # Start waving before leaving
+                    person['state'] = 'waving'
+                    person['state_timer'] = 0
+                    person['wave_count'] = 0
+
+            elif person['state'] == 'waving':
+                # Wave animation - 3 waves
+                person['wave_frame'] = (person['state_timer'] // 5) % 2  # Alternate every 5 frames
+                if person['state_timer'] >= 30:  # Wave for 30 frames (about 3 waves)
+                    person['state'] = 'leaving'
+                    person['state_timer'] = 0
+                    # Pick direction to leave
+                    person['direction'] = random.choice([-1, 1])
+
+            elif person['state'] == 'leaving':
+                # Walk away from window
+                speed = 0.04
+                person['progress'] += person['direction'] * speed
+
+                # Remove when off screen
+                if person['progress'] < -0.3 or person['progress'] > 1.3:
+                    continue  # Remove person
+
+            new_window_people.append(person)
 
         self._window_people = new_window_people
 
@@ -2086,8 +2192,8 @@ class AlleyScene:
                         self.scene[py][px] = (char, Colors.SAND_DIM)
 
     def _draw_crosswalk(self, x: int, curb_y: int, street_y: int):
-        """Draw a crosswalk with white stripes."""
-        crosswalk_width = 8
+        """Draw a crosswalk with white stripes (4x wider)."""
+        crosswalk_width = 32  # 4x wider
         for cx in range(crosswalk_width):
             px = x + cx
             if 0 <= px < self.width - 1:
@@ -2183,16 +2289,8 @@ class AlleyScene:
                             continue  # Leave window interior empty
 
                         if row_idx >= 4 and row_idx < grey_start_row:
-                            # Red brick zone - fill densely
-                            # Higher chance of bricks near window outlines
-                            if is_window_outline(row, col_idx):
-                                # Brick outline around windows - very high density
-                                if random.random() < 0.70:
-                                    self.scene[py][px] = (brick_char, Colors.BRICK_RED)
-                            else:
-                                # Fill bricks elsewhere densely
-                                if random.random() < 0.45:
-                                    self.scene[py][px] = (brick_char, Colors.BRICK_RED)
+                            # Red brick zone - fill completely
+                            self.scene[py][px] = (brick_char, Colors.BRICK_RED)
                         elif row_idx >= grey_start_row:
                             # Grey zone - fill completely with even texture (to bottom)
                             # Use consistent block character for uniform appearance
@@ -2321,7 +2419,7 @@ class AlleyScene:
             return
 
         car = self._closeup_car
-        x = int(car['x']) + 15  # Shifted right to be between cafe and street light
+        x = int(car['x'])  # Position calculated in _update_closeup_car
         scale = car['scale']
         direction = car['direction']
         # Calculate vertical offset based on scale (moves up as car shrinks)
@@ -2460,11 +2558,12 @@ class AlleyScene:
                                 pass
 
     def _render_window_people(self, screen):
-        """Render silhouettes of people walking by windows."""
+        """Render silhouettes of people walking by windows with animations."""
         for person in self._window_people:
             building = person['building']
             window_idx = person['window_idx']
             progress = person['progress']
+            state = person.get('state', 'walking')
 
             # Get window position
             if building == 1:
@@ -2487,20 +2586,37 @@ class AlleyScene:
             window_width = 4
             silhouette_x = window_x + int(progress * window_width)
 
-            # Draw simple silhouette (just a dark blob)
-            if 0 <= silhouette_x < self.width - 1 and 0 <= window_y < self.height:
-                try:
-                    attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
-                    screen.attron(attr)
-                    screen.addstr(window_y, silhouette_x, '█')
-                    screen.attroff(attr)
-                except curses.error:
-                    pass
+            # Choose silhouette based on state
+            if state == 'walking' or state == 'leaving':
+                # Walking silhouette - person shape
+                silhouette = ['O', '|']  # Head and body
+            elif state == 'staring':
+                # Staring out window - face visible
+                silhouette = ['O', '█']  # Head and shoulders
+            elif state == 'waving':
+                # Waving animation
+                wave_frame = person.get('wave_frame', 0)
+                if wave_frame == 0:
+                    silhouette = ['O/', '█']  # Hand up right
+                else:
+                    silhouette = ['\\O', '█']  # Hand up left
+
+            # Draw silhouette (2 chars tall)
+            try:
+                attr = curses.color_pair(Colors.ALLEY_DARK) | curses.A_BOLD
+                screen.attron(attr)
+                for i, char in enumerate(silhouette):
+                    y = window_y + i
+                    if 0 <= silhouette_x < self.width - 2 and 0 <= y < self.height:
+                        screen.addstr(y, silhouette_x, char)
+                screen.attroff(attr)
+            except curses.error:
+                pass
 
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
-        # Position traffic light on right side of scene (shifted 45 chars right = 10 + 15 + 20)
-        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 55)
+        # Position traffic light on right side of scene (shifted 20 more chars right)
+        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 75)
         light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 1  # Above curb, moved down
 
         if light_x < 0 or light_y < 0:
