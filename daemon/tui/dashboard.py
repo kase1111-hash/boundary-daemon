@@ -1519,6 +1519,89 @@ class AlleyScene:
     ]
 
     # ==========================================
+    # SEASONAL CONSTELLATIONS - Security Canary
+    # Stars tied to memory monitor health
+    # ==========================================
+
+    # Spring constellation: Leo (the lion) - Mar-May
+    # Recognizable by the "sickle" (backwards question mark) and triangle
+    CONSTELLATION_LEO = {
+        'name': 'Leo',
+        'stars': [
+            # Sickle (head) - backwards question mark shape
+            (0, 0, 2),   # Regulus (brightest, alpha)
+            (2, -2, 1),  # Eta Leonis
+            (4, -3, 1),  # Gamma (Algieba)
+            (6, -2, 2),  # Zeta
+            (7, 0, 1),   # Mu
+            (5, 1, 1),   # Epsilon
+            # Body/hindquarters triangle
+            (10, 0, 2),  # Denebola (beta, tail)
+            (8, -1, 1),  # Delta
+            (6, 1, 1),   # Theta
+        ],
+    }
+
+    # Summer constellation: Scorpius (the scorpion) - Jun-Aug
+    # Recognizable by the curved tail and red Antares
+    CONSTELLATION_SCORPIUS = {
+        'name': 'Scorpius',
+        'stars': [
+            # Head/claws
+            (0, 0, 1),   # Graffias (beta)
+            (2, -1, 1),  # Dschubba (delta)
+            (4, 0, 1),   # Pi Scorpii
+            # Body with Antares (heart)
+            (5, 2, 2),   # Antares (alpha, red supergiant)
+            (6, 3, 1),   # Tau
+            # Curved tail
+            (7, 5, 1),   # Epsilon
+            (8, 6, 2),   # Mu
+            (10, 7, 1),  # Zeta
+            (12, 6, 1),  # Eta
+            (14, 5, 2),  # Shaula (lambda, stinger)
+            (15, 4, 1),  # Lesath (upsilon)
+        ],
+    }
+
+    # Fall constellation: Pegasus (the winged horse) - Sep-Nov
+    # Recognizable by the Great Square
+    CONSTELLATION_PEGASUS = {
+        'name': 'Pegasus',
+        'stars': [
+            # The Great Square
+            (0, 0, 2),   # Markab (alpha)
+            (8, 0, 2),   # Scheat (beta)
+            (8, -6, 2),  # Algenib (gamma)
+            (0, -6, 2),  # Alpheratz (actually Andromeda alpha)
+            # Neck and head
+            (-3, 2, 1),  # Homam (zeta)
+            (-6, 3, 1),  # Biham (theta)
+            (-9, 2, 2),  # Enif (epsilon, nose)
+        ],
+    }
+
+    # Winter constellation: Orion (the hunter) - Dec-Feb
+    # Most recognizable - belt of 3 stars, Betelgeuse and Rigel
+    CONSTELLATION_ORION = {
+        'name': 'Orion',
+        'stars': [
+            # Shoulders
+            (0, 0, 2),   # Betelgeuse (alpha, red)
+            (8, 0, 1),   # Bellatrix (gamma)
+            # Belt (3 stars in a row)
+            (2, 3, 2),   # Alnitak (zeta)
+            (4, 3, 2),   # Alnilam (epsilon)
+            (6, 3, 2),   # Mintaka (delta)
+            # Feet
+            (0, 6, 2),   # Saiph (kappa)
+            (8, 6, 2),   # Rigel (beta, blue-white)
+            # Sword (below belt)
+            (4, 5, 1),   # Orion Nebula area
+        ],
+    }
+
+    # ==========================================
     # METEOR QTE EVENT - Quick Time Event
     # ==========================================
 
@@ -2050,6 +2133,38 @@ class AlleyScene:
         self._easter_mode = self._check_easter_week()
         self._easter_egg_positions: List[Tuple[int, int, int]] = []  # (x, y, color_idx)
         self._tree_sway_frame = 0
+
+        # ==========================================
+        # SECURITY CANARY SYSTEM
+        # Visual elements tied to daemon monitor health
+        # If monitors fail, scene elements disappear
+        # ==========================================
+        self._security_canary = {
+            'stars': True,          # Tied to memory_monitor
+            'clouds': True,         # Tied to resource_monitor
+            'traffic_lights': True, # Tied to health_monitor
+            'street_lights': True,  # Tied to state_monitor
+            'trees': True,          # Tied to file_integrity
+            'pedestrians': True,    # Tied to process_security
+            'cafe_lights': True,    # Tied to wifi_security
+            'vehicles': True,       # Tied to log_watchdog
+        }
+        self._canary_check_timer = 0
+        self._canary_check_interval = 300  # Check every 5 seconds at 60fps
+
+        # Seasonal constellation (position in sky, based on date)
+        self._constellation = self._get_seasonal_constellation()
+        self._constellation_x = 0  # Set during scene generation
+        self._constellation_y = 0
+        self._star_twinkle_timer = 0
+        self._star_twinkle_frame = 0
+
+        # Scene seeding - deterministic random based on date for consistency
+        # Same date = same scene layout (for screenshot validation)
+        today = datetime.now()
+        self._scene_seed = today.year * 10000 + today.month * 100 + today.day
+        random.seed(self._scene_seed)
+
         # Wind direction: 1 = blowing right (from left), -1 = blowing left (from right)
         self._wind_direction = 1
         self._wind_direction_timer = 0
@@ -2173,6 +2288,100 @@ class AlleyScene:
         # Check if within 3 days of Easter
         diff = abs((today - easter).days)
         return diff <= 3
+
+    def _get_seasonal_constellation(self) -> dict:
+        """Get the constellation for the current season."""
+        today = datetime.now()
+        month = today.month
+        # Spring: March-May -> Leo
+        if 3 <= month <= 5:
+            return self.CONSTELLATION_LEO
+        # Summer: June-August -> Scorpius
+        elif 6 <= month <= 8:
+            return self.CONSTELLATION_SCORPIUS
+        # Fall: September-November -> Pegasus
+        elif 9 <= month <= 11:
+            return self.CONSTELLATION_PEGASUS
+        # Winter: December-February -> Orion
+        else:
+            return self.CONSTELLATION_ORION
+
+    def _check_security_canaries(self, daemon_client=None):
+        """
+        Check daemon monitor health and update canary state.
+        Visual elements disappear when their tied monitor fails.
+
+        Monitor -> Visual Element mapping:
+        - memory_monitor    -> stars (constellation)
+        - resource_monitor  -> clouds
+        - health_monitor    -> traffic lights
+        - state_monitor     -> street lights
+        - file_integrity    -> trees/foliage
+        - process_security  -> pedestrians
+        - wifi_security     -> cafe lights
+        - log_watchdog      -> vehicles
+        """
+        if daemon_client is None:
+            return  # Can't check without client
+
+        # Default all to True (assume healthy)
+        monitors_healthy = {
+            'memory_monitor': True,
+            'resource_monitor': True,
+            'health_monitor': True,
+            'state_monitor': True,
+            'file_integrity': True,
+            'process_security': True,
+            'wifi_security': True,
+            'log_watchdog': True,
+        }
+
+        # Try to get status from daemon
+        try:
+            if hasattr(daemon_client, '_send_request'):
+                response = daemon_client._send_request('get_health_stats')
+                if response.get('success'):
+                    stats = response.get('health_stats', {})
+                    # Check each monitor's health status
+                    monitors = stats.get('monitors', {})
+                    for monitor_name, status in monitors.items():
+                        if monitor_name in monitors_healthy:
+                            monitors_healthy[monitor_name] = status.get('healthy', True)
+
+                # Also check monitoring summary
+                response = daemon_client._send_request('get_monitoring_summary')
+                if response.get('success'):
+                    summary = response.get('summary', {})
+                    # Check specific monitor availability
+                    if not summary.get('memory_monitor_active', True):
+                        monitors_healthy['memory_monitor'] = False
+                    if not summary.get('resource_monitor_active', True):
+                        monitors_healthy['resource_monitor'] = False
+        except Exception:
+            pass  # Fail silently, keep previous canary state
+
+        # Update canary state based on monitor health
+        self._security_canary['stars'] = monitors_healthy['memory_monitor']
+        self._security_canary['clouds'] = monitors_healthy['resource_monitor']
+        self._security_canary['traffic_lights'] = monitors_healthy['health_monitor']
+        self._security_canary['street_lights'] = monitors_healthy['state_monitor']
+        self._security_canary['trees'] = monitors_healthy['file_integrity']
+        self._security_canary['pedestrians'] = monitors_healthy['process_security']
+        self._security_canary['cafe_lights'] = monitors_healthy['wifi_security']
+        self._security_canary['vehicles'] = monitors_healthy['log_watchdog']
+
+    def _update_security_canaries(self, daemon_client=None):
+        """Periodically check security canary status."""
+        self._canary_check_timer += 1
+        if self._canary_check_timer >= self._canary_check_interval:
+            self._canary_check_timer = 0
+            self._check_security_canaries(daemon_client)
+
+        # Update star twinkle animation
+        self._star_twinkle_timer += 1
+        if self._star_twinkle_timer >= 30:  # Twinkle every half second
+            self._star_twinkle_timer = 0
+            self._star_twinkle_frame = (self._star_twinkle_frame + 1) % 4
 
     def _update_christmas_lights(self):
         """Update Christmas light animation frame."""
@@ -3106,7 +3315,10 @@ class AlleyScene:
                             pass
 
     def _render_trees(self, screen):
-        """Render trees on top of buildings (foreground layer)."""
+        """Render trees on top of buildings (foreground layer). Tied to file_integrity health."""
+        # Security canary: no trees if file integrity monitor is down
+        if not self._security_canary.get('trees', True):
+            return
         for tree_x, tree_y in self._tree_positions:
             # During Halloween, use spooky bare trees
             if self._halloween_mode:
@@ -3285,8 +3497,61 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+    def _render_constellation(self, screen):
+        """Render seasonal constellation in the sky. Tied to memory_monitor health."""
+        # Security canary: no stars if memory monitor is down
+        if not self._security_canary.get('stars', True):
+            return
+
+        if not self._constellation:
+            return
+
+        # Position constellation in upper sky area
+        base_x = self._constellation_x
+        base_y = self._constellation_y
+
+        stars = self._constellation.get('stars', [])
+        for dx, dy, brightness in stars:
+            px = base_x + dx
+            py = base_y + dy
+
+            if 0 <= px < self.width - 1 and 1 <= py < 15:  # Keep in sky area
+                try:
+                    # Subtle star characters based on brightness
+                    if brightness == 2:
+                        # Bright star - alternates with twinkle
+                        if self._star_twinkle_frame == 0:
+                            char = '*'
+                            attr = curses.color_pair(Colors.ALLEY_LIGHT)
+                        elif self._star_twinkle_frame == 1:
+                            char = '+'
+                            attr = curses.color_pair(Colors.GREY_BLOCK)
+                        elif self._star_twinkle_frame == 2:
+                            char = '*'
+                            attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_DIM
+                        else:
+                            char = '·'
+                            attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_DIM
+                    else:
+                        # Dim star - more subtle, less twinkle
+                        if self._star_twinkle_frame % 2 == 0:
+                            char = '·'
+                            attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_DIM
+                        else:
+                            char = '.'
+                            attr = curses.color_pair(Colors.ALLEY_MID) | curses.A_DIM
+
+                    screen.attron(attr)
+                    screen.addstr(py, px, char)
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
     def _render_clouds(self, screen):
         """Render cloud layer."""
+        # Security canary: no clouds if resource monitor is down
+        if not self._security_canary.get('clouds', True):
+            return
         for cloud in self._clouds:
             if cloud['type'] in ['main', 'cumulus']:
                 # Render multi-line cloud (main or cumulus)
@@ -3447,6 +3712,14 @@ class AlleyScene:
 
         # Draw solid cloud cover at top (double line)
         self._draw_cloud_cover()
+
+        # Position seasonal constellation in the sky (between buildings, below clouds)
+        # Use seeded random for consistent daily positioning
+        random.seed(self._scene_seed)
+        self._constellation_x = random.randint(self.width // 4, self.width * 3 // 4 - 20)
+        self._constellation_y = random.randint(5, 10)  # Upper sky, below cloud cover
+        # Reset random to time-based for dynamic elements
+        random.seed()
 
         # Calculate building positions first for overlap avoidance
         self._building_x = 9
@@ -4424,6 +4697,9 @@ class AlleyScene:
         # Update 4th of July fireworks (secret event Jul 1-7)
         self._update_fireworks()
 
+        # Update security canaries (tie visual elements to monitor health)
+        self._update_security_canaries()
+
     def _update_cars(self):
         """Update car/truck/semi positions and spawn new vehicles."""
         # Spawn new vehicles occasionally
@@ -5230,6 +5506,9 @@ class AlleyScene:
 
     def render(self, screen):
         """Render the alley scene to the screen with proper layering."""
+        # Render constellation first (furthest back, behind clouds and buildings)
+        self._render_constellation(screen)
+
         # Render distant clouds first (furthest back, behind everything)
         self._render_distant_clouds(screen)
 
@@ -5714,7 +5993,10 @@ class AlleyScene:
             draw_character(self._agent_x, agent_sprite, Colors.ALLEY_MID)
 
     def _render_cars(self, screen):
-        """Render vehicles (cars, trucks, semis) on the street with colored body panels."""
+        """Render vehicles (cars, trucks, semis) on the street. Tied to log_watchdog health."""
+        # Security canary: no vehicles if log watchdog is down
+        if not self._security_canary.get('vehicles', True):
+            return
         # Vehicles are 4-5 rows tall, bottom row at street level
         street_y = self.height - 1
         # Vehicles can't render above the 1/5th line
@@ -5747,7 +6029,10 @@ class AlleyScene:
                             pass
 
     def _render_pedestrians(self, screen):
-        """Render pedestrians on the sidewalk (curb level) with arm animation."""
+        """Render pedestrians on the sidewalk. Tied to process_security health."""
+        # Security canary: no pedestrians if process security is down
+        if not self._security_canary.get('pedestrians', True):
+            return
         # Pedestrians walk on the curb/sidewalk area (moved up 2 rows)
         base_curb_y = self.height - 4
 
@@ -5976,7 +6261,10 @@ class AlleyScene:
                         pass
 
     def _render_street_light_flicker(self, screen):
-        """Render flickering light effects under street lights."""
+        """Render flickering light effects under street lights. Tied to state_monitor."""
+        # Security canary: no street lights if state monitor is down
+        if not self._security_canary.get('street_lights', True):
+            return
         # Light glow characters - brightest to dimmest
         glow_chars = ['█', '▓', '▒', '░']
 
@@ -6077,7 +6365,10 @@ class AlleyScene:
                 pass
 
     def _render_cafe_people(self, screen):
-        """Render the 3 people in Shell Cafe's first floor (door area) with animated arms."""
+        """Render the 3 people in Shell Cafe. Tied to wifi_security health."""
+        # Security canary: no cafe people/lights if wifi security is down
+        if not self._security_canary.get('cafe_lights', True):
+            return
         if not hasattr(self, 'cafe_x') or not hasattr(self, 'cafe_y'):
             return
 
@@ -6275,7 +6566,10 @@ class AlleyScene:
                 pass
 
     def _render_traffic_light(self, screen):
-        """Render the traffic light with current light states."""
+        """Render the traffic light with current light states. Tied to health_monitor."""
+        # Security canary: no traffic lights if health monitor is down
+        if not self._security_canary.get('traffic_lights', True):
+            return
         # Position traffic light on right side of scene (shifted 4 chars left)
         light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 96)
         light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 1  # Above curb, moved down
