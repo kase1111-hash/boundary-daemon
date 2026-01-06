@@ -1679,7 +1679,7 @@ class AlleyScene:
         self._steam_effects: List[Dict] = []  # {x, y, frame, timer, duration}
         self._steam_spawn_timer = 0
         # Windy city weather - debris, leaves, wind wisps
-        self._debris: List[Dict] = []  # {x, y, char, type, speed}
+        self._debris: List[Dict] = []  # {x, y, char, color, speed, state, timer, stop_x}
         self._leaves: List[Dict] = []  # {x, y, char, speed, wobble}
         self._wind_wisps: List[Dict] = []  # {x, y, chars, speed}
         self._debris_spawn_timer = 0
@@ -1914,8 +1914,7 @@ class AlleyScene:
     def _update_clouds(self):
         """Update cloud positions - drift in wind direction."""
         for cloud in self._clouds:
-            # Clouds move in wind direction (closer/lower clouds can vary slightly)
-            # Cumulus clouds (closer) may have slight delay in direction change for dynamic look
+            # Clouds move in wind direction
             cloud['x'] += cloud['speed'] * self._wind_direction
 
             # Wrap around based on wind direction
@@ -2128,126 +2127,131 @@ class AlleyScene:
                 self._ufo_cooldown = 36000  # ~10 minute cooldown
 
     def _update_wind(self):
-        """Update windy city weather - debris, leaves, and wind wisps."""
-        try:
-            curb_y = self.height - 4
-            street_y = self.height - 3
+        """Update wind effects - debris, leaves, and wisps blowing across screen."""
+        street_y = self.height - 3
+        curb_y = self.height - 4
 
-            # Skip wind updates if terminal is too small
-            if self.height < 12 or self.width < 20:
-                return
+        # Update wind direction timer - change direction every 3-15 minutes
+        self._wind_direction_timer += 1
+        if self._wind_direction_timer >= self._wind_direction_change_interval:
+            self._wind_direction_timer = 0
+            self._wind_direction *= -1  # Flip direction
+            self._wind_direction_change_interval = random.randint(10800, 54000)
 
-            # Update wind direction timer - change direction every 3-15 minutes
-            self._wind_direction_timer += 1
-            if self._wind_direction_timer >= self._wind_direction_change_interval:
-                self._wind_direction_timer = 0
-                self._wind_direction *= -1  # Flip direction
-                self._wind_direction_change_interval = random.randint(10800, 54000)  # 3-15 min at ~60fps
+        # Update tree sway animation
+        self._tree_sway_frame = (self._tree_sway_frame + 1) % 20
 
-            # Update tree sway animation
-            self._tree_sway_frame = (self._tree_sway_frame + 1) % 20
+        # === DEBRIS SYSTEM (simple state machine) ===
+        self._debris_spawn_timer += 1
+        if self._debris_spawn_timer > 30:
+            self._debris_spawn_timer = 0
+            max_items = 12 if self._calm_mode else 6
+            if len(self._debris) < max_items:
+                # Pick debris type
+                debris_type = random.choice(['leaf', 'leaf', 'newspaper', 'trash'])
+                if debris_type == 'leaf':
+                    char = random.choice(['*', '✦', '✧', '⁕', '@'])
+                    color_type = 'leaf'
+                elif debris_type == 'newspaper':
+                    char = random.choice(['▪', '▫', '□', '▢'])
+                    color_type = 'paper'
+                else:
+                    char = random.choice(['~', '°', '·'])
+                    color_type = 'trash'
 
-            # Calm mode: faster debris spawn, more debris allowed
-            debris_spawn_min = 5 if self._calm_mode else 15
-            debris_spawn_max = 15 if self._calm_mode else 40
-            max_debris = 20 if self._calm_mode else 8
+                # Spawn from upwind side
+                if self._wind_direction > 0:
+                    spawn_x = -2.0
+                else:
+                    spawn_x = float(self.width + 2)
 
-            # Spawn debris (newspapers, trash) on streets - spawn from upwind side
-            self._debris_spawn_timer += 1
-            if self._debris_spawn_timer >= random.randint(debris_spawn_min, debris_spawn_max):
-                self._debris_spawn_timer = 0
-                if len(self._debris) < max_debris:
-                    debris_type = random.choice(['newspaper', 'trash'])
-                    chars = self.DEBRIS_NEWSPAPER if debris_type == 'newspaper' else self.DEBRIS_TRASH
-                    # Spawn from upwind side
-                    if self._wind_direction > 0:
-                        spawn_x = -5.0  # Wind blowing right, spawn from left
-                    else:
-                        spawn_x = float(self.width + 5)  # Wind blowing left, spawn from right
-                    self._debris.append({
-                        'x': spawn_x,
-                        'y': float(random.choice([curb_y, street_y, street_y - 1])),
-                        'char': random.choice(chars),
-                        'type': debris_type,
-                        'speed': random.uniform(0.8, 2.0),
-                        'wobble': random.uniform(0, 6.28),
-                    })
+                self._debris.append({
+                    'x': spawn_x,
+                    'y': float(random.choice([curb_y, street_y, street_y - 1])),
+                    'char': char,
+                    'color': color_type,
+                    'speed': random.uniform(0.3, 0.8),
+                    'state': 'blowing',
+                    'timer': 0,
+                    'stop_x': random.uniform(0.2, 0.7) * self.width,
+                })
 
-            # Calm mode: fewer wind wisps (less mid-screen clutter)
-            max_wisps = 2 if self._calm_mode else 5
-            wisp_spawn_min = 60 if self._calm_mode else 30
-            wisp_spawn_max = 120 if self._calm_mode else 60
+        # Update debris with state machine
+        new_debris = []
+        for d in self._debris:
+            if d['state'] == 'blowing':
+                d['x'] += d['speed'] * self._wind_direction
+                # Check if reached stop point
+                if self._wind_direction > 0 and d['x'] >= d['stop_x']:
+                    d['state'] = 'slowing'
+                elif self._wind_direction < 0 and d['x'] <= d['stop_x']:
+                    d['state'] = 'slowing'
+            elif d['state'] == 'slowing':
+                d['speed'] *= 0.85
+                d['x'] += d['speed'] * self._wind_direction
+                if d['speed'] < 0.05:
+                    d['state'] = 'stopped'
+                    d['timer'] = 0
+            elif d['state'] == 'stopped':
+                d['timer'] += 1
+                if d['timer'] > 60:  # Fixed duration to avoid random in tight loop
+                    d['state'] = 'resuming'
+                    d['timer'] = 0
+            elif d['state'] == 'resuming':
+                d['speed'] = min(d['speed'] + 0.02, 0.6)
+                d['x'] += d['speed'] * self._wind_direction
 
-            # Spawn wind wisps in sky - spawn from upwind side
-            self._wind_wisp_timer += 1
-            if self._wind_wisp_timer >= random.randint(wisp_spawn_min, wisp_spawn_max):
-                self._wind_wisp_timer = 0
-                if len(self._wind_wisps) < max_wisps:
-                    wisp_length = random.randint(3, 8)
-                    wisp_chars = ''.join([random.choice(self.WIND_WISPS) for _ in range(wisp_length)])
-                    if self._wind_direction > 0:
-                        spawn_x = -5.0  # Wind blowing right
-                    else:
-                        spawn_x = float(self.width + 5)  # Wind blowing left
-                    # Ensure valid range for wisp y position
-                    wisp_y_max = max(4, self.height // 3)
-                    self._wind_wisps.append({
-                        'x': spawn_x,
-                        'y': float(random.randint(3, wisp_y_max)),
-                        'chars': wisp_chars,
-                        'speed': random.uniform(1.0, 2.5),
-                    })
+            # Keep if on screen
+            if -5 < d['x'] < self.width + 5:
+                new_debris.append(d)
+        self._debris = new_debris
 
-            # Calm mode: more leaves
-            leaf_chance = 0.08 if self._calm_mode else 0.03
-            max_leaves = 30 if self._calm_mode else 15
+        # === WIND WISPS ===
+        max_wisps = 2 if self._calm_mode else 5
+        self._wind_wisp_timer += 1
+        if self._wind_wisp_timer > 45:
+            self._wind_wisp_timer = 0
+            if len(self._wind_wisps) < max_wisps:
+                wisp_chars = ''.join([random.choice(self.WIND_WISPS) for _ in range(random.randint(3, 8))])
+                spawn_x = -5.0 if self._wind_direction > 0 else float(self.width + 5)
+                wisp_y = random.randint(3, max(4, self.height // 3))
+                self._wind_wisps.append({
+                    'x': spawn_x,
+                    'y': float(wisp_y),
+                    'chars': wisp_chars,
+                    'speed': random.uniform(1.0, 2.5),
+                })
 
-            # Spawn leaves from trees
-            for tree_x, tree_y in self._tree_positions:
-                if random.random() < leaf_chance:
-                    if len(self._leaves) < max_leaves:
-                        self._leaves.append({
-                            'x': float(tree_x + random.randint(2, 7)),
-                            'y': float(tree_y + random.randint(0, 3)),
-                            'char': random.choice(self.DEBRIS_LEAVES),
-                            'speed': random.uniform(0.5, 1.5),
-                            'fall_speed': random.uniform(0.1, 0.3),
-                            'wobble': random.uniform(0, 6.28),
-                        })
+        new_wisps = []
+        for w in self._wind_wisps:
+            w['x'] += w['speed'] * self._wind_direction
+            if -10 < w['x'] < self.width + 10:
+                new_wisps.append(w)
+        self._wind_wisps = new_wisps
 
-            # Update debris positions - move in wind direction
-            new_debris = []
-            for d in self._debris:
-                d['x'] += d['speed'] * self._wind_direction  # Blow in wind direction
-                d['wobble'] += 0.3
-                d['y'] += math.sin(d['wobble']) * 0.2  # Wobble up/down
-                # Keep on screen
-                if -10 < d['x'] < self.width + 10:
-                    new_debris.append(d)
-            self._debris = new_debris
+        # === LEAVES FROM TREES ===
+        leaf_chance = 0.08 if self._calm_mode else 0.03
+        max_leaves = 30 if self._calm_mode else 15
+        for tree_x, tree_y in self._tree_positions:
+            if random.random() < leaf_chance and len(self._leaves) < max_leaves:
+                self._leaves.append({
+                    'x': float(tree_x + random.randint(2, 7)),
+                    'y': float(tree_y + random.randint(0, 3)),
+                    'char': random.choice(self.DEBRIS_LEAVES),
+                    'speed': random.uniform(0.5, 1.5),
+                    'fall_speed': random.uniform(0.1, 0.3),
+                    'wobble': random.uniform(0, 6.28),
+                })
 
-            # Update wind wisps - move in wind direction
-            new_wisps = []
-            for w in self._wind_wisps:
-                w['x'] += w['speed'] * self._wind_direction
-                if -len(w['chars']) - 5 < w['x'] < self.width + 10:
-                    new_wisps.append(w)
-            self._wind_wisps = new_wisps
-
-            # Update leaves - blow in wind direction
-            new_leaves = []
-            for leaf in self._leaves:
-                leaf['x'] += leaf['speed'] * self._wind_direction  # Blow in wind direction
-                leaf['y'] += leaf['fall_speed']  # Fall down
-                leaf['wobble'] += 0.2
-                leaf['x'] += math.sin(leaf['wobble']) * 0.3  # Wobble
-                # Keep if on screen and above street
-                if -5 < leaf['x'] < self.width + 5 and leaf['y'] < street_y + 2:
-                    new_leaves.append(leaf)
-            self._leaves = new_leaves
-        except Exception:
-            # Silently handle any wind update errors to prevent freezes
-            pass
+        new_leaves = []
+        for leaf in self._leaves:
+            leaf['x'] += leaf['speed'] * self._wind_direction
+            leaf['y'] += leaf['fall_speed']
+            leaf['wobble'] += 0.2
+            leaf['x'] += math.sin(leaf['wobble']) * 0.3
+            if -5 < leaf['x'] < self.width + 5 and leaf['y'] < street_y + 2:
+                new_leaves.append(leaf)
+        self._leaves = new_leaves
 
     def _update_qte(self):
         """Update meteor QTE event - quick time event."""
@@ -3248,9 +3252,9 @@ class AlleyScene:
         """Draw a tree at the given position, blowing in wind direction."""
         # Use windy tree sprite based on wind direction
         if self._wind_direction > 0:
-            tree_sprite = self.TREE_WINDY_RIGHT  # Wind blowing right
+            tree_sprite = self.TREE_WINDY_RIGHT
         else:
-            tree_sprite = self.TREE_WINDY_LEFT  # Wind blowing left
+            tree_sprite = self.TREE_WINDY_LEFT
         for row_idx, row in enumerate(tree_sprite):
             for col_idx, char in enumerate(row):
                 px = x + col_idx
@@ -4170,13 +4174,15 @@ class AlleyScene:
 
     def _render_wind(self, screen):
         """Render wind effects - debris, leaves, and wisps."""
-        # Render debris (newspapers, trash) on streets
+        # Render debris (newspapers, trash, leaves on ground)
         for d in self._debris:
             px = int(d['x'])
             py = int(d['y'])
             if 0 <= px < self.width - 1 and 0 <= py < self.height:
                 try:
-                    if d['type'] == 'newspaper':
+                    if d.get('color') == 'leaf':
+                        attr = curses.color_pair(Colors.MATRIX_DIM)
+                    elif d.get('color') == 'paper':
                         attr = curses.color_pair(Colors.ALLEY_LIGHT)
                     else:
                         attr = curses.color_pair(Colors.ALLEY_MID)
@@ -7442,56 +7448,171 @@ class Dashboard:
         },
     }
 
+    def _gather_command_data(self, commands: List[str]) -> Dict[str, Any]:
+        """Execute commands and gather their results for Ollama analysis."""
+        results = {}
+
+        for cmd in commands:
+            cmd = cmd.strip().lower()
+            try:
+                if cmd == 'status':
+                    status = self.client.get_status()
+                    results['status'] = {
+                        'mode': status.get('mode', 'UNKNOWN'),
+                        'frozen': status.get('is_frozen', False),
+                        'uptime': self._format_duration(status.get('uptime', 0)),
+                        'events': status.get('total_events', 0),
+                        'violations': status.get('violations', 0),
+                        'demo_mode': self.client.is_demo_mode(),
+                    }
+                elif cmd == 'alerts':
+                    alerts = self.client.get_alerts()
+                    results['alerts'] = [
+                        {'severity': a.severity, 'message': a.message, 'time': a.time_str, 'acked': a.acknowledged}
+                        for a in alerts
+                    ]
+                elif cmd == 'violations':
+                    violations = [e for e in self.events if 'VIOLATION' in e.event_type.upper()]
+                    results['violations'] = [
+                        {'time': v.time_short, 'type': v.event_type, 'details': v.details[:100]}
+                        for v in violations[:20]
+                    ]
+                elif cmd == 'events':
+                    events = self.client.get_events(limit=30)
+                    results['events'] = [
+                        {'time': e.time_short, 'type': e.event_type, 'details': e.details[:80]}
+                        for e in events
+                    ]
+                elif cmd == 'mode':
+                    status = self.client.get_status()
+                    results['mode'] = {
+                        'current': status.get('mode', 'UNKNOWN'),
+                        'frozen': status.get('is_frozen', False),
+                    }
+                elif cmd == 'sandbox' or cmd == 'sandboxes':
+                    results['sandboxes'] = [
+                        {'id': s.id[:8], 'name': s.name, 'status': s.status, 'uptime': s.uptime_str}
+                        for s in self.sandboxes
+                    ]
+            except Exception as e:
+                results[cmd] = {'error': str(e)}
+
+        return results
+
     def _send_to_ollama(self, message: str) -> List[str]:
-        """Send a message to Ollama and return response lines."""
+        """Send a message to Ollama with automatic command execution."""
         if not self._ollama_client:
             return ["ERROR: Ollama not available. Start with: ollama serve"]
 
-        # Check if Ollama is running
         if not self._ollama_client.is_available():
             return ["ERROR: Ollama not running. Start with: ollama serve"]
 
-        # Build context from chat history (last 10 exchanges)
-        context = ""
-        for entry in self._cli_chat_history[-10:]:
-            context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+        lines = ["", f"You: {message}", ""]
 
-        # System prompt for the daemon assistant
-        system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
-You help users understand system security, daemon operations, and answer questions.
-Keep responses concise (2-4 sentences) since this is a terminal interface.
-If the user asks about daemon commands, remind them to use /command syntax (e.g., /help, /status, /alerts)."""
+        # Step 1: Ask Ollama if commands are needed
+        command_detection_prompt = f"""User request: "{message}"
 
-        prompt = f"{context}User: {message}\nAssistant:"
+You are an assistant for the Boundary Daemon security system. Determine if the user's request requires running system commands to answer.
+
+AVAILABLE COMMANDS:
+- status: Get daemon status (mode, uptime, event count, violations)
+- alerts: Get active security alerts
+- violations: Get recent security violations
+- events: Get recent system events
+- mode: Get current security mode
+- sandboxes: Get active sandbox information
+
+If the user is asking about system health, security status, problems, alerts, or wants to check/diagnose their system, you MUST specify which commands to run.
+
+RESPOND WITH ONLY ONE OF THESE FORMATS:
+1. If commands needed: COMMANDS: status, alerts, violations
+2. If no commands needed: NONE
+
+Examples:
+- "what's wrong with my computer" -> COMMANDS: status, alerts, violations, events
+- "check my system" -> COMMANDS: status, alerts, violations
+- "any security issues?" -> COMMANDS: alerts, violations
+- "hello" -> NONE
+- "what is a sandbox?" -> NONE
+
+Your response (COMMANDS: ... or NONE):"""
 
         try:
+            # Detect if commands are needed
+            detection_response = self._ollama_client.generate(command_detection_prompt, system="You are a command router. Respond only with COMMANDS: list or NONE.")
+
+            commands_to_run = []
+            if detection_response and 'COMMANDS:' in detection_response.upper():
+                # Parse commands from response
+                cmd_part = detection_response.upper().split('COMMANDS:')[1].strip()
+                cmd_part = cmd_part.split('\n')[0]  # Take first line only
+                commands_to_run = [c.strip().lower() for c in cmd_part.split(',') if c.strip()]
+
+            # Step 2: Execute commands if needed
+            command_results = {}
+            if commands_to_run:
+                lines.append("  [Gathering system information...]")
+                command_results = self._gather_command_data(commands_to_run)
+
+            # Step 3: Generate natural language response
+            context = ""
+            for entry in self._cli_chat_history[-5:]:
+                context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+
+            if command_results:
+                # Build response with command data
+                system_prompt = """You are a helpful security assistant for the Boundary Daemon system.
+You have access to real system data and should analyze it to answer the user's question.
+Be conversational but informative. Highlight any issues or concerns.
+Keep responses concise (3-6 sentences) for the terminal interface.
+If there are problems, explain what they mean and suggest actions."""
+
+                data_summary = json.dumps(command_results, indent=2, default=str)
+                prompt = f"""{context}User: {message}
+
+SYSTEM DATA COLLECTED:
+{data_summary}
+
+Based on this data, provide a helpful natural language response to the user's question. If there are issues, explain them clearly. If everything looks good, say so."""
+
+            else:
+                # Regular chat without command data
+                system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
+You help users understand system security, daemon operations, and answer questions.
+Keep responses concise (2-4 sentences) since this is a terminal interface.
+If the user asks you to check their system or look for problems, tell them you can do that - just ask!"""
+
+                prompt = f"{context}User: {message}\nAssistant:"
+
             response = self._ollama_client.generate(prompt, system=system_prompt)
+
             if response:
                 # Store in chat history
                 self._cli_chat_history.append({'user': message, 'assistant': response})
-                # Keep only last 20 exchanges
                 if len(self._cli_chat_history) > 20:
                     self._cli_chat_history = self._cli_chat_history[-20:]
 
-                # Format response for display
-                lines = ["", f"You: {message}", ""]
                 # Word wrap response
-                words = response.split()
-                current_line = "  "
-                for word in words:
-                    if len(current_line) + len(word) + 1 > self.width - 4:
+                for paragraph in response.split('\n'):
+                    if not paragraph.strip():
+                        lines.append("")
+                        continue
+                    words = paragraph.split()
+                    current_line = "  "
+                    for word in words:
+                        if len(current_line) + len(word) + 1 > self.width - 4:
+                            lines.append(current_line)
+                            current_line = "  " + word
+                        else:
+                            current_line += (" " if len(current_line) > 2 else "") + word
+                    if current_line.strip():
                         lines.append(current_line)
-                        current_line = "  " + word
-                    else:
-                        current_line += (" " if len(current_line) > 2 else "") + word
-                if current_line.strip():
-                    lines.append(current_line)
                 lines.append("")
                 return lines
             else:
-                return ["ERROR: No response from Ollama"]
+                return lines + ["ERROR: No response from Ollama"]
         except Exception as e:
-            return [f"ERROR: Ollama error: {e}"]
+            return lines + [f"ERROR: Ollama error: {e}"]
 
     def _analyze_logs_with_ollama(self, num_events: int = 50) -> List[str]:
         """Analyze daemon logs using Ollama and return analysis lines."""
