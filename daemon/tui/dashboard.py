@@ -1160,7 +1160,6 @@ class AlleyScene:
         "   ||  ",
         "   ||  ",
         "   ||  ",
-        "   ||  ",
     ]
 
     # Car sprites - classic ASCII art style (4 rows tall) with filled body panels
@@ -1359,18 +1358,18 @@ class AlleyScene:
         ["~~   ", " ~~~ ", "~~~~ "],
     ]
 
-    # Tree sprites for windy city effect
+    # Tree sprites for windy city effect (trunk centered under foliage)
     TREE = [
         "   (@@)   ",
         "  (@@@@@) ",
-        " (@@@@@@@@)",
+        " (@@@@@@@)",
         "  (@@@@@) ",
         "    ||    ",
         "    ||    ",
         "   _||_   ",
     ]
 
-    # Tree blowing right (wind from left)
+    # Tree blowing right (wind from left) - trunk stays centered
     TREE_WINDY_RIGHT = [
         "    (@@)  ",
         "   (@@@@@)",
@@ -1381,15 +1380,57 @@ class AlleyScene:
         "   _||_   ",
     ]
 
-    # Tree blowing left (wind from right)
+    # Tree blowing left (wind from right) - trunk stays centered
     TREE_WINDY_LEFT = [
         "  (@@)    ",
-        "(@@@@@)   ",
+        " (@@@@@)  ",
         "(@@@@@@@) ",
         " (@@@@)   ",
         "    ||    ",
         "    ||    ",
         "   _||_   ",
+    ]
+
+    # Pine tree sprite (taller, triangular)
+    PINE_TREE = [
+        "    *     ",
+        "   /|\\   ",
+        "  /|||\\  ",
+        " /|||||\\",
+        "  /|||\\  ",
+        " /|||||\\",
+        "/|||||||\\",
+        "   |||    ",
+        "   |||    ",
+        "  _|||_   ",
+    ]
+
+    # Pine tree blowing right
+    PINE_TREE_WINDY_RIGHT = [
+        "     *    ",
+        "    /|\\  ",
+        "   /|||\\  ",
+        "  /|||||\\",
+        "   /|||\\  ",
+        "  /|||||\\",
+        " /|||||||\\",
+        "    |||   ",
+        "    |||   ",
+        "   _|||_  ",
+    ]
+
+    # Pine tree blowing left
+    PINE_TREE_WINDY_LEFT = [
+        "    *     ",
+        "   /|\\   ",
+        "  /|||\\  ",
+        " /|||||\\",
+        "  /|||\\  ",
+        " /|||||\\",
+        "/|||||||\\",
+        "   |||    ",
+        "   |||    ",
+        "  _|||_   ",
     ]
 
     # Debris sprites for windy weather
@@ -1467,18 +1508,18 @@ class AlleyScene:
         [" O ", "/| ", " | ", " ||"],   # Right arm back, legs together
     ]
 
-    # Person with hat (= on head) - with leg animation
+    # Person with hat (~, on head) - with leg animation
     PERSON_HAT_RIGHT_FRAMES = [
-        [" = ", " O ", "/| ", "/| "],   # Hat, right leg forward
-        [" = ", " O ", " |\\", "|| "],   # Hat, legs together
-        [" = ", " O ", "/| ", "|\\ "],   # Hat, left leg back
-        [" = ", " O ", " |\\", "|| "],   # Hat, legs together
+        [" ~ ", " O ", "/| ", "/| "],   # Hat, right leg forward
+        [" , ", " O ", " |\\", "|| "],   # Hat, legs together
+        [" ~ ", " O ", "/| ", "|\\ "],   # Hat, left leg back
+        [" , ", " O ", " |\\", "|| "],   # Hat, legs together
     ]
     PERSON_HAT_LEFT_FRAMES = [
-        [" = ", " O ", " |\\", " |\\"],  # Hat, left leg forward
-        [" = ", " O ", "/| ", " ||"],   # Hat, legs together
-        [" = ", " O ", " |\\", " /|"],  # Hat, right leg back
-        [" = ", " O ", "/| ", " ||"],   # Hat, legs together
+        [" ~ ", " O ", " |\\", " |\\"],  # Hat, left leg forward
+        [" , ", " O ", "/| ", " ||"],   # Hat, legs together
+        [" ~ ", " O ", " |\\", " /|"],  # Hat, right leg back
+        [" , ", " O ", "/| ", " ||"],   # Hat, legs together
     ]
 
     # Person with briefcase (# carried) - with leg animation
@@ -1696,21 +1737,21 @@ class AlleyScene:
     ]
 
     # Static cityscape backdrop (drawn behind main buildings in the gap)
-    # 140 chars wide, dense city skyline with various building heights
+    # 140 chars wide, dense city skyline with various building heights and solid walls
     CITYSCAPE = [
         "         T                    |~|                 T              T                    |~|              T           ",  # Row 0
-        "   ___  /|\\        ___       |=|    ___         /|\\   ___      /|\\        ___       |=|    ___      /|\\   ___    ",  # Row 1
-        "  |   | |=|  ___  |   |  ___ |=|   |   |  ___  |=|=| |   | ___ |=|  ___  |   |  ___ |=|   |   | ___ |=|=| |   |   ",  # Row 2
-        "  |[ ]| |=| |   | |[ ]| |   ||=|   |[ ]| |   | |=|=| |[ ]||   ||=| |   | |[ ]| |   ||=|   |[ ]||   ||=|=| |[ ]|   ",  # Row 3
-        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 4
-        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 5
-        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 6
-        "  |[ ]| |=| |[ ]| |[ ]| |[ ]||=|   |[ ]| |[ ]| |=|=| |[ ]||[ ]||=| |[ ]| |[ ]| |[ ]||=|   |[ ]||[ ]||=|=| |[ ]|   ",  # Row 7
-        "  |___| |=| |___| |___| |___||=|   |___| |___| |=|=| |___||___||=| |___| |___| |___||=|   |___||___||=|=| |___|   ",  # Row 8
-        "        |=|              |   ||=|              |=|=|      |   ||=|              |   ||=|        |  ||=|=|         ",  # Row 9
-        "        |=|              |[ ]||=|              |=|=|      |[ ]||=|              |[ ]||=|        |[ ]||=|=|         ",  # Row 10
-        "        |=|              |[ ]||=|              |=|=|      |[ ]||=|              |[ ]||=|        |[ ]||=|=|         ",  # Row 11
-        "        |=|              |___||=|              |=|=|      |___||=|              |___||=|        |___||=|=|         ",  # Row 12
+        "   ___  /|\\        ___       |█|    ___         /|\\   ___      /|\\        ___       |█|    ___      /|\\   ___    ",  # Row 1
+        "  |███| |█|  ___  |███|  ___ |█|   |███|  ___  |█|█| |███| ___ |█|  ___  |███|  ___ |█|   |███| ___ |█|█| |███|   ",  # Row 2
+        "  |[ ]| |█| |███| |[ ]| |███||█|   |[ ]| |███| |█|█| |[ ]||███||█| |███| |[ ]| |███||█|   |[ ]||███||█|█| |[ ]|   ",  # Row 3
+        "  |[ ]| |█| |[ ]| |[ ]| |[ ]||█|   |[ ]| |[ ]| |█|█| |[ ]||[ ]||█| |[ ]| |[ ]| |[ ]||█|   |[ ]||[ ]||█|█| |[ ]|   ",  # Row 4
+        "  |[ ]| |█| |[ ]| |[ ]| |[ ]||█|   |[ ]| |[ ]| |█|█| |[ ]||[ ]||█| |[ ]| |[ ]| |[ ]||█|   |[ ]||[ ]||█|█| |[ ]|   ",  # Row 5
+        "  |[ ]| |█| |[ ]| |[ ]| |[ ]||█|   |[ ]| |[ ]| |█|█| |[ ]||[ ]||█| |[ ]| |[ ]| |[ ]||█|   |[ ]||[ ]||█|█| |[ ]|   ",  # Row 6
+        "  |[ ]| |█| |[ ]| |[ ]| |[ ]||█|   |[ ]| |[ ]| |█|█| |[ ]||[ ]||█| |[ ]| |[ ]| |[ ]||█|   |[ ]||[ ]||█|█| |[ ]|   ",  # Row 7
+        "  |███| |█| |███| |███| |███||█|   |███| |███| |█|█| |███||███||█| |███| |███| |███||█|   |███||███||█|█| |███|   ",  # Row 8
+        "        |█|              |███||█|              |█|█|      |███||█|              |███||█|        |███||█|█|         ",  # Row 9
+        "        |█|              |[ ]||█|              |█|█|      |[ ]||█|              |[ ]||█|        |[ ]||█|█|         ",  # Row 10
+        "        |█|              |[ ]||█|              |█|█|      |[ ]||█|              |[ ]||█|        |[ ]||█|█|         ",  # Row 11
+        "        |█|              |███||█|              |█|█|      |███||█|              |███||█|        |███||█|█|         ",  # Row 12
         "        |_|                  |_|              |_||_|          |_|                  |_|             |_||_|         ",  # Row 13
     ]
 
@@ -1757,7 +1798,7 @@ class AlleyScene:
         "            |      |                    |      |                ",
         "            | [==] |                    | [==] |                ",
         "____________|______|____________________|______|________________",
-        "      ______======______          ______======______            ",
+        "      ______.------.____          ______.------.____            ",
     ]
 
     # Second building (right side) - 2X TALL, 2X WIDE with two doors with stoops
@@ -1803,7 +1844,7 @@ class AlleyScene:
         "            |      |                    |      |            ",
         "            | [==] |                    | [==] |            ",
         "____________|______|____________________|______|____________",
-        "      ______======______          ______======______        ",
+        "      ______.------.____          ______.------.____        ",
     ]
 
     # Window positions for people animation (relative to building sprite)
@@ -1913,6 +1954,7 @@ class AlleyScene:
         self._debris_spawn_timer = 0
         self._wind_wisp_timer = 0
         self._tree_positions: List[Tuple[int, int]] = []  # (x, y) for trees
+        self._pine_tree_positions: List[Tuple[int, int]] = []  # (x, y) for pine trees
         self._tree_sway_frame = 0
         # Wind direction: 1 = blowing right (from left), -1 = blowing left (from right)
         self._wind_direction = 1
@@ -2915,6 +2957,37 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+    def _render_pine_trees(self, screen):
+        """Render pine trees on top of buildings (foreground layer)."""
+        if not hasattr(self, '_pine_tree_positions'):
+            return
+        for tree_x, tree_y in self._pine_tree_positions:
+            # Use windy pine sprite based on wind direction
+            if self._wind_direction > 0:
+                tree_sprite = self.PINE_TREE_WINDY_RIGHT
+            else:
+                tree_sprite = self.PINE_TREE_WINDY_LEFT
+
+            for row_idx, row in enumerate(tree_sprite):
+                for col_idx, char in enumerate(row):
+                    px = tree_x + col_idx
+                    py = tree_y + row_idx
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        try:
+                            if char == '*':
+                                # Star on top - yellow
+                                attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+                            elif char in '/\\|':
+                                # Pine needles and trunk - green
+                                attr = curses.color_pair(Colors.MATRIX_DIM)
+                            else:
+                                attr = curses.color_pair(Colors.ALLEY_MID)
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
+
     def _render_clouds(self, screen):
         """Render cloud layer."""
         for cloud in self._clouds:
@@ -3159,13 +3232,15 @@ class AlleyScene:
 
         # Place trees - one on left, two in front of right building
         self._tree_positions = []
+        self._pine_tree_positions = []  # Pine trees stored separately
         tree_height = len(self.TREE)
         tree_width = len(self.TREE[0])
+        pine_height = len(self.PINE_TREE)
         building2_left = self._building2_x if self._building2_x > 0 else self.width
         building2_width = len(self.BUILDING2[0]) if self.BUILDING2 else 60
 
-        # Tree 1: left side of gap (near left building)
-        tree1_x = building1_right + 8
+        # Tree 1: in front of left building
+        tree1_x = self._building_x + 15
         # Tree 2: in front of right building (center-left of building2)
         tree2_x = building2_left + building2_width // 3
         # Tree 3: in front of right building (center-right of building2)
@@ -3182,6 +3257,14 @@ class AlleyScene:
                 tree_y = ground_y - tree_height + 1
                 self._tree_positions.append((tree_x, tree_y))
                 self._draw_tree(tree_x, tree_y)
+
+        # Pine tree: to the right of Shell Cafe, 4 rows higher than regular trees
+        cafe_right = self.cafe_x + len(self.CAFE[0]) if hasattr(self, 'cafe_x') else 0
+        pine_x = cafe_right + 3  # 3 chars to the right of cafe
+        pine_y = ground_y - pine_height + 1 - 4  # 4 rows higher than regular trees
+        if pine_x + len(self.PINE_TREE[0]) < self.width - 2 and pine_y > 0:
+            self._pine_tree_positions.append((pine_x, pine_y))
+            self._draw_pine_tree(pine_x, pine_y)
 
         # Place dumpster to the LEFT of building 1 (above curb)
         self.dumpster_x = 2
@@ -3208,9 +3291,9 @@ class AlleyScene:
         # Place well-lit Cafe between buildings (center of gap)
         self._draw_cafe(self.cafe_x, self.cafe_y)
 
-        # Draw crosswalk between cafe and right building (shifted right 10 chars)
+        # Draw crosswalk between cafe and right building (shifted right 12 chars total)
         cafe_right = self.cafe_x + len(self.CAFE[0])
-        self._crosswalk_x = cafe_right + 11  # +10 to move vanishing street right
+        self._crosswalk_x = cafe_right + 13  # +12 to move vanishing street right
         self._crosswalk_width = 32  # Store for car occlusion
         self._draw_crosswalk(self._crosswalk_x, curb_y, street_y)
 
@@ -3354,9 +3437,12 @@ class AlleyScene:
                     color = Colors.ALLEY_MID
                     # Check if this is a window position (between brackets)
                     # and set up animation
-                elif char in '|_/\\':
-                    # Building structure
+                elif char == '█':
+                    # Solid wall blocks - darker for filled appearance
                     color = Colors.ALLEY_DARK
+                elif char in '|_/\\':
+                    # Building structure/outlines
+                    color = Colors.ALLEY_MID
                 elif char in '~T':
                     # Antenna/tower tops
                     color = Colors.ALLEY_MID
@@ -3502,6 +3588,30 @@ class AlleyScene:
                         self.scene[py][px] = (char, Colors.ALLEY_MID)
                     else:
                         self.scene[py][px] = (char, Colors.ALLEY_MID)
+
+    def _draw_pine_tree(self, x: int, y: int):
+        """Draw a pine tree at the given position, blowing in wind direction."""
+        # Use windy pine sprite based on wind direction
+        if self._wind_direction > 0:
+            tree_sprite = self.PINE_TREE_WINDY_RIGHT
+        else:
+            tree_sprite = self.PINE_TREE_WINDY_LEFT
+        for row_idx, row in enumerate(tree_sprite):
+            for col_idx, char in enumerate(row):
+                px = x + col_idx
+                py = y + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    if char == '*':
+                        # Star on top - yellow
+                        self.scene[py][px] = (char, Colors.RAT_YELLOW)
+                    elif char in '/\\|':
+                        # Pine needles and trunk - green
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)
+                    elif char == '_':
+                        # Base
+                        self.scene[py][px] = (char, Colors.ALLEY_MID)
+                    else:
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)
 
     def _draw_cafe(self, x: int, y: int):
         """Draw a well-lit cafe storefront filled with warm color."""
@@ -3997,7 +4107,7 @@ class AlleyScene:
         self._cars = new_cars
 
     def _update_closeup_car(self):
-        """Update close-up car perspective effect (stays in place, grows then shrinks)."""
+        """Update close-up car perspective effect with two types: approaching and departing."""
         # Spawn new close-up car occasionally
         self._closeup_car_timer += 1
         if self._closeup_car is None and self._closeup_car_timer >= random.randint(200, 400):
@@ -4006,35 +4116,57 @@ class AlleyScene:
             building1_right = self._building_x + len(self.BUILDING[0]) if hasattr(self, '_building_x') else 70
             building2_left = self._building2_x if hasattr(self, '_building2_x') else self.width - 60
             gap_center = (building1_right + building2_left) // 2
-            # Right street light is at gap_center + 38
-            # Traffic light is at box_x + BOX width + 100
             street_light_x = gap_center + 38
             traffic_light_x = self.box_x + len(self.BOX[0]) + 100 if hasattr(self, 'box_x') else self.width - 20
-            # Position car between street light and traffic light
             car_x = (street_light_x + traffic_light_x) // 2
-            self._closeup_car = {
-                'x': float(car_x),
-                'direction': random.choice([-1, 1]),  # Face left or right
-                'scale': 0.5,  # Start small
-                'phase': 0,    # 0=growing, 1=shrinking
-                'scale_speed': 0.15,  # Faster grow/shrink
-            }
+
+            # Randomly choose car type: approaching (from distance) or departing (from behind camera)
+            car_type = random.choice(['approaching', 'departing'])
+
+            if car_type == 'approaching':
+                # Approaching: starts small/far, grows big, then disappears behind camera
+                self._closeup_car = {
+                    'x': float(car_x),
+                    'direction': random.choice([-1, 1]),  # Face left or right
+                    'scale': 0.5,  # Start small (far away)
+                    'type': 'approaching',
+                    'phase': 0,    # 0=growing, 1=passing behind camera
+                    'scale_speed': 0.12,
+                }
+            else:
+                # Departing: starts big (just passed camera), shrinks as it drives away
+                self._closeup_car = {
+                    'x': float(car_x),
+                    'direction': random.choice([-1, 1]),  # Face left or right
+                    'scale': 3.0,  # Start big (just passed camera)
+                    'type': 'departing',
+                    'phase': 0,    # 0=shrinking away
+                    'scale_speed': 0.10,
+                }
 
         # Update close-up car
         if self._closeup_car:
             car = self._closeup_car
-            # Car stays in place, only scale changes
-            if car['phase'] == 0:
-                # Growing phase
-                car['scale'] += car['scale_speed']
-                if car['scale'] >= 3.0:
-                    car['scale'] = 3.0
-                    car['phase'] = 1  # Switch to shrinking
-            else:
-                # Shrinking phase
+
+            if car['type'] == 'approaching':
+                # Approaching car: grows then passes behind camera
+                if car['phase'] == 0:
+                    # Growing phase - car approaching from distance
+                    car['scale'] += car['scale_speed']
+                    if car['scale'] >= 3.0:
+                        car['scale'] = 3.0
+                        car['phase'] = 1  # Now passing behind camera
+                else:
+                    # Passing behind camera - shrinks slightly then disappears
+                    car['scale'] += car['scale_speed'] * 0.5  # Grows a tiny bit more
+                    if car['scale'] >= 3.5:
+                        self._closeup_car = None  # Passed behind camera
+
+            else:  # departing
+                # Departing car: shrinks as it drives away into distance
                 car['scale'] -= car['scale_speed']
-                if car['scale'] <= 0.5:
-                    self._closeup_car = None  # Done, remove car
+                if car['scale'] <= 0.3:
+                    self._closeup_car = None  # Too far away to see
 
     def _spawn_pedestrian(self):
         """Spawn a new pedestrian on the sidewalk with random accessories, colors, and spacing."""
@@ -4072,6 +4204,9 @@ class AlleyScene:
                 'frame_timer': 0,
                 'skin_color': skin_color,
                 'clothing_color': clothing_color,
+                'y_offset': random.choice([-1, 0, 1]),  # Wander on 2-row sidewalk
+                'target_y_offset': random.choice([-1, 0, 1]),
+                'y_wander_timer': random.randint(30, 80),
             })
         else:
             # Pedestrian going left (spawn on right)
@@ -4084,6 +4219,9 @@ class AlleyScene:
                 'frame_timer': 0,
                 'skin_color': skin_color,
                 'clothing_color': clothing_color,
+                'y_offset': random.choice([-1, 0, 1]),  # Wander on 2-row sidewalk
+                'target_y_offset': random.choice([-1, 0, 1]),
+                'y_wander_timer': random.randint(30, 80),
             })
 
     def _update_pedestrians(self):
@@ -4154,6 +4292,22 @@ class AlleyScene:
                     ped['frame_idx'] = (ped['frame_idx'] + 1) % len(ped['frames'])
 
             ped['x'] += ped['direction'] * ped['speed']
+
+            # Y wandering - pedestrians drift up/down on sidewalk to pass each other
+            if not meteor_active:
+                ped['y_wander_timer'] = ped.get('y_wander_timer', 50) - 1
+                if ped['y_wander_timer'] <= 0:
+                    # Pick new target y position
+                    ped['target_y_offset'] = random.choice([-1, 0, 1])
+                    ped['y_wander_timer'] = random.randint(40, 100)
+
+                # Gradually move toward target y
+                current_y = ped.get('y_offset', 0)
+                target_y = ped.get('target_y_offset', 0)
+                if current_y < target_y:
+                    ped['y_offset'] = current_y + 1
+                elif current_y > target_y:
+                    ped['y_offset'] = current_y - 1
 
             # Keep pedestrian if still on screen (with margin)
             if -10 < ped['x'] < self.width + 10:
@@ -4486,7 +4640,7 @@ class AlleyScene:
                 'x': float(x),
                 'y': y,
                 'direction': direction,
-                'speed': random.uniform(0.4, 0.7),
+                'speed': random.uniform(2.0, 3.5),  # 5x faster
                 'message': message,
                 'scroll_offset': 0,
             }
@@ -4774,6 +4928,7 @@ class AlleyScene:
 
         # Render trees as foreground layer (in front of buildings)
         self._render_trees(screen)
+        self._render_pine_trees(screen)
 
         # Render sidewalk/curb on top of scene but behind all sprites
         self._render_sidewalk(screen)
@@ -5242,10 +5397,14 @@ class AlleyScene:
     def _render_pedestrians(self, screen):
         """Render pedestrians on the sidewalk (curb level) with arm animation."""
         # Pedestrians walk on the curb/sidewalk area (moved up 2 rows)
-        curb_y = self.height - 4
+        base_curb_y = self.height - 4
 
         for ped in self._pedestrians:
             x = int(ped['x'])
+            # Get y offset for wandering (pedestrians can be on different rows)
+            y_offset = ped.get('y_offset', 0)
+            curb_y = base_curb_y + y_offset  # Apply wandering offset
+
             # Get current animation frame
             frames = ped.get('frames', [])
             frame_idx = ped.get('frame_idx', 0)
@@ -5765,8 +5924,8 @@ class AlleyScene:
 
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
-        # Position traffic light on right side of scene (shifted 20 more chars right)
-        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 100)
+        # Position traffic light on right side of scene (shifted 4 chars left)
+        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 96)
         light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 1  # Above curb, moved down
 
         if light_x < 0 or light_y < 0:
