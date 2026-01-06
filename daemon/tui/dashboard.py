@@ -1160,7 +1160,6 @@ class AlleyScene:
         "   ||  ",
         "   ||  ",
         "   ||  ",
-        "   ||  ",
     ]
 
     # Car sprites - classic ASCII art style (4 rows tall) with filled body panels
@@ -1359,18 +1358,18 @@ class AlleyScene:
         ["~~   ", " ~~~ ", "~~~~ "],
     ]
 
-    # Tree sprites for windy city effect
+    # Tree sprites for windy city effect (trunk centered under foliage)
     TREE = [
         "   (@@)   ",
         "  (@@@@@) ",
-        " (@@@@@@@@)",
+        " (@@@@@@@)",
         "  (@@@@@) ",
         "    ||    ",
         "    ||    ",
         "   _||_   ",
     ]
 
-    # Tree blowing right (wind from left)
+    # Tree blowing right (wind from left) - trunk stays centered
     TREE_WINDY_RIGHT = [
         "    (@@)  ",
         "   (@@@@@)",
@@ -1381,15 +1380,57 @@ class AlleyScene:
         "   _||_   ",
     ]
 
-    # Tree blowing left (wind from right)
+    # Tree blowing left (wind from right) - trunk stays centered
     TREE_WINDY_LEFT = [
         "  (@@)    ",
-        "(@@@@@)   ",
+        " (@@@@@)  ",
         "(@@@@@@@) ",
         " (@@@@)   ",
         "    ||    ",
         "    ||    ",
         "   _||_   ",
+    ]
+
+    # Pine tree sprite (taller, triangular)
+    PINE_TREE = [
+        "    *     ",
+        "   /|\\   ",
+        "  /|||\\  ",
+        " /|||||\\",
+        "  /|||\\  ",
+        " /|||||\\",
+        "/|||||||\\",
+        "   |||    ",
+        "   |||    ",
+        "  _|||_   ",
+    ]
+
+    # Pine tree blowing right
+    PINE_TREE_WINDY_RIGHT = [
+        "     *    ",
+        "    /|\\  ",
+        "   /|||\\  ",
+        "  /|||||\\",
+        "   /|||\\  ",
+        "  /|||||\\",
+        " /|||||||\\",
+        "    |||   ",
+        "    |||   ",
+        "   _|||_  ",
+    ]
+
+    # Pine tree blowing left
+    PINE_TREE_WINDY_LEFT = [
+        "    *     ",
+        "   /|\\   ",
+        "  /|||\\  ",
+        " /|||||\\",
+        "  /|||\\  ",
+        " /|||||\\",
+        "/|||||||\\",
+        "   |||    ",
+        "   |||    ",
+        "  _|||_   ",
     ]
 
     # Debris sprites for windy weather
@@ -1913,6 +1954,7 @@ class AlleyScene:
         self._debris_spawn_timer = 0
         self._wind_wisp_timer = 0
         self._tree_positions: List[Tuple[int, int]] = []  # (x, y) for trees
+        self._pine_tree_positions: List[Tuple[int, int]] = []  # (x, y) for pine trees
         self._tree_sway_frame = 0
         # Wind direction: 1 = blowing right (from left), -1 = blowing left (from right)
         self._wind_direction = 1
@@ -2915,6 +2957,37 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+    def _render_pine_trees(self, screen):
+        """Render pine trees on top of buildings (foreground layer)."""
+        if not hasattr(self, '_pine_tree_positions'):
+            return
+        for tree_x, tree_y in self._pine_tree_positions:
+            # Use windy pine sprite based on wind direction
+            if self._wind_direction > 0:
+                tree_sprite = self.PINE_TREE_WINDY_RIGHT
+            else:
+                tree_sprite = self.PINE_TREE_WINDY_LEFT
+
+            for row_idx, row in enumerate(tree_sprite):
+                for col_idx, char in enumerate(row):
+                    px = tree_x + col_idx
+                    py = tree_y + row_idx
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        try:
+                            if char == '*':
+                                # Star on top - yellow
+                                attr = curses.color_pair(Colors.RAT_YELLOW) | curses.A_BOLD
+                            elif char in '/\\|':
+                                # Pine needles and trunk - green
+                                attr = curses.color_pair(Colors.MATRIX_DIM)
+                            else:
+                                attr = curses.color_pair(Colors.ALLEY_MID)
+                            screen.attron(attr)
+                            screen.addstr(py, px, char)
+                            screen.attroff(attr)
+                        except curses.error:
+                            pass
+
     def _render_clouds(self, screen):
         """Render cloud layer."""
         for cloud in self._clouds:
@@ -3159,8 +3232,10 @@ class AlleyScene:
 
         # Place trees - one on left, two in front of right building
         self._tree_positions = []
+        self._pine_tree_positions = []  # Pine trees stored separately
         tree_height = len(self.TREE)
         tree_width = len(self.TREE[0])
+        pine_height = len(self.PINE_TREE)
         building2_left = self._building2_x if self._building2_x > 0 else self.width
         building2_width = len(self.BUILDING2[0]) if self.BUILDING2 else 60
 
@@ -3182,6 +3257,14 @@ class AlleyScene:
                 tree_y = ground_y - tree_height + 1
                 self._tree_positions.append((tree_x, tree_y))
                 self._draw_tree(tree_x, tree_y)
+
+        # Pine tree: to the right of Shell Cafe, 4 rows higher than regular trees
+        cafe_right = self.cafe_x + len(self.CAFE[0]) if hasattr(self, 'cafe_x') else 0
+        pine_x = cafe_right + 3  # 3 chars to the right of cafe
+        pine_y = ground_y - pine_height + 1 - 4  # 4 rows higher than regular trees
+        if pine_x + len(self.PINE_TREE[0]) < self.width - 2 and pine_y > 0:
+            self._pine_tree_positions.append((pine_x, pine_y))
+            self._draw_pine_tree(pine_x, pine_y)
 
         # Place dumpster to the LEFT of building 1 (above curb)
         self.dumpster_x = 2
@@ -3502,6 +3585,30 @@ class AlleyScene:
                         self.scene[py][px] = (char, Colors.ALLEY_MID)
                     else:
                         self.scene[py][px] = (char, Colors.ALLEY_MID)
+
+    def _draw_pine_tree(self, x: int, y: int):
+        """Draw a pine tree at the given position, blowing in wind direction."""
+        # Use windy pine sprite based on wind direction
+        if self._wind_direction > 0:
+            tree_sprite = self.PINE_TREE_WINDY_RIGHT
+        else:
+            tree_sprite = self.PINE_TREE_WINDY_LEFT
+        for row_idx, row in enumerate(tree_sprite):
+            for col_idx, char in enumerate(row):
+                px = x + col_idx
+                py = y + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    if char == '*':
+                        # Star on top - yellow
+                        self.scene[py][px] = (char, Colors.RAT_YELLOW)
+                    elif char in '/\\|':
+                        # Pine needles and trunk - green
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)
+                    elif char == '_':
+                        # Base
+                        self.scene[py][px] = (char, Colors.ALLEY_MID)
+                    else:
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)
 
     def _draw_cafe(self, x: int, y: int):
         """Draw a well-lit cafe storefront filled with warm color."""
@@ -4796,6 +4903,7 @@ class AlleyScene:
 
         # Render trees as foreground layer (in front of buildings)
         self._render_trees(screen)
+        self._render_pine_trees(screen)
 
         # Render sidewalk/curb on top of scene but behind all sprites
         self._render_sidewalk(screen)
@@ -5787,8 +5895,8 @@ class AlleyScene:
 
     def _render_traffic_light(self, screen):
         """Render the traffic light with current light states."""
-        # Position traffic light on right side of scene (shifted 20 more chars right)
-        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 100)
+        # Position traffic light on right side of scene (shifted 4 chars left)
+        light_x = min(self.width - 10, self.box_x + len(self.BOX[0]) + 96)
         light_y = self.height - len(self.TRAFFIC_LIGHT_TEMPLATE) - 1  # Above curb, moved down
 
         if light_x < 0 or light_y < 0:
