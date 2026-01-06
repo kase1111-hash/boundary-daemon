@@ -1141,19 +1141,19 @@ class AlleyScene:
     # Cafe storefront (well-lit, between buildings) - taller size
     # Turtle shell logo for Shell Cafe (hexagonal pattern)
     BIG_SHELL_LOGO = [
-        "      ___________      ",
-        "    /`    |    `\\    ",
-        "   / \\ __|__ / \\ \\   ",
-        "  |   \\/   \\/   \\ |  ",
-        "  |   /\\___/\\   / |  ",
-        "   \\ /  | |  \\ /  /   ",
-        "    \\___|_|___/      ",
+        "                    ",
+        "     ____________    ",
+        "   / \\ __|__ /   \    ",
+        "  |   \\/   \\/ /  \   ",
+        "  |   /\\___/\\ \   |  ",
+        "   \\ /  | |  \\ \/   ",
+        "    \\___|_|___/ /     ",
     ]
 
     # Turtle head animation frames (peeks out from shell)
     TURTLE_HEAD_FRAMES = [
         "  @__@  ",   # Normal eyes
-        "  @~_@  ",   # Left wink
+        "  @~~@  ",   # Blink
         "  @_~@  ",   # Right wink
         "  ^__^  ",   # Happy
     ]
@@ -1190,9 +1190,9 @@ class AlleyScene:
     # All 6 lights shown as circles, off lights are gray
     TRAFFIC_LIGHT_TEMPLATE = [
         " .===. ",
-        " |L(R) ",  # Red lights - right side has brackets
-        " |L(R) ",  # Yellow lights
-        " |L(R) ",  # Green lights
+        " (L(R) ",  # Red lights - right side has brackets
+        " (L(R) ",  # Yellow lights
+        " (L(R) ",  # Green lights
         " '===' ",
         "   ||  ",
         "   ||  ",
@@ -1208,27 +1208,27 @@ class AlleyScene:
     # Design inspired by classic ASCII art archives
     CAR_RIGHT = [
         "      ______          ",
-        "   __/█_||_█\\`._      ",
-        "  (  ███  ███  \\     ",
+        "   __/__||__\\`._      ",
+        " (           \\     ",
         "  =`-(_)--(_)-'      ",
     ]
     CAR_LEFT = [
         "       ______         ",
-        "     _.'█_||_█\\__    ",
-        "    /  ███  ███   )   ",
+        "     _.'__||__\\__    ",
+        "    /              )   ",
         "     `-'(_)--(_)-=   ",
     ]
 
     # Taxi car sprites (yellow with TAXI sign on roof)
     TAXI_RIGHT = [
         "      _TAXI_          ",
-        "   __/█_||_█\\`._      ",
+        "   __/__||__\\`._      ",
         "  (  ███  ███  \\     ",
         "  =`-(_)--(_)-'      ",
     ]
     TAXI_LEFT = [
         "       _TAXI_         ",
-        "     _.'█_||_█\\__    ",
+        "     _.'__||__\\__    ",
         "    /  ███  ███   )   ",
         "     `-'(_)--(_)-=   ",
     ]
@@ -1309,17 +1309,17 @@ class AlleyScene:
     # Text area is 27 chars wide (rows 1-2 inside the trailer)
     SEMI_RIGHT_BASE = [
         "                 _____________________________  ",
-        "        ___     |{line1:^27}| ",
-        "   ____/█ █\\____|{line2:^27}| ",
+        "        _______ |        {line1:^27}          | ",
+        "   ____/   \\   |        {line2:^27}          | ",
         "  | °  |__|__|  |_____________________________|",
-        "  (O)-----(O)--------------(O)-----------(O)  ",
+        "   (O)-----(O)------------------------(O)(O)--  ",
     ]
     SEMI_LEFT_BASE = [
         "  _____________________________                 ",
-        " |{line1:^27}|     ___        ",
-        " |{line2:^27}|____/█ █\\____   ",
+        " |         {line1:^27}         | _______        ",
+        " |         {line2:^27}         |    /   \\____   ",
         " |_____________________________|  |__|__|  ° | ",
-        "  (O)-----------(O)--------------(O)-----(O)  ",
+        "  --(O)(O)------------------------(O)-----(O)  ",
     ]
 
     # 50 unique trucking/advertising companies
@@ -1932,8 +1932,8 @@ class AlleyScene:
 
     # Building wireframe - 2X TALL, 2X WIDE with mixed window sizes, two doors with stoops
     BUILDING = [
-        "                        _____                                  ",
-        "       __O__           |     |                  __O__          ",
+        "                         _____                                  ",
+        "       __O__            |     |                  __O__          ",
         "      / === \\          |     |  [===]          / === \\         ",
         "     (==//\\==)         |_____|  [===]         (==//\\==)        ",
         ".--------------------------------------------------------------.",
@@ -1978,10 +1978,10 @@ class AlleyScene:
 
     # Second building (right side) - 2X TALL, 2X WIDE with two doors with stoops
     BUILDING2 = [
-        "              _____                                  ___   ",
-        "             |     |     __O__              __O__   |   |  ",
-        "      [===]  |     |    / === \\            / === \\  |   |  ",
-        "      [===]  |_____|   (==//\\==)          (==//\\==) |___|  ",
+        "              _____                                      ",
+        "             |     |     __O__               __O__         ",
+        "      [===]  |     |    / === \\            / === \\        ",
+        "      [===]  |_____|   (==//\\==)          (==//\\==)       ",
         ".----------------------------------------------------------.",
         "                                                            ",
         "     [========]    [====]    [========]    [====]           ",
@@ -2468,7 +2468,7 @@ class AlleyScene:
                      '   (    ~~~    )   ',
                      '  (  .~     ~.  )  ',
                      ' (  (         )  ) ',
-                     '  ~~           ~~  '],
+                     '  ~~~~~~~~~~~~~~~  '],
                     # Wide cumulus
                     ['    .--~~~--.    ',
                      '  .~         ~.  ',
@@ -6412,7 +6412,7 @@ class AlleyScene:
                     " /              \\",
                     "|  [O]      [O]  |",
                     "|________________|",
-                    " (__)  (__)  (__)",
+                    "  (__)       (__)",
                 ]
             else:
                 sprite = [
@@ -6420,7 +6420,7 @@ class AlleyScene:
                     "/              \\",
                     "|  [O]      [O]  |",
                     "|________________|",
-                    "(__)  (__)  (__) ",
+                    "  (__)       (__) ",
                 ]
         elif scale >= 1.8:
             # Large car
@@ -6460,13 +6460,11 @@ class AlleyScene:
                 sprite = [
                     " .==.",
                     "|OO|",
-                    " ()  ",
                 ]
             else:
                 sprite = [
                     ".==. ",
                     "|OO|",
-                    " () ",
                 ]
 
         # Position car at street level (shifted up 2 rows + y_offset for perspective)
