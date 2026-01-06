@@ -167,6 +167,7 @@ class Colors:
     # Christmas light colors (secret event Dec 20-31)
     XMAS_RED = 42        # Red Christmas light
     XMAS_GREEN = 43      # Green Christmas light
+    CAFE_GREEN = 47      # Green for Shell Cafe turtle shell
     XMAS_BLUE = 44       # Blue Christmas light
     XMAS_YELLOW = 45     # Yellow Christmas light
     # Halloween colors (secret event Oct 24-31)
@@ -227,7 +228,8 @@ class Colors:
         # Lightning flash - inverted bright white on green
         curses.init_pair(Colors.LIGHTNING, curses.COLOR_BLACK, curses.COLOR_WHITE)
         # Alley scene colors - muted blue and grey
-        curses.init_pair(Colors.ALLEY_DARK, curses.COLOR_BLACK, curses.COLOR_BLACK)
+        # ALLEY_DARK uses blue for visible dark shadows (black on black is invisible)
+        curses.init_pair(Colors.ALLEY_DARK, curses.COLOR_BLUE, curses.COLOR_BLACK)
         curses.init_pair(Colors.ALLEY_MID, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(Colors.ALLEY_LIGHT, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(Colors.ALLEY_BLUE, curses.COLOR_CYAN, curses.COLOR_BLACK)
@@ -267,6 +269,7 @@ class Colors:
         # Christmas light colors
         curses.init_pair(Colors.XMAS_RED, curses.COLOR_RED, curses.COLOR_BLACK)
         curses.init_pair(Colors.XMAS_GREEN, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Colors.CAFE_GREEN, curses.COLOR_GREEN, curses.COLOR_BLACK)
         curses.init_pair(Colors.XMAS_BLUE, curses.COLOR_CYAN, curses.COLOR_BLACK)
         curses.init_pair(Colors.XMAS_YELLOW, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         # Halloween colors
@@ -3244,7 +3247,7 @@ class AlleyScene:
         cafe_x = self.cafe_x
         cafe_y = self.cafe_y
 
-        # Render big shell on roof - green on top, brown on bottom (like Mario kicked koopa shell)
+        # Render big shell on roof - all green
         for row_idx in range(8):  # First 8 rows are the shell roof
             if row_idx < len(self.CAFE):
                 for col_idx, char in enumerate(self.CAFE[row_idx]):
@@ -3253,11 +3256,8 @@ class AlleyScene:
                         py = cafe_y + row_idx
                         if 0 <= px < self.width - 1 and 0 <= py < self.height:
                             try:
-                                # Green on top (rows 0-4), brown on bottom (rows 5-7)
-                                if row_idx <= 4:
-                                    attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD  # Green
-                                else:
-                                    attr = curses.color_pair(Colors.BOX_BROWN)  # Brown/yellow
+                                # All green for the shell
+                                attr = curses.color_pair(Colors.CAFE_GREEN) | curses.A_BOLD
                                 screen.attron(attr)
                                 screen.addstr(py, px, char)
                                 screen.attroff(attr)
@@ -3274,7 +3274,7 @@ class AlleyScene:
                     if 0 <= px < self.width - 1 and 0 <= py < self.height:
                         try:
                             # Green bold for SHELL CAFE
-                            attr = curses.color_pair(Colors.MATRIX_DIM) | curses.A_BOLD
+                            attr = curses.color_pair(Colors.CAFE_GREEN) | curses.A_BOLD
                             screen.attron(attr)
                             screen.addstr(py, px, char)
                             screen.attroff(attr)
@@ -4297,18 +4297,24 @@ class AlleyScene:
                             inside_cafe = True
 
                     if char != ' ':
-                        # Use neutral colors for cafe structure, warm for interior
-                        if char in 'SHELLCAFE' or char in 'OPEN':
-                            color = Colors.ALLEY_LIGHT  # Text - neutral white
+                        # Use green for shell and cafe text, neutral for structure
+                        # Turtle shell is rows 0-6
+                        is_shell_row = row_idx < 7
+                        if is_shell_row and char in '/\\|_`':
+                            color = Colors.CAFE_GREEN  # Green turtle shell outline
+                        elif char in 'SHELLCAFE':
+                            color = Colors.CAFE_GREEN  # Green cafe name
+                        elif char in 'OPEN':
+                            color = Colors.ALLEY_LIGHT  # OPEN sign stays white
                         elif char in '[]=' or char == '~':
                             color = Colors.ALLEY_MID  # Windows - gray, no glow
                         elif char == 'O' and inside_cafe:
                             color = Colors.ALLEY_DARK  # People silhouettes - dark
-                        elif char in '/\\':
+                        elif char in '/\\' and not is_shell_row:
                             color = Colors.ALLEY_DARK  # People arms - dark
-                        elif char == '|':
+                        elif char == '|' and not is_shell_row:
                             color = Colors.ALLEY_MID  # Walls - gray
-                        elif char in '_.-':
+                        elif char in '_.-' and not is_shell_row:
                             color = Colors.ALLEY_MID  # Structure - gray
                         else:
                             color = Colors.ALLEY_MID  # Structure - gray
@@ -4980,10 +4986,11 @@ class AlleyScene:
                         if b1_left < ped_x < b1_right or b2_left < ped_x < b2_right:
                             under_building = True
                     # Pick new target y position - allow up to -5 when under building
+                    # Walk 2 rows lower in front of buildings (positive offset = lower on screen)
                     if under_building:
                         ped['target_y_offset'] = random.choice([-5, -4, -3, -2, -1, 0, 1])
                     else:
-                        ped['target_y_offset'] = random.choice([-1, 0, 1])
+                        ped['target_y_offset'] = random.choice([1, 2, 3])
                     ped['y_wander_timer'] = random.randint(40, 100)
 
                 # Gradually move toward target y
