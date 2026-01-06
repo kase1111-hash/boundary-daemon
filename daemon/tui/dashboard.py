@@ -1508,18 +1508,18 @@ class AlleyScene:
         [" O ", "/| ", " | ", " ||"],   # Right arm back, legs together
     ]
 
-    # Person with hat (= on head) - with leg animation
+    # Person with hat (~, on head) - with leg animation
     PERSON_HAT_RIGHT_FRAMES = [
-        [" = ", " O ", "/| ", "/| "],   # Hat, right leg forward
-        [" = ", " O ", " |\\", "|| "],   # Hat, legs together
-        [" = ", " O ", "/| ", "|\\ "],   # Hat, left leg back
-        [" = ", " O ", " |\\", "|| "],   # Hat, legs together
+        [" ~ ", " O ", "/| ", "/| "],   # Hat, right leg forward
+        [" , ", " O ", " |\\", "|| "],   # Hat, legs together
+        [" ~ ", " O ", "/| ", "|\\ "],   # Hat, left leg back
+        [" , ", " O ", " |\\", "|| "],   # Hat, legs together
     ]
     PERSON_HAT_LEFT_FRAMES = [
-        [" = ", " O ", " |\\", " |\\"],  # Hat, left leg forward
-        [" = ", " O ", "/| ", " ||"],   # Hat, legs together
-        [" = ", " O ", " |\\", " /|"],  # Hat, right leg back
-        [" = ", " O ", "/| ", " ||"],   # Hat, legs together
+        [" ~ ", " O ", " |\\", " |\\"],  # Hat, left leg forward
+        [" , ", " O ", "/| ", " ||"],   # Hat, legs together
+        [" ~ ", " O ", " |\\", " /|"],  # Hat, right leg back
+        [" , ", " O ", "/| ", " ||"],   # Hat, legs together
     ]
 
     # Person with briefcase (# carried) - with leg animation
@@ -1798,7 +1798,7 @@ class AlleyScene:
         "            |      |                    |      |                ",
         "            | [==] |                    | [==] |                ",
         "____________|______|____________________|______|________________",
-        "      ______======______          ______======______            ",
+        "      ______.------.____          ______.------.____            ",
     ]
 
     # Second building (right side) - 2X TALL, 2X WIDE with two doors with stoops
@@ -1844,7 +1844,7 @@ class AlleyScene:
         "            |      |                    |      |            ",
         "            | [==] |                    | [==] |            ",
         "____________|______|____________________|______|____________",
-        "      ______======______          ______======______        ",
+        "      ______.------.____          ______.------.____        ",
     ]
 
     # Window positions for people animation (relative to building sprite)
@@ -3239,8 +3239,8 @@ class AlleyScene:
         building2_left = self._building2_x if self._building2_x > 0 else self.width
         building2_width = len(self.BUILDING2[0]) if self.BUILDING2 else 60
 
-        # Tree 1: left side of gap (near left building)
-        tree1_x = building1_right + 8
+        # Tree 1: in front of left building
+        tree1_x = self._building_x + 15
         # Tree 2: in front of right building (center-left of building2)
         tree2_x = building2_left + building2_width // 3
         # Tree 3: in front of right building (center-right of building2)
@@ -4640,7 +4640,7 @@ class AlleyScene:
                 'x': float(x),
                 'y': y,
                 'direction': direction,
-                'speed': random.uniform(0.4, 0.7),
+                'speed': random.uniform(2.0, 3.5),  # 5x faster
                 'message': message,
                 'scroll_offset': 0,
             }
