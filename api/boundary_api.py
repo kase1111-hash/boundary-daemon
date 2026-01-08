@@ -306,7 +306,25 @@ class BoundaryAPIServer:
         command = request.get('command')
         params = request.get('params', {})
 
-        # Authenticate request
+        # Commands that don't require authentication (read-only, safe to expose)
+        # These are used by the TUI dashboard for display purposes
+        PUBLIC_COMMANDS = {
+            'status',           # Daemon status (mode, uptime, etc.)
+            'ping',             # Health check
+            'version',          # Version info
+            'get_events',       # Event log (read-only)
+            'get_alerts',       # Active alerts (read-only)
+            'get_sandboxes',    # Sandbox status (read-only)
+            'get_siem_status',  # SIEM shipping status (read-only)
+        }
+
+        # Skip authentication for public commands
+        if command in PUBLIC_COMMANDS:
+            # Process without token
+            response = self._dispatch_command(command, params, None)
+            return response
+
+        # Authenticate request for all other commands
         is_authorized, token, auth_message = self.auth_middleware.authenticate_request(request)
 
         if not is_authorized:
