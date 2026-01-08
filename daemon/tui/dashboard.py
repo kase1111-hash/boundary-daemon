@@ -8219,10 +8219,14 @@ class DashboardClient:
                 lockdown = status.get('lockdown', {})
                 environment = status.get('environment', {})
                 # Map API response to dashboard format
+                # Uptime can come from health monitor, clock monitor, or environment
+                health = status.get('health', {})
+                clock = status.get('clock', {})
+                uptime = health.get('uptime_seconds') or clock.get('uptime_seconds') or 0
                 return {
                     'mode': boundary_state.get('mode', 'unknown').upper(),
                     'mode_since': boundary_state.get('last_transition', datetime.utcnow().isoformat()),
-                    'uptime': environment.get('uptime_seconds', 0) if environment else 0,
+                    'uptime': uptime,
                     'events_today': status.get('event_count', 0),
                     'violations': status.get('tripwire_violations', 0),
                     'tripwire_enabled': True,
@@ -8962,6 +8966,17 @@ class Dashboard:
             self._acknowledge_alert()
         elif key == ord('e') or key == ord('E'):
             self._export_events()
+        elif key == ord('c') or key == ord('C'):
+            # Clear events display
+            self.events = []
+            self.scroll_offset = 0
+        elif key == ord('l') or key == ord('L'):
+            # Recall/reload events from daemon
+            try:
+                self.events = self.client.get_events(50)  # Get more events
+                self.scroll_offset = 0
+            except Exception:
+                pass
         elif key == ord('/'):
             self._start_search()
         elif key == 27:  # ESC - clear search filter
@@ -9301,42 +9316,47 @@ class Dashboard:
                 row += 1
 
     def _draw_siem_panel(self, y: int, x: int, width: int, height: int):
-        """Draw the SIEM status panel."""
+        """Draw the SIEM status panel with right-aligned text."""
         connected = self.siem_status.get('connected', False)
         title_color = Colors.STATUS_OK if connected else Colors.STATUS_ERROR
         self._draw_box(y, x, width, height, "SIEM SHIPPING", title_color)
 
         row = y + 1
-        col = x + 2
+        # Right-align text within the box (2 char padding from right edge)
+        right_edge = x + width - 2
 
         # Connection status
         status_text = "✓ Connected" if connected else "✗ Disconnected"
         status_color = Colors.STATUS_OK if connected else Colors.STATUS_ERROR
-        self._addstr(row, col, f"Status: {status_text}", status_color)
+        line = f"Status: {status_text}"
+        self._addstr(row, right_edge - len(line), line, status_color)
         row += 1
 
         # Backend
         backend = self.siem_status.get('backend', 'unknown')
-        self._addstr(row, col, f"Backend: {backend}", Colors.MUTED)
+        line = f"Backend: {backend}"
+        self._addstr(row, right_edge - len(line), line, Colors.MUTED)
         row += 1
 
         # Queue depth
         queue = self.siem_status.get('queue_depth', 0)
         queue_color = Colors.STATUS_OK if queue < 100 else Colors.STATUS_WARN
-        self._addstr(row, col, f"Queue: {queue} events", queue_color)
+        line = f"Queue: {queue} events"
+        self._addstr(row, right_edge - len(line), line, queue_color)
         row += 1
 
         # Events shipped
         shipped = self.siem_status.get('events_shipped_today', 0)
-        self._addstr(row, col, f"Shipped today: {shipped:,}", Colors.MUTED)
+        line = f"Shipped today: {shipped:,}"
+        self._addstr(row, right_edge - len(line), line, Colors.MUTED)
 
     def _draw_footer(self):
         """Draw the footer bar."""
         # Add weather shortcut in matrix mode
         if self.matrix_mode:
-            shortcuts = "[:]CLI [w]Weather [m]Mode [a]Ack [e]Export [?]Help [q]Quit"
+            shortcuts = "[:]CLI [w]Weather [m]Mode [c]Clear [l]Load [e]Export [?]Help [q]Quit"
         else:
-            shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
+            shortcuts = "[m]Mode [c]Clear [l]Load [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
 
         # In demo mode, show connection hint
         if self.client.is_demo_mode():
@@ -9363,6 +9383,8 @@ class Dashboard:
             "",
             "  m    Start mode change ceremony",
             "  a    Acknowledge selected alert",
+            "  c    Clear events display",
+            "  l    Load/recall events from daemon",
             "  e    Export events to file",
             "  r    Refresh data",
             "  /    Filter events",
@@ -9380,8 +9402,8 @@ class Dashboard:
 
         # Add weather info if in matrix mode
         if self.matrix_mode:
-            help_text.insert(6, "  w    Cycle weather (Matrix/Rain/Snow/Sand/Fog)")
-            help_text.insert(7, "")
+            help_text.insert(8, "  w    Cycle weather (Matrix/Rain/Snow/Sand/Fog)")
+            help_text.insert(9, "")
 
         help_text.append("Press any key to close")
 
