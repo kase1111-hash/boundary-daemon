@@ -1150,8 +1150,8 @@ class TunnelBackdrop:
         WeatherMode.CALM: [Colors.TUNNEL_FAR, Colors.TUNNEL_MID, Colors.ALLEY_MID, Colors.ALLEY_LIGHT],
     }
 
-    # Number of cached frames for animation loop
-    CACHE_FRAMES = 60
+    # Number of cached frames for animation loop (more = smoother)
+    CACHE_FRAMES = 180
 
     def __init__(self, width: int, height: int, weather_mode: WeatherMode = WeatherMode.MATRIX):
         self.width = width
@@ -1161,7 +1161,7 @@ class TunnelBackdrop:
 
         # Animation state
         self._frame_idx = 0
-        self._speed = 3  # Frames to advance per update (faster animation)
+        self._speed = 1  # Single frame steps for smooth animation
 
         # Tunnel center (vanishing point)
         self._center_x = width // 2
@@ -1222,7 +1222,7 @@ class TunnelBackdrop:
 
         # Generate each frame
         for frame in range(self.CACHE_FRAMES):
-            t = frame * 0.15  # Time offset for this frame
+            t = frame * 0.05  # Smaller time steps = smoother transitions
             frame_data = []
 
             for y in range(1, sky_height):
