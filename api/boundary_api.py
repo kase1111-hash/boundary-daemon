@@ -531,9 +531,10 @@ class BoundaryAPIServer:
                         'existing_token_id': tok.get('token_id'),
                     }
 
-            # Create a limited read-only token for TUI
-            # Only allow read operations, not mode changes or token management
-            tui_capabilities = {'read'}  # Limited capability set
+            # Create a token for TUI with read and write capabilities
+            # Allows operators to view status and change modes
+            # Does NOT allow token management (admin operations)
+            tui_capabilities = {'read', 'write'}  # Operator capability set
 
             raw_token, token_obj = self.token_manager.create_token(
                 name=f"tui-{name}",
