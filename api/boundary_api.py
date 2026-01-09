@@ -103,12 +103,16 @@ class BoundaryAPIServer:
             'total_requests': 0,
             'total_events_served': 0,
             'last_request_time': None,
+            'last_request_timestamp': None,  # Unix timestamp for timeout check
             'last_client': None,
             'requests_today': 0,
             'events_today': 0,
             'today_date': None,
+            'connected': False,  # True if SIEM has connected within timeout
+            'was_connected': False,  # Track previous state for disconnect detection
         }
         self._ingestion_lock = threading.Lock()
+        self._ingestion_timeout = 60.0  # Consider disconnected after 60 seconds of no requests
 
         # Telemetry integration for API latency monitoring (Plan 11)
         self._telemetry_manager: Optional['TelemetryManager'] = telemetry_manager
@@ -824,6 +828,7 @@ class BoundaryAPIServer:
 
     def _track_ingestion(self, event_count: int, client_info: str = None):
         """Track event ingestion statistics for SIEM clients."""
+        import time
         from datetime import datetime, date
         with self._ingestion_lock:
             today = date.today().isoformat()
@@ -834,14 +839,65 @@ class BoundaryAPIServer:
                 self._ingestion_stats['requests_today'] = 0
                 self._ingestion_stats['events_today'] = 0
 
+            # Track connection state - SIEM just connected/reconnected
+            was_disconnected = not self._ingestion_stats['connected']
+            self._ingestion_stats['connected'] = True
+            self._ingestion_stats['was_connected'] = True
+
+            # Log reconnection event if SIEM was previously disconnected
+            if was_disconnected and self._ingestion_stats['total_requests'] > 0:
+                self._log_siem_connection_event('connected', client_info)
+
             # Update stats
             self._ingestion_stats['total_requests'] += 1
             self._ingestion_stats['total_events_served'] += event_count
             self._ingestion_stats['requests_today'] += 1
             self._ingestion_stats['events_today'] += event_count
             self._ingestion_stats['last_request_time'] = datetime.utcnow().isoformat() + 'Z'
+            self._ingestion_stats['last_request_timestamp'] = time.time()
             if client_info:
                 self._ingestion_stats['last_client'] = client_info
+
+    def _check_siem_connection_timeout(self):
+        """Check if SIEM client has timed out and log disconnect event."""
+        import time
+        with self._ingestion_lock:
+            if not self._ingestion_stats['connected']:
+                return False  # Already disconnected
+
+            last_ts = self._ingestion_stats['last_request_timestamp']
+            if last_ts is None:
+                return False  # Never connected
+
+            elapsed = time.time() - last_ts
+            if elapsed > self._ingestion_timeout:
+                # SIEM has timed out - mark as disconnected
+                self._ingestion_stats['connected'] = False
+                self._log_siem_connection_event('disconnected', self._ingestion_stats['last_client'])
+                return True
+        return False
+
+    def _log_siem_connection_event(self, state: str, client_info: str = None):
+        """Log SIEM connection state change event."""
+        if self.daemon and hasattr(self.daemon, 'event_logger'):
+            try:
+                client_str = f" (client: {client_info})" if client_info else ""
+                if state == 'disconnected':
+                    self.daemon.event_logger.log_event(
+                        event_type='siem_disconnected',
+                        severity='warning',
+                        description=f'SIEM ingestion client disconnected{client_str} - no requests for {int(self._ingestion_timeout)}s',
+                        data={'client': client_info, 'timeout': self._ingestion_timeout}
+                    )
+                else:
+                    self.daemon.event_logger.log_event(
+                        event_type='siem_connected',
+                        severity='info',
+                        description=f'SIEM ingestion client connected{client_str}',
+                        data={'client': client_info}
+                    )
+            except Exception:
+                pass  # Don't fail on logging errors
 
     def _handle_verify_log(self) -> Dict[str, Any]:
         """Verify event log integrity"""
@@ -1438,13 +1494,21 @@ class BoundaryAPIServer:
     def _handle_get_siem_status(self) -> Dict[str, Any]:
         """Get SIEM integration status including ingestion stats."""
         try:
+            # Check for SIEM connection timeout (logs warning if disconnected)
+            self._check_siem_connection_timeout()
+
             # Get ingestion stats (events pulled by SIEM clients)
             with self._ingestion_lock:
+                ingestion_connected = self._ingestion_stats['connected']
+                ingestion_was_connected = self._ingestion_stats['was_connected']
                 ingestion = {
                     'active': self._ingestion_stats['requests_today'] > 0,
+                    'connected': ingestion_connected,
+                    'was_connected': ingestion_was_connected,  # True if ever connected
                     'requests_today': self._ingestion_stats['requests_today'],
                     'events_served_today': self._ingestion_stats['events_today'],
                     'last_request': self._ingestion_stats['last_request_time'],
+                    'last_client': self._ingestion_stats['last_client'],
                     'total_requests': self._ingestion_stats['total_requests'],
                     'total_events_served': self._ingestion_stats['total_events_served'],
                 }

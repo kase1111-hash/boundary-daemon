@@ -1784,6 +1784,38 @@ class AlleyScene:
     ]
 
     # ==========================================
+    # SMALL PARK ELEMENTS
+    # ==========================================
+
+    # Park bench (side view)
+    PARK_BENCH = [
+        " _______ ",
+        "|_______|",
+        " |     | ",
+    ]
+
+    # Small park lamp
+    PARK_LAMP = [
+        " (O) ",
+        "  |  ",
+        "  |  ",
+        " _|_ ",
+    ]
+
+    # Small bush/shrub
+    SMALL_BUSH = [
+        " @@@ ",
+        "@@@@@",
+        " @@@ ",
+    ]
+
+    # Flower bed
+    FLOWER_BED = [
+        "*.*.*",
+        "ooooo",
+    ]
+
+    # ==========================================
     # SEASONAL CONSTELLATIONS - Security Canary
     # Stars tied to memory monitor health
     # ==========================================
@@ -2333,6 +2365,10 @@ class AlleyScene:
         self._building_y = 0
         self._building2_x = 0
         self._building2_y = 0
+        # Park position (between vanishing road and right building)
+        self._park_x = 0
+        self._park_y = 0
+        self._park_width = 0
         # Store building bottom for rat constraints
         self._building_bottom_y = height - 3
         # Traffic light state
@@ -2474,6 +2510,10 @@ class AlleyScene:
         self._constellation_y = 0
         self._star_twinkle_timer = 0
         self._star_twinkle_frame = 0
+
+        # Background stars (small twinkling dots filling the sky)
+        self._background_stars: List[Dict] = []
+        self._init_background_stars()
 
         # Scene seeding - deterministic random based on date for consistency
         # Same date = same scene layout (for screenshot validation)
@@ -2634,6 +2674,23 @@ class AlleyScene:
         # Winter: December-February -> Orion
         else:
             return self.CONSTELLATION_ORION
+
+    def _init_background_stars(self):
+        """Initialize background star positions for the night sky."""
+        self._background_stars = []
+        # Generate many small stars across the upper portion of screen
+        # Stars should be in the sky area (roughly upper 40% of screen)
+        sky_height = max(20, self.height // 2 - 5)
+
+        # Create 80-120 background stars with varying brightness
+        num_stars = random.randint(80, 120)
+        for _ in range(num_stars):
+            self._background_stars.append({
+                'x': random.randint(5, max(10, self.width - 10)),
+                'y': random.randint(2, sky_height),
+                'brightness': random.choice([1, 1, 1, 2]),  # Mostly dim, some bright
+                'twinkle_offset': random.randint(0, 3),  # Randomize twinkle phase
+            })
 
     def _check_security_canaries(self, daemon_client=None):
         """
@@ -3956,8 +4013,61 @@ class AlleyScene:
                         except curses.error:
                             pass
 
+    def _render_background_stars(self, screen):
+        """Render background stars filling the night sky."""
+        # Only show stars when tunnel effect is disabled
+        if getattr(self, '_tunnel_enabled', True):
+            return
+
+        # Security canary: no stars if memory monitor is down
+        if not self._security_canary.get('stars', True):
+            return
+
+        # Reinitialize if empty (e.g., after resize)
+        if not self._background_stars:
+            self._init_background_stars()
+
+        for star in self._background_stars:
+            px = star['x']
+            py = star['y']
+
+            if 0 <= px < self.width - 1 and 1 <= py < self.height // 2:
+                try:
+                    # Twinkle based on brightness and offset
+                    twinkle_phase = (self._star_twinkle_frame + star['twinkle_offset']) % 4
+
+                    if star['brightness'] == 2:
+                        # Brighter background stars
+                        if twinkle_phase == 0:
+                            char = '.'
+                            attr = curses.color_pair(Colors.ALLEY_LIGHT)
+                        elif twinkle_phase == 1:
+                            char = '·'
+                            attr = curses.color_pair(Colors.GREY_BLOCK)
+                        else:
+                            char = '.'
+                            attr = curses.color_pair(Colors.ALLEY_MID)
+                    else:
+                        # Dim background stars
+                        if twinkle_phase % 2 == 0:
+                            char = '.'
+                            attr = curses.color_pair(Colors.ALLEY_MID) | curses.A_DIM
+                        else:
+                            char = '·'
+                            attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_DIM
+
+                    screen.attron(attr)
+                    screen.addstr(py, px, char)
+                    screen.attroff(attr)
+                except curses.error:
+                    pass
+
     def _render_constellation(self, screen):
         """Render seasonal constellation in the sky. Tied to memory_monitor health."""
+        # Only show stars when tunnel effect is disabled
+        if getattr(self, '_tunnel_enabled', True):
+            return
+
         # Security canary: no stars if memory monitor is down
         if not self._security_canary.get('stars', True):
             return
@@ -3965,41 +4075,42 @@ class AlleyScene:
         if not self._constellation:
             return
 
-        # Position constellation in upper sky area
+        # Position constellation in upper sky area (scale down offsets for better fit)
         base_x = self._constellation_x
         base_y = self._constellation_y
 
         stars = self._constellation.get('stars', [])
         for dx, dy, brightness in stars:
-            px = base_x + dx
-            py = base_y + dy
+            # Scale down the constellation coordinates (they were 5x scaled)
+            px = base_x + (dx // 2)  # Reduce horizontal spread
+            py = base_y + (dy // 3)  # Reduce vertical spread
 
-            # Expanded sky area for larger 5x constellations
+            # Expanded sky area for constellations
             if 0 <= px < self.width - 1 and 1 <= py < self.height // 2:  # Keep in upper half
                 try:
-                    # Subtle star characters based on brightness
+                    # More visible star characters based on brightness
                     if brightness == 2:
-                        # Bright star - alternates with twinkle
+                        # Bright star - prominent with twinkle
                         if self._star_twinkle_frame == 0:
+                            char = '★'
+                            attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_BOLD
+                        elif self._star_twinkle_frame == 1:
                             char = '*'
                             attr = curses.color_pair(Colors.ALLEY_LIGHT)
-                        elif self._star_twinkle_frame == 1:
-                            char = '+'
-                            attr = curses.color_pair(Colors.GREY_BLOCK)
                         elif self._star_twinkle_frame == 2:
+                            char = '✦'
+                            attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_BOLD
+                        else:
                             char = '*'
                             attr = curses.color_pair(Colors.ALLEY_LIGHT) | curses.A_DIM
-                        else:
-                            char = '·'
-                            attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_DIM
                     else:
-                        # Dim star - more subtle, less twinkle
+                        # Dim star - still visible but subtler
                         if self._star_twinkle_frame % 2 == 0:
-                            char = '·'
-                            attr = curses.color_pair(Colors.GREY_BLOCK) | curses.A_DIM
+                            char = '*'
+                            attr = curses.color_pair(Colors.GREY_BLOCK)
                         else:
-                            char = '.'
-                            attr = curses.color_pair(Colors.ALLEY_MID) | curses.A_DIM
+                            char = '·'
+                            attr = curses.color_pair(Colors.ALLEY_MID)
 
                     screen.attron(attr)
                     screen.addstr(py, px, char)
@@ -4520,6 +4631,13 @@ class AlleyScene:
         self._crosswalk_width = 32  # Store for car occlusion
         self._draw_crosswalk(self._crosswalk_x, curb_y, street_y)
 
+        # Draw small park between vanishing road and right building
+        park_left = self._crosswalk_x + self._crosswalk_width + 5  # After crosswalk
+        park_right = self._building2_x - 5 if self._building2_x > 0 else self.width - 20
+        park_width = park_right - park_left
+        if park_width >= 20:  # Only draw if enough space
+            self._draw_park(park_left, curb_y, park_width)
+
         # Draw street sign near crosswalk (shifted 12 chars right)
         sign_x = self._crosswalk_x + self._crosswalk_width // 2 - len(self.STREET_SIGN[0]) // 2 + 16
         sign_y = ground_y - len(self.STREET_SIGN) + 1
@@ -4920,6 +5038,98 @@ class AlleyScene:
                         self.scene[py][px] = (char, Colors.ALLEY_MID)
                     else:
                         self.scene[py][px] = (char, Colors.MATRIX_DIM)
+
+    def _draw_park(self, x: int, y: int, width: int):
+        """Draw a small park with grass, bench, lamp, bushes and flowers."""
+        if width < 20:
+            return  # Too narrow for park
+
+        # Store park position for pedestrian avoidance
+        self._park_x = x
+        self._park_y = y
+        self._park_width = width
+
+        # Draw grass base (green textured ground)
+        grass_height = 4
+        for row in range(grass_height):
+            for col in range(width):
+                px = x + col
+                py = y - row
+                if 0 <= px < self.width - 1 and 0 <= py < self.height:
+                    # Varied grass texture
+                    if (col + row) % 3 == 0:
+                        self.scene[py][px] = ('░', Colors.MATRIX_DIM)
+                    elif (col + row) % 5 == 0:
+                        self.scene[py][px] = ('▒', Colors.STATUS_OK)
+                    else:
+                        self.scene[py][px] = ('░', Colors.STATUS_OK)
+
+        # Draw a small fence at the front of the park
+        fence_y = y
+        for col in range(width):
+            px = x + col
+            if 0 <= px < self.width - 1 and 0 <= fence_y < self.height:
+                if col == 0 or col == width - 1:
+                    self.scene[fence_y][px] = ('|', Colors.ALLEY_MID)
+                elif col % 4 == 0:
+                    self.scene[fence_y][px] = ('|', Colors.ALLEY_MID)
+                else:
+                    self.scene[fence_y][px] = ('-', Colors.ALLEY_MID)
+
+        # Draw park bench (in the middle)
+        bench_x = x + width // 2 - len(self.PARK_BENCH[0]) // 2
+        bench_y = y - 3
+        for row_idx, row in enumerate(self.PARK_BENCH):
+            for col_idx, char in enumerate(row):
+                px = bench_x + col_idx
+                py = bench_y + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    self.scene[py][px] = (char, Colors.ALLEY_MID)
+
+        # Draw park lamp (on the left side)
+        lamp_x = x + 3
+        lamp_y = y - len(self.PARK_LAMP)
+        for row_idx, row in enumerate(self.PARK_LAMP):
+            for col_idx, char in enumerate(row):
+                px = lamp_x + col_idx
+                py = lamp_y + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    if char == 'O':
+                        # Lamp glow - warm yellow
+                        self.scene[py][px] = (char, Colors.RAT_YELLOW)
+                    elif char in '()':
+                        self.scene[py][px] = (char, Colors.ALLEY_LIGHT)
+                    else:
+                        self.scene[py][px] = (char, Colors.ALLEY_MID)
+
+        # Draw bushes (on either side)
+        bush1_x = x + 1
+        bush2_x = x + width - len(self.SMALL_BUSH[0]) - 1
+        bush_y = y - len(self.SMALL_BUSH)
+        for bush_x in [bush1_x, bush2_x]:
+            for row_idx, row in enumerate(self.SMALL_BUSH):
+                for col_idx, char in enumerate(row):
+                    px = bush_x + col_idx
+                    py = bush_y + row_idx
+                    if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)
+
+        # Draw flower bed (in front of bench)
+        flower_x = x + width // 2 - len(self.FLOWER_BED[0]) // 2
+        flower_y = y - 1
+        for row_idx, row in enumerate(self.FLOWER_BED):
+            for col_idx, char in enumerate(row):
+                px = flower_x + col_idx
+                py = flower_y + row_idx
+                if 0 <= px < self.width - 1 and 0 <= py < self.height and char != ' ':
+                    if char == '*':
+                        # Flowers - random colors (red, yellow, pink)
+                        colors = [Colors.STATUS_ERROR, Colors.RAT_YELLOW, Colors.SHADOW_RED]
+                        self.scene[py][px] = (char, random.choice(colors))
+                    elif char == '.':
+                        self.scene[py][px] = (char, Colors.STATUS_OK)  # Stems
+                    else:
+                        self.scene[py][px] = (char, Colors.MATRIX_DIM)  # Soil
 
     def _draw_cafe(self, x: int, y: int):
         """Draw a well-lit cafe storefront filled with warm color."""
@@ -5750,14 +5960,14 @@ class AlleyScene:
 
         # Spawn new pedestrians frequently (more pedestrians now)
         self._pedestrian_spawn_timer += 1
-        spawn_interval = random.randint(5, 15)  # Spawn faster for more people
+        spawn_interval = random.randint(3, 10)  # Spawn faster for more people
         if self._pedestrian_spawn_timer >= spawn_interval:
             if woman_red_active:
-                max_peds = 3  # Very few during Matrix scene
+                max_peds = 6  # Few during Matrix scene
             elif meteor_active:
-                max_peds = 6  # Fewer during meteor (they're running away)
+                max_peds = 12  # Fewer during meteor (they're running away)
             else:
-                max_peds = 25  # Increased from 18 to 25 pedestrians
+                max_peds = 50  # Doubled from 25 to 50 pedestrians
             if len(self._pedestrians) < max_peds:
                 self._spawn_pedestrian()
             self._pedestrian_spawn_timer = 0
@@ -6609,7 +6819,10 @@ class AlleyScene:
 
     def render(self, screen):
         """Render the alley scene to the screen with proper layering."""
-        # Render constellation first (furthest back, behind clouds and buildings)
+        # Render background stars first (furthest back, only when tunnel is off)
+        self._render_background_stars(screen)
+
+        # Render constellation (behind clouds and buildings, only when tunnel is off)
         self._render_constellation(screen)
 
         # Render distant clouds first (furthest back, behind everything)
@@ -9569,10 +9782,13 @@ class Dashboard:
 
         # Ollama client for CLI chat
         self._ollama_client = None
+        self._self_knowledge = ""  # Self-knowledge context for AI
         if OLLAMA_AVAILABLE and OllamaConfig is not None:
             try:
                 config = OllamaConfig(model="llama3.2", timeout=60)
                 self._ollama_client = OllamaClient(config)
+                # Load self-knowledge document for AI context
+                self._self_knowledge = self._load_self_knowledge()
             except Exception:
                 pass  # Ollama not available
 
@@ -10390,7 +10606,7 @@ class Dashboard:
         # Draw shortcuts at bottom of events panel (inside the box)
         shortcut_row = y + height - 2
         if self.matrix_mode:
-            shortcuts = "[:]CLI [w]Weather [m]Mode [a]Ack [e]Export [?]Help [q]Quit"
+            shortcuts = "[:]CLI [w]Weather [t]Tunnel [f]FPS [g]Game [u]Mute [?]Help [q]Quit"
         else:
             shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
 
@@ -10475,13 +10691,18 @@ class Dashboard:
     def _draw_siem_panel(self, y: int, x: int, width: int, height: int):
         """Draw the SIEM status panel with shipping and ingestion stats."""
         connected = self.siem_status.get('connected', False)
+        ingestion_connected = self.ingestion_status.get('connected', False)
+        ingestion_was_connected = self.ingestion_status.get('was_connected', False)
         ingestion_active = self.ingestion_status.get('active', False)
 
-        # Determine panel status color based on any activity
-        if connected or ingestion_active:
+        # Determine panel status color based on connection state
+        # Warning (yellow) if SIEM was connected but is now disconnected
+        if ingestion_was_connected and not ingestion_connected:
+            title_color = Colors.STATUS_WARNING  # Disconnected warning
+        elif connected or ingestion_connected:
             title_color = Colors.STATUS_OK
         else:
-            title_color = Colors.STATUS_ERROR
+            title_color = Colors.MUTED
 
         # Draw box with empty title, then add right-aligned title manually
         self._draw_box(y, x, width, height, "")
@@ -10500,8 +10721,18 @@ class Dashboard:
         right_edge = x + width - 2
 
         # --- Ingestion stats (SIEM pulling from daemon) ---
-        ingestion_text = "✓ Active" if ingestion_active else "○ Idle"
-        ingestion_color = Colors.STATUS_OK if ingestion_active else Colors.MUTED
+        if ingestion_connected:
+            ingestion_text = "✓ Connected"
+            ingestion_color = Colors.STATUS_OK
+        elif ingestion_was_connected:
+            ingestion_text = "⚠ Disconnected"
+            ingestion_color = Colors.STATUS_WARNING
+        elif ingestion_active:
+            ingestion_text = "○ Idle"
+            ingestion_color = Colors.MUTED
+        else:
+            ingestion_text = "○ No client"
+            ingestion_color = Colors.MUTED
         line = f"Ingestion: {ingestion_text}"
         self._addstr(row, right_edge - len(line), line, ingestion_color)
         row += 1
@@ -10512,6 +10743,18 @@ class Dashboard:
         line = f"Served: {served:,} ({requests} req)"
         self._addstr(row, right_edge - len(line), line, Colors.MUTED)
         row += 1
+
+        # Show last client info if disconnected
+        if ingestion_was_connected and not ingestion_connected:
+            last_client = self.ingestion_status.get('last_client', '')
+            if last_client:
+                # Truncate client info to fit
+                max_len = width - 4
+                if len(last_client) > max_len:
+                    last_client = last_client[:max_len-2] + ".."
+                line = f"Last: {last_client}"
+                self._addstr(row, right_edge - len(line), line, Colors.STATUS_WARNING)
+                row += 1
 
         # --- Shipping stats (daemon pushing to SIEM) ---
         status_text = "✓ Shipping" if connected else "○ Not configured"
@@ -10531,7 +10774,7 @@ class Dashboard:
         """Draw the footer bar."""
         # Add weather shortcut in matrix mode
         if self.matrix_mode:
-            shortcuts = "[:]CLI [w]Weather [t]Tunnel [m]Mode [c]Clear [l]Load [e]Export [?]Help [q]Quit"
+            shortcuts = "[:]CLI [w]Weather [t]Tunnel [f]FPS [g]Game [u]Mute [m]Mode [?]Help [q]Quit"
         else:
             shortcuts = "[m]Mode [c]Clear [l]Load [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
 
@@ -10581,7 +10824,10 @@ class Dashboard:
         if self.matrix_mode:
             help_text.insert(8, "  w    Cycle weather (Matrix/Rain/Snow/Sand/Fog)")
             help_text.insert(9, "  t    Toggle 3D tunnel sky backdrop")
-            help_text.insert(10, "")
+            help_text.insert(10, "  f    Cycle framerate (100/50/25/15/10ms)")
+            help_text.insert(11, "  g    Toggle meteor defense game (QTE)")
+            help_text.insert(12, "  u    Toggle audio mute")
+            help_text.insert(13, "")
 
         help_text.append("Press any key to close")
 
@@ -11226,6 +11472,81 @@ class Dashboard:
 
         return results
 
+    def _load_self_knowledge(self) -> str:
+        """Load self-knowledge document for AI context."""
+        import os
+        # Try multiple locations for the self-knowledge document
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'SELF_KNOWLEDGE.md'),
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', 'docs', 'SELF_KNOWLEDGE.md'),
+            '/home/user/boundary-daemon-/docs/SELF_KNOWLEDGE.md',
+            os.path.expanduser('~/.agent-os/boundary-daemon/docs/SELF_KNOWLEDGE.md'),
+        ]
+
+        for path in possible_paths:
+            try:
+                abs_path = os.path.abspath(path)
+                if os.path.exists(abs_path):
+                    with open(abs_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Truncate to reasonable size for context (first 8000 chars)
+                        if len(content) > 8000:
+                            content = content[:8000] + "\n\n[... truncated for context length ...]"
+                        return content
+            except Exception:
+                continue
+
+        # Fallback: minimal self-knowledge
+        return """# Boundary Daemon Self-Knowledge
+I am the Boundary Daemon (Agent Smith), a security policy and audit system for Agent OS.
+I make allow/deny decisions for AI operations and maintain immutable audit logs.
+Boundary Modes: OPEN, RESTRICTED, TRUSTED, AIRGAP, COLDROOM, LOCKDOWN.
+I operate on fail-closed principles - when uncertain, I DENY.
+For detailed information, ask about specific features or run 'help' command."""
+
+    def _get_system_context(self) -> str:
+        """Get current system state for AI context."""
+        context_parts = []
+
+        # Current mode
+        try:
+            mode = self.daemon_status.get('mode', 'UNKNOWN') if self.daemon_status else 'UNKNOWN'
+            context_parts.append(f"Current Mode: {mode}")
+        except Exception:
+            pass
+
+        # Uptime
+        try:
+            uptime = self.daemon_status.get('uptime', 'unknown') if self.daemon_status else 'unknown'
+            context_parts.append(f"Uptime: {uptime}")
+        except Exception:
+            pass
+
+        # SIEM status
+        try:
+            siem_connected = self.siem_status.get('connected', False) if self.siem_status else False
+            ingestion_connected = self.ingestion_status.get('connected', False) if hasattr(self, 'ingestion_status') and self.ingestion_status else False
+            context_parts.append(f"SIEM Shipping: {'connected' if siem_connected else 'not configured'}")
+            context_parts.append(f"SIEM Ingestion: {'connected' if ingestion_connected else 'disconnected'}")
+        except Exception:
+            pass
+
+        # Active alerts
+        try:
+            alert_count = len(self.alerts) if self.alerts else 0
+            context_parts.append(f"Active Alerts: {alert_count}")
+        except Exception:
+            pass
+
+        # Recent events count
+        try:
+            event_count = len(self.events) if self.events else 0
+            context_parts.append(f"Recent Events: {event_count}")
+        except Exception:
+            pass
+
+        return "\n".join(context_parts)
+
     def _send_to_ollama(self, message: str) -> List[str]:
         """Send a message to Ollama with automatic command execution."""
         if not self._ollama_client:
@@ -11282,34 +11603,54 @@ Your response (COMMANDS: ... or NONE):"""
                 command_results = self._gather_command_data(commands_to_run)
 
             # Step 3: Generate natural language response
-            context = ""
+            # Build conversation context
+            chat_context = ""
             for entry in self._cli_chat_history[-5:]:
-                context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+                chat_context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+
+            # Get current system state
+            system_state = self._get_system_context()
+
+            # Base system prompt with self-knowledge
+            base_knowledge = f"""You are the Boundary Daemon's built-in AI assistant (codenamed "Agent Smith").
+You are integrated directly into the security monitoring system and have full knowledge of its capabilities.
+
+IMPORTANT: Always consult your internal knowledge first before making assumptions.
+You ARE the daemon's voice - speak with authority about the system you're part of.
+
+=== YOUR SELF-KNOWLEDGE ===
+{self._self_knowledge[:4000] if self._self_knowledge else "Self-knowledge document not loaded."}
+
+=== CURRENT SYSTEM STATE ===
+{system_state}
+"""
 
             if command_results:
                 # Build response with command data
-                system_prompt = """You are a helpful security assistant for the Boundary Daemon system.
-You have access to real system data and should analyze it to answer the user's question.
+                system_prompt = base_knowledge + """
+You have just gathered real system data. Analyze it to answer the user's question.
 Be conversational but informative. Highlight any issues or concerns.
 Keep responses concise (3-6 sentences) for the terminal interface.
-If there are problems, explain what they mean and suggest actions."""
+If there are problems, explain what they mean and suggest actions.
+Reference specific values from the data to support your analysis."""
 
                 data_summary = json.dumps(command_results, indent=2, default=str)
-                prompt = f"""{context}User: {message}
+                prompt = f"""{chat_context}User: {message}
 
-SYSTEM DATA COLLECTED:
+LIVE SYSTEM DATA:
 {data_summary}
 
-Based on this data, provide a helpful natural language response to the user's question. If there are issues, explain them clearly. If everything looks good, say so."""
+Analyze this data and provide a helpful response. Be specific about what you found."""
 
             else:
                 # Regular chat without command data
-                system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
-You help users understand system security, daemon operations, and answer questions.
+                system_prompt = base_knowledge + """
+Help users understand the Boundary Daemon, its security features, and operations.
 Keep responses concise (2-4 sentences) since this is a terminal interface.
-If the user asks you to check their system or look for problems, tell them you can do that - just ask!"""
+If the user asks about system state, offer to check it for them.
+Speak with confidence about the system's capabilities - you know this system inside and out."""
 
-                prompt = f"{context}User: {message}\nAssistant:"
+                prompt = f"{chat_context}User: {message}\nAssistant:"
 
             response = self._ollama_client.generate(prompt, system=system_prompt)
 
@@ -11392,15 +11733,16 @@ If the user asks you to check their system or look for problems, tell them you c
         for etype, count in sorted(event_type_counts.items(), key=lambda x: -x[1]):
             log_data.append(f"  {etype}: {count}")
 
-        # Comprehensive system prompt for log analysis
-        system_prompt = """You are a security analyst AI integrated into the Boundary Daemon system.
-Your job is to analyze security logs and provide actionable insights.
+        # Comprehensive system prompt for log analysis with self-knowledge
+        self_knowledge_excerpt = self._self_knowledge[:2000] if self._self_knowledge else ""
+        system_prompt = f"""You are the Boundary Daemon's built-in security analyst (Agent Smith).
+You are analyzing your OWN system's logs - speak with authority about what you find.
 
-BOUNDARY DAEMON CONTEXT:
-- Boundary Daemon is a security monitoring system for AI agents and system operations
-- It enforces operation modes: OPEN (permissive), RESTRICTED (limited), LOCKDOWN (emergency)
-- It monitors for security violations, PII leakage, rate limiting, and suspicious activity
-- Mode changes require cryptographic ceremonies for security
+=== YOUR KNOWLEDGE BASE ===
+{self_knowledge_excerpt}
+
+=== CURRENT SYSTEM STATE ===
+{self._get_system_context()}
 
 EVENT TYPES TO WATCH FOR:
 - VIOLATION: Security policy violations - HIGH PRIORITY
@@ -11410,6 +11752,8 @@ EVENT TYPES TO WATCH FOR:
 - CLOCK_JUMP/DRIFT: Time manipulation (potential tampering)
 - ALERT: System alerts requiring attention
 - SECURITY_SCAN: Antivirus/malware scan results
+- SIEM_DISCONNECTED: SIEM ingestion client lost connection
+- TRIPWIRE_*: Security tripwire triggers (auto-LOCKDOWN)
 
 SEVERITY ASSESSMENT:
 - CRITICAL: Immediate action required (violations, lockdowns, tampering)
