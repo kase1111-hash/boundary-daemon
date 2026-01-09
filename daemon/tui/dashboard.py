@@ -3240,19 +3240,27 @@ class AlleyScene:
         return self._audio_muted
 
     def _speak_text(self, text: str, speed: float = 1.0, pitch: float = 0.0) -> bool:
-        """Speak text using TTS engine. Returns True if successful."""
+        """Speak text using TTS engine in background thread. Returns True if started."""
         if self._audio_muted or not self._tts_manager:
             return False
 
+        def _tts_worker():
+            try:
+                params = VoiceParameters(speed=speed, pitch=pitch) if VoiceParameters else None
+                request = TTSRequest(text=text, params=params) if TTSRequest and params else None
+                if request:
+                    self._tts_manager.synthesize(request)
+                    logger.debug(f"TTS spoke: {text[:50]}...")
+            except Exception as e:
+                logger.debug(f"TTS error: {e}")
+
         try:
-            params = VoiceParameters(speed=speed, pitch=pitch) if VoiceParameters else None
-            request = TTSRequest(text=text, params=params) if TTSRequest and params else None
-            if request:
-                self._tts_manager.synthesize(request)
-                logger.debug(f"TTS spoke: {text}")
-                return True
+            # Run TTS in background thread to avoid blocking UI
+            tts_thread = threading.Thread(target=_tts_worker, daemon=True)
+            tts_thread.start()
+            return True
         except Exception as e:
-            logger.debug(f"TTS error: {e}")
+            logger.debug(f"TTS thread error: {e}")
         return False
 
     def _play_sound_effect(self, audio_intent) -> bool:
@@ -12062,15 +12070,13 @@ Provide a clear, actionable analysis."""
                         # Execute as daemon command (strip the /)
                         self._execute_cli_command(text[1:])
                     else:
-                        # Send to Ollama
+                        # Send to Ollama - clear old results first to show new response
+                        self._cli_results = []
                         response_lines = self._send_to_ollama(text)
-                        self._cli_results.extend(response_lines)
-                        # Trim results to prevent memory growth (keep last 1000 lines)
-                        if len(self._cli_results) > 1000:
-                            self._cli_results = self._cli_results[-1000:]
+                        self._cli_results = response_lines
+                        self._cli_results_scroll = 0  # Reset scroll to top of new response
 
                     cmd_text = ""
-                    self._cli_results_scroll = max(0, len(self._cli_results) - (self.height - 6))
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 cmd_text = cmd_text[:-1]
             elif key == curses.KEY_UP:
