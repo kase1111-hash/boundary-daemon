@@ -9782,10 +9782,13 @@ class Dashboard:
 
         # Ollama client for CLI chat
         self._ollama_client = None
+        self._self_knowledge = ""  # Self-knowledge context for AI
         if OLLAMA_AVAILABLE and OllamaConfig is not None:
             try:
                 config = OllamaConfig(model="llama3.2", timeout=60)
                 self._ollama_client = OllamaClient(config)
+                # Load self-knowledge document for AI context
+                self._self_knowledge = self._load_self_knowledge()
             except Exception:
                 pass  # Ollama not available
 
@@ -11469,6 +11472,81 @@ class Dashboard:
 
         return results
 
+    def _load_self_knowledge(self) -> str:
+        """Load self-knowledge document for AI context."""
+        import os
+        # Try multiple locations for the self-knowledge document
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'SELF_KNOWLEDGE.md'),
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', 'docs', 'SELF_KNOWLEDGE.md'),
+            '/home/user/boundary-daemon-/docs/SELF_KNOWLEDGE.md',
+            os.path.expanduser('~/.agent-os/boundary-daemon/docs/SELF_KNOWLEDGE.md'),
+        ]
+
+        for path in possible_paths:
+            try:
+                abs_path = os.path.abspath(path)
+                if os.path.exists(abs_path):
+                    with open(abs_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Truncate to reasonable size for context (first 8000 chars)
+                        if len(content) > 8000:
+                            content = content[:8000] + "\n\n[... truncated for context length ...]"
+                        return content
+            except Exception:
+                continue
+
+        # Fallback: minimal self-knowledge
+        return """# Boundary Daemon Self-Knowledge
+I am the Boundary Daemon (Agent Smith), a security policy and audit system for Agent OS.
+I make allow/deny decisions for AI operations and maintain immutable audit logs.
+Boundary Modes: OPEN, RESTRICTED, TRUSTED, AIRGAP, COLDROOM, LOCKDOWN.
+I operate on fail-closed principles - when uncertain, I DENY.
+For detailed information, ask about specific features or run 'help' command."""
+
+    def _get_system_context(self) -> str:
+        """Get current system state for AI context."""
+        context_parts = []
+
+        # Current mode
+        try:
+            mode = self.daemon_status.get('mode', 'UNKNOWN') if self.daemon_status else 'UNKNOWN'
+            context_parts.append(f"Current Mode: {mode}")
+        except Exception:
+            pass
+
+        # Uptime
+        try:
+            uptime = self.daemon_status.get('uptime', 'unknown') if self.daemon_status else 'unknown'
+            context_parts.append(f"Uptime: {uptime}")
+        except Exception:
+            pass
+
+        # SIEM status
+        try:
+            siem_connected = self.siem_status.get('connected', False) if self.siem_status else False
+            ingestion_connected = self.ingestion_status.get('connected', False) if hasattr(self, 'ingestion_status') and self.ingestion_status else False
+            context_parts.append(f"SIEM Shipping: {'connected' if siem_connected else 'not configured'}")
+            context_parts.append(f"SIEM Ingestion: {'connected' if ingestion_connected else 'disconnected'}")
+        except Exception:
+            pass
+
+        # Active alerts
+        try:
+            alert_count = len(self.alerts) if self.alerts else 0
+            context_parts.append(f"Active Alerts: {alert_count}")
+        except Exception:
+            pass
+
+        # Recent events count
+        try:
+            event_count = len(self.events) if self.events else 0
+            context_parts.append(f"Recent Events: {event_count}")
+        except Exception:
+            pass
+
+        return "\n".join(context_parts)
+
     def _send_to_ollama(self, message: str) -> List[str]:
         """Send a message to Ollama with automatic command execution."""
         if not self._ollama_client:
@@ -11525,34 +11603,54 @@ Your response (COMMANDS: ... or NONE):"""
                 command_results = self._gather_command_data(commands_to_run)
 
             # Step 3: Generate natural language response
-            context = ""
+            # Build conversation context
+            chat_context = ""
             for entry in self._cli_chat_history[-5:]:
-                context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+                chat_context += f"User: {entry['user']}\nAssistant: {entry['assistant']}\n\n"
+
+            # Get current system state
+            system_state = self._get_system_context()
+
+            # Base system prompt with self-knowledge
+            base_knowledge = f"""You are the Boundary Daemon's built-in AI assistant (codenamed "Agent Smith").
+You are integrated directly into the security monitoring system and have full knowledge of its capabilities.
+
+IMPORTANT: Always consult your internal knowledge first before making assumptions.
+You ARE the daemon's voice - speak with authority about the system you're part of.
+
+=== YOUR SELF-KNOWLEDGE ===
+{self._self_knowledge[:4000] if self._self_knowledge else "Self-knowledge document not loaded."}
+
+=== CURRENT SYSTEM STATE ===
+{system_state}
+"""
 
             if command_results:
                 # Build response with command data
-                system_prompt = """You are a helpful security assistant for the Boundary Daemon system.
-You have access to real system data and should analyze it to answer the user's question.
+                system_prompt = base_knowledge + """
+You have just gathered real system data. Analyze it to answer the user's question.
 Be conversational but informative. Highlight any issues or concerns.
 Keep responses concise (3-6 sentences) for the terminal interface.
-If there are problems, explain what they mean and suggest actions."""
+If there are problems, explain what they mean and suggest actions.
+Reference specific values from the data to support your analysis."""
 
                 data_summary = json.dumps(command_results, indent=2, default=str)
-                prompt = f"""{context}User: {message}
+                prompt = f"""{chat_context}User: {message}
 
-SYSTEM DATA COLLECTED:
+LIVE SYSTEM DATA:
 {data_summary}
 
-Based on this data, provide a helpful natural language response to the user's question. If there are issues, explain them clearly. If everything looks good, say so."""
+Analyze this data and provide a helpful response. Be specific about what you found."""
 
             else:
                 # Regular chat without command data
-                system_prompt = """You are a helpful assistant integrated into the Boundary Daemon CLI.
-You help users understand system security, daemon operations, and answer questions.
+                system_prompt = base_knowledge + """
+Help users understand the Boundary Daemon, its security features, and operations.
 Keep responses concise (2-4 sentences) since this is a terminal interface.
-If the user asks you to check their system or look for problems, tell them you can do that - just ask!"""
+If the user asks about system state, offer to check it for them.
+Speak with confidence about the system's capabilities - you know this system inside and out."""
 
-                prompt = f"{context}User: {message}\nAssistant:"
+                prompt = f"{chat_context}User: {message}\nAssistant:"
 
             response = self._ollama_client.generate(prompt, system=system_prompt)
 
@@ -11635,15 +11733,16 @@ If the user asks you to check their system or look for problems, tell them you c
         for etype, count in sorted(event_type_counts.items(), key=lambda x: -x[1]):
             log_data.append(f"  {etype}: {count}")
 
-        # Comprehensive system prompt for log analysis
-        system_prompt = """You are a security analyst AI integrated into the Boundary Daemon system.
-Your job is to analyze security logs and provide actionable insights.
+        # Comprehensive system prompt for log analysis with self-knowledge
+        self_knowledge_excerpt = self._self_knowledge[:2000] if self._self_knowledge else ""
+        system_prompt = f"""You are the Boundary Daemon's built-in security analyst (Agent Smith).
+You are analyzing your OWN system's logs - speak with authority about what you find.
 
-BOUNDARY DAEMON CONTEXT:
-- Boundary Daemon is a security monitoring system for AI agents and system operations
-- It enforces operation modes: OPEN (permissive), RESTRICTED (limited), LOCKDOWN (emergency)
-- It monitors for security violations, PII leakage, rate limiting, and suspicious activity
-- Mode changes require cryptographic ceremonies for security
+=== YOUR KNOWLEDGE BASE ===
+{self_knowledge_excerpt}
+
+=== CURRENT SYSTEM STATE ===
+{self._get_system_context()}
 
 EVENT TYPES TO WATCH FOR:
 - VIOLATION: Security policy violations - HIGH PRIORITY
@@ -11653,6 +11752,8 @@ EVENT TYPES TO WATCH FOR:
 - CLOCK_JUMP/DRIFT: Time manipulation (potential tampering)
 - ALERT: System alerts requiring attention
 - SECURITY_SCAN: Antivirus/malware scan results
+- SIEM_DISCONNECTED: SIEM ingestion client lost connection
+- TRIPWIRE_*: Security tripwire triggers (auto-LOCKDOWN)
 
 SEVERITY ASSESSMENT:
 - CRITICAL: Immediate action required (violations, lockdowns, tampering)
