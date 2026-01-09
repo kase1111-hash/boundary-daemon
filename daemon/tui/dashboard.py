@@ -63,14 +63,24 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Import audio engine for TTS car sounds
+# Import audio engine for TTS car sounds and speech synthesis
 try:
-    from daemon.audio import get_audio_engine, AudioEngine
+    from daemon.audio import (
+        get_audio_engine, AudioEngine,
+        TTSEngineManager, MockTTSEngine, Pyttsx3Engine,
+        TTSRequest, VoiceParameters, TTSEngineError
+    )
     AUDIO_ENGINE_AVAILABLE = True
 except ImportError:
     AUDIO_ENGINE_AVAILABLE = False
     get_audio_engine = None
     AudioEngine = None
+    TTSEngineManager = None
+    MockTTSEngine = None
+    Pyttsx3Engine = None
+    TTSRequest = None
+    VoiceParameters = None
+    TTSEngineError = None
 
 
 class PanelType(Enum):
@@ -3229,6 +3239,38 @@ class AlleyScene:
         """Check if audio is muted."""
         return self._audio_muted
 
+    def _speak_text(self, text: str, speed: float = 1.0, pitch: float = 0.0) -> bool:
+        """Speak text using TTS engine. Returns True if successful."""
+        if self._audio_muted or not self._tts_manager:
+            return False
+
+        try:
+            params = VoiceParameters(speed=speed, pitch=pitch) if VoiceParameters else None
+            request = TTSRequest(text=text, params=params) if TTSRequest and params else None
+            if request:
+                self._tts_manager.synthesize(request)
+                logger.debug(f"TTS spoke: {text}")
+                return True
+        except Exception as e:
+            logger.debug(f"TTS error: {e}")
+        return False
+
+    def _play_sound_effect(self, audio_intent) -> bool:
+        """Play a sound effect from an AudioIntent using TTS. Returns True if successful."""
+        if self._audio_muted or not self._tts_manager:
+            return False
+
+        try:
+            # Use the onomatopoeia text for TTS synthesis
+            text = audio_intent.onomatopoeia
+            speed = audio_intent.speed if hasattr(audio_intent, 'speed') else 1.0
+            pitch = audio_intent.pitch_shift if hasattr(audio_intent, 'pitch_shift') else 0.0
+
+            return self._speak_text(text, speed=speed, pitch=pitch)
+        except Exception as e:
+            logger.debug(f"Sound effect error: {e}")
+        return False
+
     def _play_car_sound(self, vehicle_type: str):
         """Play TTS car sound effect based on vehicle type."""
         if self._audio_muted or not AUDIO_ENGINE_AVAILABLE:
@@ -3243,8 +3285,8 @@ class AlleyScene:
             audio_engine = get_audio_engine()
             # Generate scene event audio for car
             audio_intent = audio_engine.generate_scene_event_audio('car')
-            # Log the intent (actual TTS synthesis would happen elsewhere)
-            logger.debug(f"Car sound: {audio_intent.onomatopoeia}")
+            # Actually play the sound using TTS
+            self._play_sound_effect(audio_intent)
             # Set cooldown (60 frames = ~1 second at 60fps)
             self._car_sound_cooldown = 60
         except Exception as e:
@@ -9782,6 +9824,26 @@ class Dashboard:
         self._audio_muted = False  # Audio mute toggle state
         self._tunnel_enabled = True  # 3D tunnel backdrop toggle state - on by default
 
+        # TTS Engine for sound effects and LLM response speech
+        self._tts_manager = None
+        self._tts_enabled = True  # Enable TTS for LLM responses
+        if AUDIO_ENGINE_AVAILABLE and TTSEngineManager is not None:
+            try:
+                self._tts_manager = TTSEngineManager()
+                # Try to initialize pyttsx3 first (actual audio playback)
+                if Pyttsx3Engine is not None:
+                    pyttsx3_engine = Pyttsx3Engine()
+                    if pyttsx3_engine.initialize():
+                        self._tts_manager.register_engine(pyttsx3_engine, set_primary=True)
+                # Register mock engine as fallback (for testing/logging)
+                if MockTTSEngine is not None:
+                    mock_engine = MockTTSEngine()
+                    mock_engine.initialize()
+                    self._tts_manager.register_engine(mock_engine)
+            except Exception as e:
+                logger.debug(f"TTS initialization error: {e}")
+                self._tts_manager = None
+
         # CLI mode state (bounded to prevent memory leaks)
         self._cli_history: deque = deque(maxlen=100)  # Command history limited to 100 entries
         self._cli_history_index = 0
@@ -11674,6 +11736,10 @@ Speak with confidence about the system's capabilities - you know this system ins
                 # Store in chat history (deque auto-trims to maxlen=50)
                 self._cli_chat_history.append({'user': message, 'assistant': response})
 
+                # Speak the LLM response using TTS (if enabled and not muted)
+                if self._tts_enabled and not self._audio_muted:
+                    self._speak_text(response, speed=1.1)
+
                 # Word wrap response
                 for paragraph in response.split('\n'):
                     if not paragraph.strip():
@@ -11798,6 +11864,11 @@ Provide a clear, actionable analysis."""
             if response:
                 lines.append("ANALYSIS RESULTS:")
                 lines.append("-" * 40)
+
+                # Speak the analysis response using TTS (if enabled and not muted)
+                if self._tts_enabled and not self._audio_muted:
+                    self._speak_text(response, speed=1.1)
+
                 # Word wrap response for terminal
                 for paragraph in response.split('\n'):
                     if not paragraph.strip():
