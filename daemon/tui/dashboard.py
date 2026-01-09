@@ -10553,13 +10553,18 @@ class Dashboard:
     def _draw_siem_panel(self, y: int, x: int, width: int, height: int):
         """Draw the SIEM status panel with shipping and ingestion stats."""
         connected = self.siem_status.get('connected', False)
+        ingestion_connected = self.ingestion_status.get('connected', False)
+        ingestion_was_connected = self.ingestion_status.get('was_connected', False)
         ingestion_active = self.ingestion_status.get('active', False)
 
-        # Determine panel status color based on any activity
-        if connected or ingestion_active:
+        # Determine panel status color based on connection state
+        # Warning (yellow) if SIEM was connected but is now disconnected
+        if ingestion_was_connected and not ingestion_connected:
+            title_color = Colors.STATUS_WARNING  # Disconnected warning
+        elif connected or ingestion_connected:
             title_color = Colors.STATUS_OK
         else:
-            title_color = Colors.STATUS_ERROR
+            title_color = Colors.MUTED
 
         # Draw box with empty title, then add right-aligned title manually
         self._draw_box(y, x, width, height, "")
@@ -10578,8 +10583,18 @@ class Dashboard:
         right_edge = x + width - 2
 
         # --- Ingestion stats (SIEM pulling from daemon) ---
-        ingestion_text = "✓ Active" if ingestion_active else "○ Idle"
-        ingestion_color = Colors.STATUS_OK if ingestion_active else Colors.MUTED
+        if ingestion_connected:
+            ingestion_text = "✓ Connected"
+            ingestion_color = Colors.STATUS_OK
+        elif ingestion_was_connected:
+            ingestion_text = "⚠ Disconnected"
+            ingestion_color = Colors.STATUS_WARNING
+        elif ingestion_active:
+            ingestion_text = "○ Idle"
+            ingestion_color = Colors.MUTED
+        else:
+            ingestion_text = "○ No client"
+            ingestion_color = Colors.MUTED
         line = f"Ingestion: {ingestion_text}"
         self._addstr(row, right_edge - len(line), line, ingestion_color)
         row += 1
@@ -10590,6 +10605,18 @@ class Dashboard:
         line = f"Served: {served:,} ({requests} req)"
         self._addstr(row, right_edge - len(line), line, Colors.MUTED)
         row += 1
+
+        # Show last client info if disconnected
+        if ingestion_was_connected and not ingestion_connected:
+            last_client = self.ingestion_status.get('last_client', '')
+            if last_client:
+                # Truncate client info to fit
+                max_len = width - 4
+                if len(last_client) > max_len:
+                    last_client = last_client[:max_len-2] + ".."
+                line = f"Last: {last_client}"
+                self._addstr(row, right_edge - len(line), line, Colors.STATUS_WARNING)
+                row += 1
 
         # --- Shipping stats (daemon pushing to SIEM) ---
         status_text = "✓ Shipping" if connected else "○ Not configured"
