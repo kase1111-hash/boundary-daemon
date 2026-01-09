@@ -17,9 +17,11 @@ from .tts_engine import (
     TTSEngine,
     TTSEngineType,
     TTSRequest,
+    VoiceParameters,
     AudioData,
     AudioFormat,
     MockTTSEngine,
+    Pyttsx3Engine,
     TTSEngineManager,
     TTSEngineError,
 )
@@ -43,9 +45,11 @@ __all__ = [
     'TTSEngine',
     'TTSEngineType',
     'TTSRequest',
+    'VoiceParameters',
     'AudioData',
     'AudioFormat',
     'MockTTSEngine',
+    'Pyttsx3Engine',
     'TTSEngineManager',
     'TTSEngineError',
     # STT
