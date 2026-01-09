@@ -11588,6 +11588,12 @@ Provide a clear, actionable analysis."""
 
         curses.curs_set(0)  # Hide cursor
 
+        # Restore screen timeout for smooth animation after CLI exit
+        if self.matrix_mode:
+            self.screen.timeout(self._framerate_options[self._framerate_index])
+        else:
+            self.screen.timeout(int(self.refresh_interval * 1000))
+
     def _draw_help_popup(self, tool_name: Optional[str] = None):
         """Draw a help popup window for a tool."""
         # Calculate popup dimensions

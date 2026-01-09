@@ -100,18 +100,36 @@ def get_socket_path() -> str:
     return '/var/run/boundary-daemon/boundary.sock'
 
 
+# Windows TCP connection settings
+WINDOWS_HOST = '127.0.0.1'
+WINDOWS_PORT = 19847
+
+
+def is_windows() -> bool:
+    """Check if running on Windows."""
+    return os.name == 'nt'
+
+
 class BoundaryEventClient:
-    """Client for retrieving events from boundary daemon."""
+    """Client for retrieving events from boundary daemon.
+
+    Supports both Unix sockets (Linux/macOS) and TCP (Windows).
+    """
 
     def __init__(
         self,
         socket_path: Optional[str] = None,
         token: Optional[str] = None,
         timeout: float = 5.0,
+        tcp_host: Optional[str] = None,
+        tcp_port: Optional[int] = None,
     ):
         self.socket_path = socket_path or get_socket_path()
         self._token = token or os.environ.get('BOUNDARY_API_TOKEN')
         self.timeout = timeout
+        self._tcp_host = tcp_host or os.environ.get('BOUNDARY_DAEMON_HOST', WINDOWS_HOST)
+        self._tcp_port = tcp_port or int(os.environ.get('BOUNDARY_DAEMON_PORT', str(WINDOWS_PORT)))
+        self._use_tcp = is_windows() or os.environ.get('BOUNDARY_USE_TCP', '').lower() == 'true'
 
     def _send_request(self, command: str, params: Dict = None) -> Dict:
         """Send request to daemon."""
@@ -119,6 +137,25 @@ class BoundaryEventClient:
         if self._token:
             request['token'] = self._token
 
+        if self._use_tcp:
+            return self._send_tcp(request)
+        else:
+            return self._send_unix(request)
+
+    def _send_tcp(self, request: Dict) -> Dict:
+        """Send request via TCP (Windows)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        try:
+            sock.connect((self._tcp_host, self._tcp_port))
+            sock.sendall(json.dumps(request).encode('utf-8'))
+            data = sock.recv(65536)
+            return json.loads(data.decode('utf-8'))
+        finally:
+            sock.close()
+
+    def _send_unix(self, request: Dict) -> Dict:
+        """Send request via Unix socket (Linux/macOS)."""
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         try:
