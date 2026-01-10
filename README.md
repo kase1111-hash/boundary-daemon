@@ -2,15 +2,15 @@
 
 ## Version: v1.0.0-beta
 
-**The Cognitive Trust Layer for Autonomous Systems**
+**AI Trust Enforcement for Autonomous Systems — The Cognitive Firewall**
 
 > *"If the Memory Vault is the safe, the Boundary Daemon is the armed guard + walls + air-gap switches."*
 
-Boundary Daemon is the enforcement and governance substrate for multi-agent AI systems. It defines, enforces, and audits trust boundaries between cognitive modules, ensuring safe propagation of reasoning, memory, and learning.
+Boundary Daemon is the **agent security daemon** and **cognition boundary control** layer for multi-agent AI systems. As the core **trust layer for AI**, it defines, enforces, and audits **AI boundary policy** between cognitive modules — determining where AI can think, what AI can access, and ensuring secure agent orchestration across your infrastructure.
 
 ### Why It Matters
 
-Modern AI ecosystems rely on orchestration frameworks (LangGraph, AutoGen, CrewAI), yet none enforce formal cognitive boundaries. Boundary Daemon introduces real-time trust governance — the missing kernel for agent safety and accountability.
+Modern AI ecosystems rely on orchestration frameworks (LangGraph, AutoGen, CrewAI), yet none enforce formal **agent trust boundaries** or provide **AI security policy** engines. If you need to **control what AI can access** or set **AI cognition limits**, existing tools fall short. Boundary Daemon introduces real-time trust governance — the **cognitive access control** and **AI permission system** that's missing from peer orchestrators.
 
 | Capability | Description | Market Comparison |
 |------------|-------------|-------------------|
@@ -1503,3 +1503,44 @@ The Boundary Daemon exists to answer that question.
 **"Never compromise. Not even in the face of Armageddon."**
 
 The Boundary Daemon is the guard. It determines where cognition flows and where it stops. Respect the boundaries.
+
+---
+
+## Part of the Agent OS Ecosystem
+
+Boundary Daemon is a core component of the **Agent OS** — a natural language native operating system for AI agents focused on **digital sovereignty**, **owned AI infrastructure**, and **human-AI collaboration**.
+
+### Agent OS Core Components
+
+| Repository | Description |
+|------------|-------------|
+| [Agent-OS](https://github.com/kase1111-hash/Agent-OS) | Natural language operating system for AI agents (NLOS) |
+| [synth-mind](https://github.com/kase1111-hash/synth-mind) | NLOS-based agent with psychological modules for emergent continuity and empathy |
+| [boundary-daemon-](https://github.com/kase1111-hash/boundary-daemon-) | AI trust enforcement and cognition boundary control (this repo) |
+| [memory-vault](https://github.com/kase1111-hash/memory-vault) | Sovereign, offline-capable, owner-controlled storage for cognitive artifacts |
+| [value-ledger](https://github.com/kase1111-hash/value-ledger) | Economic accounting layer for cognitive work (ideas, effort, novelty) |
+| [learning-contracts](https://github.com/kase1111-hash/learning-contracts) | Safety protocols for AI learning and data management |
+| [Boundary-SIEM](https://github.com/kase1111-hash/Boundary-SIEM) | Security Information and Event Management for AI systems |
+
+### NatLangChain Ecosystem (Blockchain Layer)
+
+| Repository | Description |
+|------------|-------------|
+| [NatLangChain](https://github.com/kase1111-hash/NatLangChain) | Prose-first, intent-native blockchain protocol for human-readable smart contracts |
+| [IntentLog](https://github.com/kase1111-hash/IntentLog) | Git for human reasoning — tracks "why" changes happen via prose commits |
+| [RRA-Module](https://github.com/kase1111-hash/RRA-Module) | Revenant Repo Agent — converts abandoned repos into autonomous licensing agents |
+| [mediator-node](https://github.com/kase1111-hash/mediator-node) | LLM mediation layer for matching, negotiation, and closure proposals |
+| [ILR-module](https://github.com/kase1111-hash/ILR-module) | IP & Licensing Reconciliation — dispute resolution for intellectual property |
+| [Finite-Intent-Executor](https://github.com/kase1111-hash/Finite-Intent-Executor) | Posthumous execution of predefined intent (Solidity smart contract) |
+
+### Other Projects
+
+| Repository | Description |
+|------------|-------------|
+| [Shredsquatch](https://github.com/kase1111-hash/Shredsquatch) | 3D first-person snowboarding infinite runner (SkiFree homage) |
+| [Midnight-pulse](https://github.com/kase1111-hash/Midnight-pulse) | Procedurally generated synthwave night driving game |
+| [Long-Home](https://github.com/kase1111-hash/Long-Home) | Atmospheric narrative game built with Godot |
+
+---
+
+*Building the infrastructure for the authenticity economy — where human cognitive labor, intent preservation, and process legibility create AI-resistant value.*
