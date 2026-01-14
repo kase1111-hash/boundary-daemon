@@ -12,7 +12,6 @@ IMPORTANT: LDAP identity is ADVISORY only. Ceremonies are still
 required for all sensitive operations regardless of group membership.
 """
 
-import hashlib
 import logging
 import threading
 import time

@@ -29,7 +29,7 @@ async def test_tui_screens():
     from tui.app import (
         BoundaryDaemonTUI, DashboardScreen, ModeControlScreen,
         EventLogScreen, TripwireScreen, SettingsScreen,
-        ModeIndicator, HealthIndicator
+        ModeIndicator
     )
 
     log_dir = tempfile.mkdtemp(prefix='tui_test_')

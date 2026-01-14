@@ -4,12 +4,11 @@ Provides high-level interfaces for integrating with other Agent OS components.
 """
 
 import time
-import getpass
-from typing import Optional, Callable, Union, List, Dict, Any
-from datetime import datetime, timedelta
+from typing import Optional, Callable, Dict, Any
+from datetime import datetime
 
 from .policy_engine import MemoryClass, BoundaryMode
-from .event_logger import EventLogger, EventType
+from .event_logger import EventType
 
 # Import message checking components
 try:

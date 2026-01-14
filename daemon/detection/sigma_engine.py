@@ -10,7 +10,6 @@ Sigma rules are deterministic - same events produce same detections.
 """
 
 import hashlib
-import json
 import logging
 import re
 import threading
@@ -18,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any, Union, Pattern
+from typing import Dict, List, Optional, Any, Union, Pattern
 
 logger = logging.getLogger(__name__)
 

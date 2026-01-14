@@ -29,8 +29,8 @@ import os
 import socket
 import threading
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, List, Optional, Any, Callable
@@ -565,7 +565,6 @@ def create_health_server(checker: Optional[HealthChecker] = None) -> HealthCheck
 
 
 # Convenience type alias
-from typing import Tuple
 
 
 if __name__ == '__main__':

@@ -22,7 +22,7 @@ import os
 import hmac
 import logging
 from contextlib import contextmanager
-from typing import Optional, Union, Callable
+from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +217,7 @@ class SecureBytes:
     def __enter__(self) -> 'SecureBytes':
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         self.clear()
 
     def clear(self) -> bool:
@@ -354,7 +354,7 @@ def secure_derive_key(
 
 
 # Utility function for cleaning up after Fernet operations
-def cleanup_fernet_key(fernet_key: bytes) -> bool:
+def cleanup_fernet_key(_fernet_key: bytes) -> bool:
     """
     Attempt to clean up a Fernet key from memory.
 

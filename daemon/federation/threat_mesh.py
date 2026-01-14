@@ -999,7 +999,7 @@ class ThreatMesh:
 
         return peer
 
-    def verify_peer(self, peer_id: str, verification_token: str) -> bool:
+    def verify_peer(self, peer_id: str, _verification_token: str) -> bool:
         """
         Verify a peer's identity.
 

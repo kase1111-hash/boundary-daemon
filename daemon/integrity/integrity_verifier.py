@@ -43,16 +43,14 @@ Verification Modes:
 """
 
 import hashlib
-import json
 import logging
-import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any, Callable
+from typing import Dict, List, Optional, Tuple, Any, Callable
 
 try:
     from nacl.signing import VerifyKey

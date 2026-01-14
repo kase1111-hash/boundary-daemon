@@ -13,19 +13,17 @@ All evidence is signed and includes Merkle proofs for
 selective disclosure.
 """
 
-import gzip
 import hashlib
 import json
 import logging
 import os
-import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any, Tuple
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 

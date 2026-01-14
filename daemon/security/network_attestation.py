@@ -16,21 +16,17 @@ Protects against:
 - Mode spoofing (claiming TRUSTED without VPN)
 """
 
-import hashlib
-import json
 import logging
 import os
 import re
 import socket
-import ssl
 import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 

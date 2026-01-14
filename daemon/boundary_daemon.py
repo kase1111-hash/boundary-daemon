@@ -39,7 +39,7 @@ else:
 IS_WINDOWS = sys.platform == 'win32'
 
 # Import core components
-from .state_monitor import StateMonitor, EnvironmentState, NetworkState
+from .state_monitor import StateMonitor, EnvironmentState
 from .policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision, Operator, MemoryClass
 from .tripwires import TripwireSystem, LockdownManager, TripwireViolation
 from .event_logger import EventLogger, EventType
@@ -3246,7 +3246,7 @@ class BoundaryDaemon:
         else:
             return (False, f"Template {template_id} not found")
 
-    def scan_code(self, path: str, recursive: bool = True) -> tuple[bool, str, list]:
+    def scan_code(self, path: str, _recursive: bool = True) -> tuple[bool, str, list]:
         """
         Scan code for vulnerabilities using the security advisor (Plan 7).
 

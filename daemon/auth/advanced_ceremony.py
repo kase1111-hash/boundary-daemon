@@ -15,14 +15,12 @@ All ceremonies follow fail-closed design - any ambiguity results in denial.
 import os
 import time
 import json
-import hmac
 import hashlib
 import threading
 from enum import Enum
 from typing import Optional, Callable, Dict, List, Any, Tuple, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from abc import ABC, abstractmethod
 
 from .enhanced_ceremony import EnhancedCeremonyManager, BiometricCeremonyConfig
 from .biometric_verifier import BiometricVerifier
@@ -1192,9 +1190,9 @@ class HardwareTokenCeremony:
             class CliInteraction(UserInteraction):
                 def prompt_up(self):
                     print("  Touch your security key...")
-                def request_pin(self, permissions, rd_id):
+                def request_pin(self, permissions, _rd_id):
                     return input("  Enter PIN: ")
-                def request_uv(self, permissions, rd_id):
+                def request_uv(self, permissions, _rd_id):
                     print("  Perform user verification...")
                     return True
 
@@ -1386,9 +1384,9 @@ class HardwareTokenCeremony:
             class CliInteraction(UserInteraction):
                 def prompt_up(self):
                     print("  Touch your security key...")
-                def request_pin(self, permissions, rd_id):
+                def request_pin(self, permissions, _rd_id):
                     return input("  Enter PIN: ")
-                def request_uv(self, permissions, rd_id):
+                def request_uv(self, permissions, _rd_id):
                     return True
 
             client = Fido2Client(devices[0], "https://boundary-daemon.local", user_interaction=CliInteraction())

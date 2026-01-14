@@ -10,7 +10,7 @@ import time
 import logging
 from dataclasses import dataclass, asdict
 from enum import Enum
-from typing import Optional, List, Dict, Set
+from typing import Optional, List, Dict
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

@@ -161,6 +161,12 @@ except ImportError:
     OTLP_AVAILABLE = False
 
 __all__ = [
+    # Constants (SECURITY: Centralized configuration)
+    'Timeouts', 'BufferSizes', 'Permissions', 'Paths', 'Crypto',
+    'TimeThresholds', 'RateLimits', 'Retries', 'NetworkConstants',
+    'DetectionThresholds', 'Limits', 'EssentialProcesses', 'RuntimeConfig',
+    'DEFAULT_TIMEOUT', 'SECURE_FILE_MODE', 'SECURE_DIR_MODE', 'KDF_ITERATIONS',
+    # Core components
     'StateMonitor', 'EnvironmentState', 'NetworkState', 'HardwareTrust',
     'PolicyEngine', 'BoundaryMode', 'PolicyRequest', 'PolicyDecision', 'Operator', 'MemoryClass',
     'TripwireSystem', 'LockdownManager', 'TripwireViolation', 'ViolationType',

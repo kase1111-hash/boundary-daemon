@@ -16,7 +16,6 @@ Note: Requires appropriate permissions (root or delegated cgroups).
 
 import logging
 import os
-import shutil
 import signal
 import time
 from dataclasses import dataclass, field

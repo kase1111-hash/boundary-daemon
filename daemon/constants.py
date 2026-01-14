@@ -24,7 +24,7 @@ import sys
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, FrozenSet, Set, Tuple, Optional, TypeVar, Callable
+from typing import Dict, FrozenSet, Tuple, Optional, TypeVar, Callable
 
 logger = logging.getLogger(__name__)
 

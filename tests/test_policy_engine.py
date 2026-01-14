@@ -14,8 +14,6 @@ import os
 import sys
 import threading
 from datetime import datetime
-from typing import List
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -26,8 +24,7 @@ from daemon.policy_engine import (
     PolicyDecision, MemoryClass, Operator
 )
 from daemon.state_monitor import (
-    NetworkState, HardwareTrust, EnvironmentState, NetworkType,
-    SpecialtyNetworkStatus
+    NetworkState, HardwareTrust, EnvironmentState, SpecialtyNetworkStatus
 )
 
 

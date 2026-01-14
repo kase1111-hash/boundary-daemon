@@ -7,23 +7,21 @@ This is the main entry point for the terminal user interface.
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, List
-import asyncio
+from typing import Optional
 
 # Add parent to path for daemon imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import (
     Header, Footer, Static, Button, Label,
     DataTable, Log, TabbedContent, TabPane,
-    ProgressBar, Rule, Switch, Input, Select
+    Rule, Switch, Input, Select
 )
 from textual.screen import Screen
 from textual.reactive import reactive
-from textual.message import Message
 from textual import work
 
 # Import daemon components

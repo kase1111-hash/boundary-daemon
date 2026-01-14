@@ -13,7 +13,6 @@ bypass via daemon restart. This addresses the vulnerability:
 """
 
 import hashlib
-import hmac
 import json
 import logging
 import os

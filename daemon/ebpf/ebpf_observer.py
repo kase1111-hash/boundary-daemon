@@ -14,11 +14,9 @@ Graceful degradation: If eBPF is not available, the module provides
 limited functionality using /proc and other interfaces.
 """
 
-import ctypes
 import logging
 import os
 import queue
-import struct
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -26,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any, Callable, Union
+from typing import Dict, List, Optional, Set, Any, Callable
 
 logger = logging.getLogger(__name__)
 

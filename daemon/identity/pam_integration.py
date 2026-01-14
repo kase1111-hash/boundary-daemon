@@ -19,8 +19,8 @@ import grp
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import IntEnum, Enum
-from typing import Dict, List, Optional, Set, Any, Tuple, Callable
+from enum import IntEnum
+from typing import Dict, List, Optional, Set, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ class PAMConversation:
         self.password = password
         self.messages: List[str] = []
 
-    def __call__(self, num_msg: int, messages, responses, app_data):
+    def __call__(self, _num_msg: int, messages, responses, _app_data):
         """Handle PAM conversation callback."""
         # This is a simplified implementation
         # Real implementation would handle different message types

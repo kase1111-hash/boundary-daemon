@@ -24,8 +24,6 @@ import json
 import hmac
 import hashlib
 import tempfile
-import shutil
-import struct
 import subprocess
 import logging
 from datetime import datetime

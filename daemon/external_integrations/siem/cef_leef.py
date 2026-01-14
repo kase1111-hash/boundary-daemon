@@ -11,12 +11,10 @@ LEEF Format: LEEF:Version|Vendor|Product|Version|EventID|Key1=Value1\tKey2=Value
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import IntEnum, Enum
 from typing import Dict, Optional, List, Any, Callable
-from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 

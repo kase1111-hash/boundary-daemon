@@ -23,12 +23,11 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import threading
 import queue
-from datetime import datetime
 
 # Import scanner components
 from .antivirus import (
     AntivirusScanner, StartupMonitor, RealTimeMonitor,
-    ThreatLevel, ThreatCategory, MalwareBazaarResult
+    ThreatLevel
 )
 
 

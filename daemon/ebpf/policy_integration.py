@@ -16,12 +16,11 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Set, Any, Callable
+from typing import Dict, List, Optional, Any, Callable
 
 from .ebpf_observer import (
     eBPFObserver,
     ObservationEvent,
-    ProcessEvent,
     FileEvent,
     NetworkEvent,
 )

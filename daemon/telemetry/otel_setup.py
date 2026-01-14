@@ -28,8 +28,7 @@ import threading
 import time
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 from contextlib import contextmanager
 

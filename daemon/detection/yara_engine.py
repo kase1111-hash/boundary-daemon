@@ -12,7 +12,6 @@ All rule sources are tracked for auditability.
 """
 
 import hashlib
-import json
 import logging
 import os
 import re
@@ -22,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any, Union, Callable
+from typing import Dict, List, Optional, Any, Callable
 
 logger = logging.getLogger(__name__)
 

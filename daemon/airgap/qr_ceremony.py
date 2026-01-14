@@ -12,9 +12,7 @@ HMAC proof that the challenge was seen by the trusted device.
 No network required - fully air-gap compatible.
 """
 
-import os
 import json
-import time
 import hmac
 import hashlib
 import base64

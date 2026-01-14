@@ -16,15 +16,11 @@ Addresses Critical Finding: "AIRGAP Mode Leaks Network Traffic"
 """
 
 import threading
-import time
 import socket
-import re
-import os
 import json
-import hashlib
 import logging
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set
 from enum import Enum
 from datetime import datetime, timedelta
 from collections import defaultdict, deque

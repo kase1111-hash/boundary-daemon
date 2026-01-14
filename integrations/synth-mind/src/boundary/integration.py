@@ -60,7 +60,7 @@ class ContinuityEngineBoundary:
         return True
 
     @require_reflection_check(reflection_type='introspective')
-    def update_identity_narrative(self, narrative_update: Dict[str, Any]) -> bool:
+    def update_identity_narrative(self, _narrative_update: Dict[str, Any]) -> bool:
         """
         Update the identity narrative.
 

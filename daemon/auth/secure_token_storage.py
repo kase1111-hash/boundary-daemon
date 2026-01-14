@@ -26,7 +26,7 @@ import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict
 import logging
 
 logger = logging.getLogger(__name__)

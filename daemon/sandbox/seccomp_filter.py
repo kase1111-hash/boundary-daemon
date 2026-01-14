@@ -19,7 +19,6 @@ Note: Seccomp is one-way - once enabled, it cannot be disabled.
 import ctypes
 import ctypes.util
 import logging
-import os
 import struct
 from dataclasses import dataclass, field
 from enum import IntEnum, auto

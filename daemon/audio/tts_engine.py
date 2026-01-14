@@ -112,7 +112,7 @@ class TTSRequest:
         """Generate cache key for this request."""
         params = self.get_effective_params()
         key_data = f"{self.text}:{params.to_dict()}:{self.format.value}"
-        return hashlib.md5(key_data.encode()).hexdigest()
+        return hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()
 
 
 class TTSEngine(ABC):
@@ -220,7 +220,7 @@ class MockTTSEngine(TTSEngine):
         num_bytes = int((duration_ms / 1000.0) * bytes_per_second)
 
         # Create deterministic mock data based on text hash
-        text_hash = hashlib.md5(request.text.encode()).digest()
+        text_hash = hashlib.md5(request.text.encode(), usedforsecurity=False).digest()
         mock_data = (text_hash * ((num_bytes // 16) + 1))[:num_bytes]
 
         self._synthesis_count += 1

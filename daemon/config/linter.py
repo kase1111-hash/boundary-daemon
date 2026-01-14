@@ -19,13 +19,11 @@ Severity Levels:
 import configparser
 import logging
 import os
-import re
 import stat
 import socket
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import List, Optional, Tuple, Callable
 
 logger = logging.getLogger(__name__)
 

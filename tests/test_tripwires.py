@@ -7,9 +7,8 @@ Tests security violation detection, lockdown triggers, and auth requirements.
 import os
 import sys
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,7 +19,6 @@ from daemon.tripwires import (
     ViolationType,
 )
 from daemon.policy_engine import BoundaryMode
-from daemon.state_monitor import NetworkState
 
 
 # ===========================================================================

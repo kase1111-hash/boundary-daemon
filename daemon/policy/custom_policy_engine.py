@@ -5,7 +5,6 @@ Allows users to define custom boundary policies using YAML configuration files.
 
 import glob
 import logging
-import os
 import re
 import threading
 import time

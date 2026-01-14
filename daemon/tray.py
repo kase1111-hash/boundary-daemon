@@ -14,10 +14,10 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import Callable, Optional, TYPE_CHECKING, Any
+from typing import Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .boundary_daemon import BoundaryDaemon, BoundaryMode
+    from .boundary_daemon import BoundaryDaemon
 
 from .policy_engine import Operator
 

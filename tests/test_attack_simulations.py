@@ -19,9 +19,7 @@ This module simulates attack scenarios across different network types:
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock, PropertyMock
-from datetime import datetime, timedelta
-from dataclasses import dataclass
+from unittest.mock import patch, MagicMock
 from typing import Dict, List, Optional
 
 # Add parent directory to path for imports
@@ -29,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from daemon.state_monitor import (
     StateMonitor, MonitoringConfig, CellularSecurityAlert,
-    NetworkType, NetworkState, SpecialtyNetworkStatus, HardwareTrust
+    NetworkType, HardwareTrust
 )
 from daemon.security.dns_security import (
     DNSSecurityMonitor, DNSSecurityConfig, DNSSecurityAlert
@@ -41,7 +39,7 @@ from daemon.security.wifi_security import (
     WiFiSecurityMonitor, WiFiSecurityConfig, WiFiSecurityAlert
 )
 from daemon.security.threat_intel import (
-    ThreatIntelMonitor, ThreatIntelConfig, ThreatIntelAlert, ThreatCategory, ThreatSeverity
+    ThreatIntelMonitor, ThreatIntelConfig, ThreatIntelAlert, ThreatCategory
 )
 from daemon.security.file_integrity import (
     FileIntegrityMonitor, FileIntegrityConfig, FileIntegrityAlert, FileChange
@@ -1014,7 +1012,6 @@ class FileIntegrityAttackSimulator:
         """
         Simulate malicious file modification after baseline.
         """
-        import tempfile
         # Create a test file
         test_file = os.path.join(self.temp_dir, "test_binary.bin")
         with open(test_file, 'wb') as f:
