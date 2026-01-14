@@ -12,7 +12,6 @@ import socket
 import time
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -1229,6 +1228,6 @@ class BoundaryContext:
         self.reason = "Operation permitted"
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
         # Log operation completion if needed
         pass

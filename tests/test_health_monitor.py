@@ -8,11 +8,8 @@ import os
 import sys
 import time
 import threading
-from datetime import datetime
-from unittest.mock import MagicMock, patch
-from collections import deque
+from unittest.mock import MagicMock
 
-import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

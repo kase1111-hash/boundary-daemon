@@ -41,8 +41,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Iterator, Callable
+from typing import Dict, List, Optional, Iterator
 
 # ANSI colors
 class Colors:

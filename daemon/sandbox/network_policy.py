@@ -35,9 +35,8 @@ import subprocess
 import threading
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from ipaddress import ip_network, ip_address
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any
 
 logger = logging.getLogger(__name__)
 

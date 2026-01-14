@@ -51,7 +51,6 @@ from .namespace import (
     IsolatedProcess,
 )
 from .seccomp_filter import (
-    SeccompFilter,
     SeccompProfiles,
     SeccompProfile,
 )

@@ -9,8 +9,7 @@ import os
 import json
 import threading
 import logging
-from typing import Optional, List, Dict, Tuple
-from pathlib import Path
+from typing import Optional, Dict, Tuple
 
 from .event_logger import EventLogger, EventType, BoundaryEvent
 

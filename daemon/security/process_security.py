@@ -20,7 +20,6 @@ from enum import Enum
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 

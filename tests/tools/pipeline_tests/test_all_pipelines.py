@@ -11,15 +11,14 @@ import time
 import tempfile
 import threading
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from daemon.logging_config import (
-    setup_logging, get_logger,
-    FeatureArea, verbose_for
+    setup_logging, get_logger
 )
 
 

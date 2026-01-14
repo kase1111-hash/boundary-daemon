@@ -30,7 +30,7 @@ import hashlib
 import hmac
 import stat
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Dict
 from datetime import datetime
 
 

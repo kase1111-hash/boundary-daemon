@@ -47,10 +47,10 @@ except ImportError:
     curses = None
     CURSES_AVAILABLE = False
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Dict, List, Optional, Tuple, Any
 
 # Import Ollama client for CLI chat
 try:

@@ -11,7 +11,6 @@ Features:
 - Integration with OpenTelemetry metrics
 """
 
-import os
 import time
 import threading
 import logging
@@ -20,8 +19,7 @@ from typing import Optional, Dict, List, Callable, Any, Deque
 from datetime import datetime
 from enum import Enum
 from collections import deque
-from queue import Queue, Empty
-import weakref
+from queue import Queue
 
 from .dreaming import dream_operation_start, dream_operation_complete
 

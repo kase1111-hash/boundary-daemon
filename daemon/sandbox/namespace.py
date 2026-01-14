@@ -17,10 +17,8 @@ import ctypes
 import ctypes.util
 import logging
 import os
-import signal
 import subprocess
 import tempfile
-import shutil
 from dataclasses import dataclass, field
 from enum import IntFlag
 from pathlib import Path

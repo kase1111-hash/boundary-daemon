@@ -8,9 +8,7 @@ import os
 import sys
 import time
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 
-import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

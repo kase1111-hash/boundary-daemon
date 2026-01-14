@@ -39,9 +39,6 @@ Keyboard Controls:
 """
 
 import argparse
-import copy
-import json
-import os
 import re
 import subprocess
 import sys
@@ -49,7 +46,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 
 # Handle curses import for Windows (windows-curses not available for Python 3.14+)
 curses = None

@@ -497,7 +497,7 @@ class VerboseContext:
                 set_verbose(True)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
         with _state._lock:
             if self.feature:
                 _state.feature_levels[self.feature] = self.previous_level

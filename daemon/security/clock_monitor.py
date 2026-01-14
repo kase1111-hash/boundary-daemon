@@ -15,14 +15,13 @@ Time-based attacks this protects against:
 - Certificate/signature time attacks
 """
 
-import os
 import re
 import subprocess
 import threading
 import time
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum, auto
 from typing import Callable, Dict, List, Optional, Tuple
 

@@ -26,7 +26,7 @@ import threading
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import (
-    List, Dict, Any, Optional, Set, Tuple,
+    List, Dict, Any, Optional, Tuple,
     Callable, Pattern, Union
 )
 from datetime import datetime, timedelta

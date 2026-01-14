@@ -8,8 +8,6 @@ import json
 import os
 import shutil
 import tempfile
-import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
@@ -20,10 +18,9 @@ import pytest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from daemon.event_logger import EventLogger, EventType, BoundaryEvent
+from daemon.event_logger import EventLogger, EventType
 from daemon.policy_engine import (
-    PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision,
-    MemoryClass, Operator
+    PolicyEngine, BoundaryMode, PolicyRequest, MemoryClass
 )
 
 

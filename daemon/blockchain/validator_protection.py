@@ -16,17 +16,15 @@ Supports:
 - Generic height-based chains
 """
 
-import hashlib
 import json
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple
 from collections import deque
 
 logger = logging.getLogger(__name__)

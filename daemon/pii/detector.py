@@ -18,8 +18,7 @@ Supports multiple redaction methods:
 import hashlib
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 from typing import Dict, List, Optional, Pattern, Set, Tuple, Callable
 
 

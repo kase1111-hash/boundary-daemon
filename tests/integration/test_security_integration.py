@@ -21,15 +21,12 @@ across all 12 integrated repositories:
 Each test validates that specific attack vectors are blocked.
 """
 
-import json
 import os
 import socket
 import tempfile
-import time
 import unittest
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, patch
+from typing import Any, Dict
 
 
 # Import the security integration checker
@@ -37,7 +34,6 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'integrations'))
 from security_integration_check import (
     SecurityIntegrationChecker,
-    SecurityCheckResult,
     AttackVector,
     create_security_checks,
     REPOSITORIES,

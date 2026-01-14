@@ -18,7 +18,6 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Optional, Dict, List, Tuple, Any, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
@@ -82,7 +81,7 @@ class SecureTempFile:
 
         return self.path
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, _exc_val, _exc_tb):
         self._secure_cleanup()
         return False
 

@@ -31,17 +31,14 @@ import os
 import sys
 import subprocess
 import shutil
-import signal
 import threading
 import logging
 import json
 import ctypes
-import struct
-from enum import Enum, IntEnum
+from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict, Set, Callable
+from typing import Optional, List, Tuple, Dict, Set
 from datetime import datetime
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

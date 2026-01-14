@@ -53,10 +53,8 @@ Cryptographic Basis:
 """
 
 import hashlib
-import hmac
 import json
 import os
-import struct
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta

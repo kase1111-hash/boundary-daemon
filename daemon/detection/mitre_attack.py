@@ -9,15 +9,13 @@ Provides deterministic detection of MITRE ATT&CK techniques:
 All detection is rule-based and deterministic - no ML.
 """
 
-import hashlib
-import json
 import logging
 import re
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Set, Any, Pattern, Callable
+from typing import Dict, List, Optional, Any, Pattern
 
 logger = logging.getLogger(__name__)
 

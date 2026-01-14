@@ -24,10 +24,9 @@ import time
 import base64
 import secrets
 from enum import Enum
-from typing import Optional, Dict, List, Any, Tuple, BinaryIO
+from typing import Optional, Dict, List, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 
 # Cryptographic imports
 try:

@@ -6,8 +6,7 @@ Tests high-level integration interfaces for Memory Vault, Tool Enforcement, etc.
 
 import os
 import sys
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -15,9 +14,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from daemon.policy_engine import (
-    PolicyEngine, BoundaryMode, MemoryClass, PolicyDecision, Operator
+    PolicyEngine, BoundaryMode, MemoryClass
 )
-from daemon.event_logger import EventLogger, EventType
 
 
 # ===========================================================================

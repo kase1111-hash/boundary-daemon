@@ -43,15 +43,13 @@ Dependencies (optional):
 """
 
 import hashlib
-import json
 import logging
 import os
 import struct
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, Tuple, Any
 import base64
 
 try:
@@ -652,7 +650,7 @@ class PostQuantumCrypto:
     def migrate_signature(
         self,
         old_signature: bytes,
-        old_keypair: Any,  # Classical-only keypair
+        _old_keypair: Any,  # Classical-only keypair (preserved for API)
         new_keypair: HybridKeyPair,
         message: bytes,
     ) -> HybridSignature:

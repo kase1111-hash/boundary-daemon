@@ -840,7 +840,6 @@ def resolve_domain(domain: str, record_type: str = 'A') -> List[str]:
 
 
 if __name__ == '__main__':
-    import sys
 
     logging.basicConfig(level=logging.DEBUG)
 

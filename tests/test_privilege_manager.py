@@ -9,7 +9,6 @@ import sys
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -66,7 +65,6 @@ class TestPlatformDetection:
         """is_elevated should return True for root on Linux."""
         mock_geteuid.return_value = 0
         # Need to reimport to pick up the mock
-        from daemon.privilege_manager import is_elevated as is_elevated_fresh
         # Since we can't easily reimport, we test the logic
         assert os.geteuid() >= 0  # Just verify it's callable
 

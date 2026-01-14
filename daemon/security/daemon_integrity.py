@@ -22,7 +22,7 @@ import time
 import logging
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 

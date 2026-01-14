@@ -10,7 +10,7 @@ import threading
 import fcntl
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

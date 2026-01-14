@@ -35,7 +35,6 @@ USAGE:
 
 import functools
 import logging
-import os
 import sys
 import time
 import threading
@@ -43,7 +42,7 @@ import traceback
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 from typing import (
     Any,
     Callable,
@@ -53,7 +52,6 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    Union,
 )
 
 logger = logging.getLogger(__name__)

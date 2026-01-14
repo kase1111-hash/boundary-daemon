@@ -50,8 +50,6 @@ from daemon.policy_engine import BoundaryMode, Operator, MemoryClass
 from daemon.auth.api_auth import (
     TokenManager,
     AuthenticationMiddleware,
-    APICapability,
-    COMMAND_CAPABILITIES,
 )
 
 

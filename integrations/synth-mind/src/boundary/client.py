@@ -19,7 +19,6 @@ from boundary_client import (
     BoundaryDaemonError,
     DaemonUnavailableError,
     PolicyDeniedError,
-    get_socket_path,
 )
 
 __all__ = [

@@ -12,14 +12,12 @@ Detects suspicious network traffic patterns including:
 import logging
 import os
 import sys
-import re
 import time
 import threading
-import subprocess
 from enum import Enum
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)

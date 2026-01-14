@@ -13,7 +13,6 @@ Without redundancy, a single logger failure or compromise could result
 in lost or manipulated security events.
 """
 
-import hashlib
 import json
 import logging
 import os
@@ -30,7 +29,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from collections import deque
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .event_logger import EventLogger, EventType, BoundaryEvent
 

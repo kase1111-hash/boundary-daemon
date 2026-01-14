@@ -22,18 +22,14 @@ Usage:
     case_manager.resolve(case.case_id, resolution="Fixed")
 """
 
-import hashlib
 import json
 import logging
-import os
 import threading
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Callable
-from urllib.parse import urljoin
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

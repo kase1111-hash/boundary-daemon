@@ -52,7 +52,6 @@ Security Properties:
 
 import hashlib
 import hmac
-import json
 import logging
 import os
 import threading
@@ -61,8 +60,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any, Callable
-import base64
+from typing import Dict, List, Optional, Any, Callable
 
 try:
     from nacl.signing import SigningKey, VerifyKey

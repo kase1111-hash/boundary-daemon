@@ -45,13 +45,11 @@ import threading
 import subprocess
 import ctypes
 from collections import deque
-from ctypes import c_int, c_ulong
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
-import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -1049,7 +1047,7 @@ def generate_shared_secret() -> bytes:
 # Standalone watchdog entry point
 def run_external_watchdog(
     watchdog_id: str = "primary",
-    peer_sockets: Optional[List[str]] = None,
+    _peer_sockets: Optional[List[str]] = None,
 ):
     """
     Run as an external watchdog process.

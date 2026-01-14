@@ -14,11 +14,7 @@ Tests cover:
 import json
 import os
 import stat
-import tempfile
 import threading
-from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 

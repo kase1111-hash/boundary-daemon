@@ -14,10 +14,8 @@ This test simulates a full AI agent workflow with security checks at each layer.
 
 import pytest
 import sys
-import os
 from datetime import timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -31,8 +29,6 @@ class TestSecurityStackE2E:
         from daemon.security import (
             PROMPT_INJECTION_AVAILABLE,
             get_prompt_injection_detector,
-            InjectionType,
-            DetectionAction,
         )
 
         if not PROMPT_INJECTION_AVAILABLE:
@@ -123,7 +119,6 @@ class TestSecurityStackE2E:
         from daemon.security import (
             RESPONSE_GUARDRAILS_AVAILABLE,
             get_response_guardrails,
-            GuardrailAction,
         )
 
         if not RESPONSE_GUARDRAILS_AVAILABLE:
@@ -163,7 +158,6 @@ class TestSecurityStackE2E:
             RAG_INJECTION_AVAILABLE,
             get_rag_injection_detector,
             RetrievedDocument,
-            RAGThreatType,
         )
 
         if not RAG_INJECTION_AVAILABLE:
@@ -225,7 +219,6 @@ class TestSecurityStackE2E:
         """Test agent attestation system with full workflow."""
         from daemon.security import (
             AGENT_ATTESTATION_AVAILABLE,
-            get_attestation_system,
             configure_attestation_system,
             AgentCapability,
             TrustLevel,
@@ -523,10 +516,6 @@ class TestModuleImports:
         """Test all security module imports."""
         from daemon.security import (
             # Core
-            CodeVulnerabilityAdvisor,
-            AntivirusScanner,
-            NativeDNSResolver,
-            # Availability flags
             SECURE_MEMORY_AVAILABLE,
             DAEMON_INTEGRITY_AVAILABLE,
             PROMPT_INJECTION_AVAILABLE,
@@ -557,12 +546,6 @@ class TestModuleImports:
     def test_enforcement_module_imports(self):
         """Test enforcement module imports."""
         from daemon.enforcement import (
-            NetworkEnforcer,
-            USBEnforcer,
-            ProcessEnforcer,
-            SecureProfileManager,
-            ProtectionPersistenceManager,
-            SecureProcessTerminator,
             WINDOWS_FIREWALL_AVAILABLE,
         )
 

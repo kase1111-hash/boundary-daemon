@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 from datetime import datetime
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 

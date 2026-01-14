@@ -11,12 +11,11 @@ Features:
 - Uptime tracking
 """
 
-import os
 import time
 import threading
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Callable, Any
+from typing import Optional, Dict, List, Callable
 from datetime import datetime
 from enum import Enum
 from collections import deque

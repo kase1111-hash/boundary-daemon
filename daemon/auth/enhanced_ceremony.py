@@ -9,7 +9,7 @@ from datetime import datetime
 
 from ..integrations import CeremonyManager
 from ..event_logger import EventType
-from .biometric_verifier import BiometricVerifier, BiometricType, BiometricResult
+from .biometric_verifier import BiometricVerifier, BiometricResult
 
 
 class BiometricCeremonyConfig:

@@ -32,7 +32,7 @@ import logging
 import json
 import tempfile
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 

@@ -14,10 +14,7 @@ import json
 import os
 import stat
 import tempfile
-import threading
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -25,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from daemon.storage.log_hardening import (
-    LogHardener, HardeningMode, HardeningStatus, ProtectionStatus,
+    LogHardener, HardeningMode, ProtectionStatus,
     LogHardeningError
 )
 

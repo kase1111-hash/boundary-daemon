@@ -8,9 +8,8 @@ with the boundary daemon.
 
 import logging
 from typing import Callable, Optional, Any
-from functools import wraps
 
-from .client import BoundaryClient, BoundaryMode, PolicyDecision
+from .client import BoundaryClient, PolicyDecision
 from .exceptions import (
     ReflectionDeniedError,
     CognitiveDeniedError,
@@ -132,7 +131,7 @@ class _ReflectionContext:
         self.permitted = self.gate.can_reflect(self.reflection_type, self.depth)
         return self.permitted
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, _exc_val, _exc_tb):
         # Log completion if reflection was performed
         if self.permitted and exc_type is None:
             logger.debug(f"Reflection completed: {self.reflection_type}")

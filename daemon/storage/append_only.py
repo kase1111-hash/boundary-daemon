@@ -32,12 +32,11 @@ import socket
 import ssl
 import subprocess
 import threading
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -510,8 +509,6 @@ class AppendOnlyStorage:
                 signature = None
                 if self._signing_key:
                     try:
-                        from cryptography.hazmat.primitives import hashes
-                        from cryptography.hazmat.primitives.asymmetric import ed25519
 
                         signature = self._signing_key.sign(
                             checkpoint_hash.encode()
@@ -588,7 +585,6 @@ class AppendOnlyStorage:
         # Verify signature if present
         if checkpoint.signature and self._signing_key:
             try:
-                from cryptography.hazmat.primitives.asymmetric import ed25519
 
                 public_key = self._signing_key.public_key()
                 public_key.verify(

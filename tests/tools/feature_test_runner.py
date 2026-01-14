@@ -26,15 +26,14 @@ from pathlib import Path
 from datetime import datetime
 from enum import Enum, auto
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Callable, Tuple
+from typing import Optional, Dict, Any, List, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from daemon.logging_config import (
-    setup_logging, get_logger, set_verbose, set_trace,
-    FeatureArea, is_verbose, is_trace
+    setup_logging, get_logger, FeatureArea, is_trace
 )
 
 
@@ -330,7 +329,7 @@ class PolicyEnginePipeline(PipelineTest):
             PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision,
             MemoryClass, Operator
         )
-        from daemon.state_monitor import EnvironmentState, NetworkState, HardwareTrust, SpecialtyNetworkStatus
+        from daemon.state_monitor import EnvironmentState, NetworkState, HardwareTrust
         from unittest.mock import MagicMock
 
         # Create a mock environment state for testing
@@ -425,7 +424,7 @@ class TripwirePipeline(PipelineTest):
 
     def _run_tests(self) -> None:
         from daemon.tripwires import (
-            TripwireSystem, ViolationType, TripwireViolation, LockdownManager
+            TripwireSystem, ViolationType, LockdownManager
         )
 
         # Test 1: Tripwire system instantiation
@@ -888,7 +887,7 @@ class HealthPipeline(PipelineTest):
     def _run_tests(self) -> None:
         from daemon.health_monitor import (
             HealthMonitor, HealthStatus, HealthSnapshot,
-            ComponentStatus, ComponentHealth
+            ComponentStatus
         )
 
         # Test 1: Health status enum

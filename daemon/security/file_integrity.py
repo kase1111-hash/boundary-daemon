@@ -13,14 +13,12 @@ import os
 import stat
 import hashlib
 import threading
-import time
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 from enum import Enum
 from datetime import datetime
-from pathlib import Path
 
 
 class FileIntegrityAlert(Enum):
