@@ -10757,9 +10757,9 @@ class Dashboard:
         # Draw shortcuts at bottom of events panel (inside the box)
         shortcut_row = y + height - 2
         if self.matrix_mode:
-            shortcuts = "[:]CLI [w]Weather [t]Tunnel [f]FPS [g]Game [u]Mute [d]Debug [?]Help [q]Quit"
+            shortcuts = "[:]CLI [w]Weather [t]Tunnel [f]FPS [g]Game [u]Mute [a]Ack [d]Debug [?]Help [q]Quit"
         else:
-            shortcuts = "[m]Mode [a]Ack [e]Export [r]Refresh [/]Search [d]Debug [?]Help [q]Quit"
+            shortcuts = "[m]Mode [a]Ack [c]Clear [l]Load [e]Export [r]Refresh [/]Search [d]Debug [?]Help [q]Quit"
 
         # Center the shortcuts
         shortcuts = shortcuts[:display_width]
@@ -10925,9 +10925,9 @@ class Dashboard:
         """Draw the footer bar."""
         # Add weather shortcut in matrix mode
         if self.matrix_mode:
-            shortcuts = "[:]CLI [w]Weather [t]Tunnel [f]FPS [g]Game [u]Mute [m]Mode [?]Help [q]Quit"
+            shortcuts = "[:]CLI [w]Weather [t]Tunnel [f]FPS [g]Game [u]Mute [a]Ack [d]Debug [?]Help [q]Quit"
         else:
-            shortcuts = "[m]Mode [c]Clear [l]Load [e]Export [r]Refresh [/]Search [?]Help [q]Quit"
+            shortcuts = "[m]Mode [a]Ack [c]Clear [l]Load [e]Export [r]Refresh [/]Search [d]Debug [?]Help [q]Quit"
 
         # In demo mode, show connection hint
         if self.client.is_demo_mode():

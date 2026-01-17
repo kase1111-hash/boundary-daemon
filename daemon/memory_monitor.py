@@ -451,7 +451,7 @@ class MemoryMonitorConfig:
     # Leak detection tuning
     leak_detection_enabled: bool = True
     leak_confirmation_samples: int = 120  # 10 min at 5s intervals
-    leak_growth_threshold_percent: float = 10.0  # 10% growth = possible leak
+    leak_growth_threshold_percent: float = 50.0  # 50% growth = possible leak
 
     # Alert rate limiting (prevent spam)
     alert_cooldown_seconds: float = 300.0  # 5 minutes between same alert type
