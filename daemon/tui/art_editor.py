@@ -457,7 +457,7 @@ class ArtEditor:
             pass
 
         # Shortcuts bar
-        shortcuts = "[Arrows]Move [Tab]Color [F1]Help [F2]Cursor [</>]Frames [Ctrl+S]Save [Q]Quit"
+        shortcuts = "[Arrows]Move [Tab]Color [Ctrl+Z]Undo [Ctrl+L]Load [</>]Frames [Ctrl+S]Save [F1]Help [Q]Quit"
         try:
             self.screen.attron(curses.color_pair(22))
             self.screen.addstr(1, 0, shortcuts[:width-1])
