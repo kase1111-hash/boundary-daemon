@@ -14,6 +14,8 @@ echo ============================================
 echo  Git Update - Boundary Daemon
 echo ============================================
 echo.
+echo Working directory: %CD%
+echo.
 
 REM Check if git is available
 git --version >nul 2>&1
@@ -24,9 +26,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check if we're in a git repository
-git rev-parse --is-inside-work-tree >nul 2>&1
-if errorlevel 1 (
+REM Check if we're in a git repository (check for .git folder)
+if not exist ".git" (
     echo ERROR: Not a git repository
     echo Please run this script from the repository root
     pause
