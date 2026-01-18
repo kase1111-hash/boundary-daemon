@@ -14,6 +14,8 @@ echo ============================================
 echo  Git Update - Boundary Daemon
 echo ============================================
 echo.
+echo Working directory: %CD%
+echo.
 
 REM Check if git is available
 git --version >nul 2>&1
