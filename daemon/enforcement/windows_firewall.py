@@ -482,7 +482,7 @@ class WindowsFirewallEnforcer:
                 # Fail-closed
                 try:
                     self._apply_lockdown_mode()
-                except:
+                except Exception:
                     pass
                 return False
 

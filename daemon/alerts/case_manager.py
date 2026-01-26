@@ -25,6 +25,7 @@ Usage:
 import json
 import logging
 import threading
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -240,20 +241,23 @@ class IntegrationConfig:
     auto_slack_severity: CaseSeverity = CaseSeverity.HIGH
 
 
-class IntegrationClient:
-    """Base class for external integrations."""
+class IntegrationClient(ABC):
+    """Abstract base class for external integrations."""
 
+    @abstractmethod
     def create_incident(self, case: Case) -> Optional[str]:
         """Create incident/issue and return external reference."""
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def update_incident(self, case: Case, ref: str) -> bool:
         """Update existing incident/issue."""
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def resolve_incident(self, case: Case, ref: str) -> bool:
         """Resolve/close incident."""
-        raise NotImplementedError
+        pass
 
 
 class ServiceNowClient(IntegrationClient):

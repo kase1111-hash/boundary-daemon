@@ -95,7 +95,7 @@ class QueryEvent:
         if isinstance(timestamp, str):
             try:
                 timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            except:
+            except ValueError:
                 timestamp = datetime.utcnow()
 
         # Determine severity from event type or metadata
@@ -262,7 +262,7 @@ class QueryParser:
                 return datetime.fromisoformat(value.replace('Z', '+00:00'))
             # Try date only
             return datetime.strptime(value, '%Y-%m-%d')
-        except:
+        except ValueError:
             return None
 
 
