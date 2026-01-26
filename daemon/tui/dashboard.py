@@ -108,7 +108,7 @@ class DashboardEvent:
         try:
             dt = datetime.fromisoformat(self.timestamp.replace('Z', '+00:00'))
             return dt.strftime("%H:%M:%S")
-        except:
+        except ValueError:
             return self.timestamp[:8]
 
 
@@ -248,7 +248,7 @@ class Colors:
             else:
                 # Fallback: use normal green, will apply A_DIM when rendering
                 curses.init_pair(Colors.MATRIX_DARK, curses.COLOR_GREEN, curses.COLOR_BLACK)
-        except:
+        except Exception:
             curses.init_pair(Colors.MATRIX_DARK, curses.COLOR_GREEN, curses.COLOR_BLACK)
         # Lightning flash - inverted bright white on green
         curses.init_pair(Colors.LIGHTNING, curses.COLOR_BLACK, curses.COLOR_WHITE)

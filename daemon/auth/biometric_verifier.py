@@ -186,7 +186,7 @@ class FprintdClient:
         except dbus.exceptions.DBusException as e:
             try:
                 self._device_iface.Release()
-            except:
+            except Exception:
                 pass
             return (False, f"Enrollment failed: {e}")
 
@@ -244,7 +244,7 @@ class FprintdClient:
         except dbus.exceptions.DBusException as e:
             try:
                 self._device_iface.Release()
-            except:
+            except Exception:
                 pass
             return (False, 0.0, f"Verification failed: {e}")
 
