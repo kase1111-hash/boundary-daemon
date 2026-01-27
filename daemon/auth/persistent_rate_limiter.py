@@ -209,7 +209,8 @@ class PersistentRateLimiter:
             try:
                 import ctypes
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
-            except Exception:
+            except (OSError, AttributeError, ImportError) as e:
+                logger.debug(f"Could not check admin privileges: {e}")
                 return False
         else:
             return os.geteuid() == 0
@@ -634,5 +635,5 @@ if __name__ == '__main__':
         # Cleanup
         try:
             os.unlink(test_file)
-        except Exception:
-            pass
+        except (OSError, FileNotFoundError):
+            pass  # File may not exist

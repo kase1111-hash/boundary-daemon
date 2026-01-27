@@ -14,6 +14,8 @@ import shutil
 import logging
 from pathlib import Path
 
+import pytest
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -21,7 +23,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 logging.disable(logging.WARNING)
 os.environ['TERM'] = 'xterm-256color'
 
+# Check if textual is available
+try:
+    import textual  # noqa: F401
+    TEXTUAL_AVAILABLE = True
+except ImportError:
+    TEXTUAL_AVAILABLE = False
 
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not TEXTUAL_AVAILABLE, reason="textual library not installed")
 async def test_tui_screens():
     """Test TUI screen navigation and widget rendering."""
     from daemon.boundary_daemon import BoundaryDaemon
@@ -88,6 +99,8 @@ async def test_tui_screens():
         shutil.rmtree(log_dir, ignore_errors=True)
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(not TEXTUAL_AVAILABLE, reason="textual library not installed")
 async def test_tui_demo_mode():
     """Test TUI runs in demo mode without daemon."""
     from tui.app import BoundaryDaemonTUI, DashboardScreen
