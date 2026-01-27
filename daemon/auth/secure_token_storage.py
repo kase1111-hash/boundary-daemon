@@ -65,13 +65,14 @@ except ImportError:
 # SECURITY: The cryptography library is now required. Fallback XOR encryption
 # was weaker than Fernet (AES-128-CBC with HMAC-SHA256).
 try:
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, InvalidToken
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
     Fernet = None
+    InvalidToken = ValueError  # Fallback for exception handling
     logger.error(
         "SECURITY: cryptography library not available - secure token storage disabled. "
         "Install with: pip install cryptography"
@@ -208,29 +209,30 @@ class SecureTokenStorage:
                 machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
                 winreg.CloseKey(key)
                 machine_data.append(machine_guid)
-            except Exception:
-                pass
+            except (OSError, FileNotFoundError, PermissionError) as e:
+                logger.debug(f"Could not read Windows machine GUID: {e}")
         else:
             # Machine ID (Linux)
             machine_id_path = Path("/etc/machine-id")
             if machine_id_path.exists():
                 try:
                     machine_data.append(machine_id_path.read_text().strip())
-                except Exception:
-                    pass
+                except (OSError, IOError, PermissionError) as e:
+                    logger.debug(f"Could not read machine-id: {e}")
 
         # Hostname (cross-platform)
         try:
             machine_data.append(platform.node())
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug(f"Could not get hostname: {e}")
 
         # Installation-specific salt (created once)
         salt_path = Path("./config/.token_salt")
         if salt_path.exists():
             try:
                 salt = salt_path.read_bytes()
-            except Exception:
+            except (OSError, IOError, PermissionError) as e:
+                logger.debug(f"Could not read salt file: {e}")
                 salt = secrets.token_bytes(32)
         else:
             salt = secrets.token_bytes(32)
@@ -239,8 +241,8 @@ class SecureTokenStorage:
                 with open(salt_path, 'wb') as f:
                     f.write(salt)
                 os.chmod(salt_path, 0o600)
-            except Exception:
-                pass
+            except (OSError, IOError, PermissionError) as e:
+                logger.debug(f"Could not save salt file: {e}")
 
         # Combine and derive key
         # SECURITY: Use bytearray so we can zero it after derivation
@@ -348,11 +350,11 @@ class SecureTokenStorage:
             try:
                 f = Fernet(self._encryption_key)
                 decrypted = f.decrypt(encrypted_data)
-            except Exception:
+            except (InvalidToken, ValueError, TypeError) as e:
                 # Try fallback decryption for legacy data
                 logger.warning(
                     "SECURITY: Decrypting legacy token with fallback method. "
-                    "Re-encrypt with cryptography library for better security."
+                    f"Re-encrypt with cryptography library for better security. Error: {e}"
                 )
                 decrypted = self._fallback_decrypt(encrypted_data)
         else:

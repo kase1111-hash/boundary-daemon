@@ -186,8 +186,8 @@ class FprintdClient:
         except dbus.exceptions.DBusException as e:
             try:
                 self._device_iface.Release()
-            except Exception:
-                pass
+            except (dbus.exceptions.DBusException, AttributeError):
+                pass  # Device already released or unavailable
             return (False, f"Enrollment failed: {e}")
 
     def verify_finger(self, finger: str = 'any',
@@ -244,8 +244,8 @@ class FprintdClient:
         except dbus.exceptions.DBusException as e:
             try:
                 self._device_iface.Release()
-            except Exception:
-                pass
+            except (dbus.exceptions.DBusException, AttributeError):
+                pass  # Device already released or unavailable
             return (False, 0.0, f"Verification failed: {e}")
 
     def delete_enrolled_fingers(self, username: Optional[str] = None) -> bool:

@@ -134,12 +134,15 @@ class MessageChecker:
     """
 
     # PII detection patterns (simplified - full implementation would use Presidio)
+    # Note: These patterns are for detection, not validation. Matches should be
+    # verified with proper validation functions for accuracy.
     PII_PATTERNS = {
         'US_SSN': r'\b\d{3}-\d{2}-\d{4}\b',
         'CREDIT_CARD': r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
         'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
         'PHONE_US': r'\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
-        'IP_ADDRESS': r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
+        # IP address pattern: validates each octet is 0-255
+        'IP_ADDRESS': r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
     }
 
     # Ambiguity indicators for NatLangChain intent validation

@@ -424,15 +424,19 @@ class TokenManager:
                 'tokens': [t.to_dict() for t in self._tokens.values()],
             }
 
-            # Write atomically
+            # Write atomically with secure permissions from the start
+            # Using os.open() with O_CREAT|O_WRONLY|O_TRUNC and mode 0o600
+            # ensures the file is created with correct permissions atomically
             temp_file = self.token_file.with_suffix('.tmp')
-            with open(temp_file, 'w') as f:
-                json.dump(data, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-
-            # Set permissions before rename
-            os.chmod(temp_file, 0o600)
+            fd = os.open(str(temp_file), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    json.dump(data, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception:
+                os.close(fd)
+                raise
 
             # Atomic replace (works on Windows even if target exists)
             temp_file.replace(self.token_file)

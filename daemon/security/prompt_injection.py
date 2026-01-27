@@ -26,6 +26,7 @@ import re
 import hashlib
 import logging
 import unicodedata
+import binascii
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple, Callable
@@ -698,7 +699,8 @@ class PromptInjectionDetector:
             if len(match.group()) > 20:  # Suspicious length
                 try:
                     import base64
-                    decoded = base64.b64decode(match.group()).decode('utf-8', errors='ignore')
+                    # Use 'replace' to preserve evidence of encoding issues
+                    decoded = base64.b64decode(match.group()).decode('utf-8', errors='replace')
                     # Check if decoded content looks like injection
                     if self._looks_like_injection(decoded):
                         detections.append(InjectionDetection(
@@ -711,8 +713,9 @@ class PromptInjectionDetector:
                             description="Base64 encoded injection attempt",
                             confidence=0.85,
                         ))
-                except Exception:
-                    pass
+                except (ValueError, UnicodeDecodeError, binascii.Error) as e:
+                    # Invalid Base64 or encoding - log but don't fail
+                    logger.debug(f"Could not decode potential Base64: {e}")
 
         # Check for Unicode homographs
         homograph_chars = self._detect_homographs(text)

@@ -248,16 +248,20 @@ class ProcObserver(BaseObserver):
             gid = int(status.get('Gid', '0').split()[0])
             ppid = int(status.get('PPid', '0'))
 
-            # Read cwd
+            # Read cwd with path validation
             try:
                 cwd = os.readlink(proc_path / 'cwd')
-            except Exception:
+                # Validate the path is absolute and normalize it
+                cwd = os.path.realpath(cwd) if cwd else ""
+            except (OSError, FileNotFoundError, PermissionError):
                 cwd = ""
 
-            # Read exe
+            # Read exe with path validation
             try:
                 exe = os.readlink(proc_path / 'exe')
-            except Exception:
+                # Validate the path is absolute and normalize it
+                exe = os.path.realpath(exe) if exe else ""
+            except (OSError, FileNotFoundError, PermissionError):
                 exe = ""
 
             return ProcessEvent(
@@ -273,7 +277,9 @@ class ProcObserver(BaseObserver):
                 source="proc",
             )
 
-        except Exception:
+        except (OSError, IOError, ValueError, KeyError, FileNotFoundError) as e:
+            # Process may have exited or /proc entry is invalid
+            logger.debug(f"Could not read process {pid}: {e}")
             return None
 
     def get_events(self, timeout: float = 0.1) -> List[ObservationEvent]:

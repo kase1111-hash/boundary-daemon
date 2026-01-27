@@ -118,28 +118,28 @@ class SecureProfileManager:
                 machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
                 winreg.CloseKey(key)
                 components.append(machine_guid)
-            except Exception:
-                pass
+            except (OSError, FileNotFoundError, PermissionError) as e:
+                logger.debug(f"Could not read Windows machine GUID: {e}")
 
             # Computer name as fallback
             try:
                 components.append(os.environ.get('COMPUTERNAME', ''))
-            except Exception:
-                pass
+            except KeyError:
+                pass  # Environment variable not set
         else:
             # Linux: Machine ID
             try:
                 with open('/etc/machine-id', 'r') as f:
                     components.append(f.read().strip())
-            except Exception:
-                pass
+            except (OSError, IOError, FileNotFoundError) as e:
+                logger.debug(f"Could not read machine-id: {e}")
 
             # Daemon installation time (if available)
             try:
                 stat = os.stat('/etc/boundary-daemon')
                 components.append(str(stat.st_ctime))
-            except Exception:
-                pass
+            except (OSError, FileNotFoundError) as e:
+                logger.debug(f"Could not stat boundary-daemon dir: {e}")
 
             # Root filesystem UUID
             try:
@@ -150,8 +150,8 @@ class SecureProfileManager:
                 )
                 if result.returncode == 0:
                     components.append(result.stdout.decode().strip())
-            except Exception:
-                pass
+            except (OSError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+                logger.debug(f"Could not get filesystem UUID: {e}")
 
         # Combine and hash
         if components:
@@ -168,7 +168,8 @@ class SecureProfileManager:
             try:
                 import ctypes
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
-            except Exception:
+            except (OSError, AttributeError, ImportError) as e:
+                logger.debug(f"Could not check admin privileges: {e}")
                 return False
         else:
             return os.geteuid() == 0
@@ -271,7 +272,8 @@ class SecureProfileManager:
                 import stat
                 mode = os.stat(path).st_mode
                 return not (mode & stat.S_IWRITE)
-            except Exception:
+            except (OSError, FileNotFoundError) as e:
+                logger.debug(f"Could not check immutable status: {e}")
                 return False
         else:
             try:
@@ -285,7 +287,8 @@ class SecureProfileManager:
                     # lsattr output: "----i-------- /path/to/file"
                     return 'i' in output.split()[0] if output else False
                 return False
-            except Exception:
+            except (OSError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+                logger.debug(f"Could not check immutable status: {e}")
                 return False
 
     def _load_manifest(self):
@@ -419,12 +422,13 @@ class SecureProfileManager:
                 # Atomic rename
                 os.rename(temp_path, profile_path)
 
-            except Exception:
+            except (OSError, IOError, PermissionError) as e:
                 # Cleanup temp file on error
+                logger.error(f"Failed to save profile {profile_name}: {e}")
                 try:
                     os.unlink(temp_path)
-                except Exception:
-                    pass
+                except (OSError, FileNotFoundError):
+                    pass  # File may not exist
                 raise
 
             # Set immutable flag
@@ -702,7 +706,7 @@ if __name__ == '__main__':
         try:
             import ctypes
             is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (OSError, AttributeError, ImportError):
             is_admin = False
     else:
         is_admin = os.geteuid() == 0
