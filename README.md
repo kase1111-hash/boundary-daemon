@@ -1292,16 +1292,61 @@ Layer 5: Hardware controls (disabled USB, air-gap)     ← PHYSICAL security
 
 ### Platform Support
 
-| Feature | Linux | Windows |
-|---------|-------|---------|
-| Core Daemon | Yes | Yes |
-| Monitoring | Yes | Yes |
-| Config Encryption | Yes | Yes |
-| Cryptographic Logging | Yes | Yes |
-| Network Enforcement | Yes | No |
-| USB Enforcement | Yes | No |
-| Process Enforcement | Yes | No |
-| Watchdog Service | Yes | No |
+| Feature | Linux | Windows | macOS |
+|---------|-------|---------|-------|
+| Core Daemon | Full | Full | Full |
+| State Monitoring | Full | Full | Full |
+| Policy Engine | Full | Full | Full |
+| Event Logging | Full | Full | Full |
+| Cryptographic Signing | Full | Full | Full |
+| TUI Dashboard | Full | Full | Full |
+| SIEM Integration | Full | Full | Full |
+| API Server | Full | Full | Full |
+| **Enforcement Features** | | | |
+| Network Enforcement | Full (iptables/nftables) | Partial (Windows Firewall) | No |
+| USB Enforcement | Full (udev) | No | No |
+| Process Enforcement | Full (seccomp-bpf) | No | No |
+| Namespace Isolation | Full | No | No |
+| cgroups Resource Limits | Full | No | No |
+| **System Services** | | | |
+| systemd Integration | Full | N/A | N/A |
+| Hardened Watchdog | Full (Unix sockets) | No | Limited |
+| Service Persistence | Full | Manual | Manual |
+
+### Windows Limitations
+
+Windows support focuses on **monitoring and audit** capabilities. The following features are **not available** on Windows due to OS-level differences:
+
+**Enforcement (requires Linux kernel features):**
+- Network blocking via iptables/nftables (Windows Firewall provides partial alternative)
+- USB device blocking via udev rules
+- Process sandboxing via seccomp-bpf
+- Namespace isolation (PID, network, mount)
+- cgroups v2 resource limits
+
+**System Integration:**
+- Unix domain sockets (TCP fallback used instead)
+- Hardened watchdog with ptrace protection
+- systemd service management
+- `/proc` filesystem monitoring
+
+**What DOES work on Windows:**
+- Full policy evaluation and decision-making
+- Complete event logging with hash chains
+- Ed25519 cryptographic signatures
+- State monitoring (network, USB, processes)
+- TUI dashboard with all visualizations
+- SIEM event shipping
+- Windows Firewall integration (partial network control)
+- API server (via TCP on port 31415)
+
+**Recommended Windows Usage:**
+Windows deployment is best suited for:
+1. Development and testing
+2. Monitoring-only deployments
+3. Environments where external systems enforce daemon decisions
+
+For production security enforcement, **Linux is strongly recommended**.
 
 ## Installation
 

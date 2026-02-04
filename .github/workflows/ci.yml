@@ -33,11 +33,11 @@ jobs:
 
       - name: Run type checker (mypy)
         run: |
-          mypy daemon/ --ignore-missing-imports --no-error-summary || true
+          mypy daemon/ --ignore-missing-imports --no-error-summary
 
       - name: Run tests with coverage
         run: |
-          pytest tests/ --cov=daemon --cov-report=xml --cov-report=term -v
+          pytest tests/ --cov=daemon --cov-report=xml --cov-report=term -v --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'
@@ -63,9 +63,9 @@ jobs:
 
       - name: Run Bandit security scanner
         run: |
-          bandit -r daemon/ -ll --skip B101,B404,B603,B607 || true
+          bandit -r daemon/ -ll --skip B101,B404,B603,B607
 
       - name: Check dependencies for vulnerabilities
         run: |
           pip install -r requirements.txt
-          safety check || true
+          safety check
