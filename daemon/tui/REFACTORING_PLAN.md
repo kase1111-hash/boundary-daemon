@@ -104,9 +104,9 @@ The following modules have been created:
 | **weather.py** | WeatherMode enum, MatrixRain particle system | ~820 | Complete |
 | **backdrop.py** | TunnelBackdrop 3D tunnel effect | ~230 | Complete |
 | **creatures.py** | LightningBolt, AlleyRat, LurkingShadow | ~470 | Complete |
+| **client.py** | DashboardClient API communication | ~970 | Complete |
 
 **Remaining to extract:**
-- **client.py** - DashboardClient (~950 lines)
 - **scene.py** - AlleyScene (~7000 lines) - largest component
 
 These modules are ready for integration but dashboard.py has not yet been updated
@@ -123,12 +123,13 @@ from .colors import Colors
 from .weather import WeatherMode, MatrixRain
 from .backdrop import TunnelBackdrop
 from .creatures import LightningBolt, AlleyRat, LurkingShadow
+from .client import DashboardClient
 ```
 
 ## Next Steps
 
-1. Extract DashboardClient to client.py
-2. Extract AlleyScene to scene.py (largest component)
+1. ~~Extract DashboardClient to client.py~~ ✓ Complete
+2. Extract AlleyScene to scene.py (largest component - ~7000 lines)
 3. Update dashboard.py imports incrementally
 4. Add integration tests for modular structure
 5. Update __init__.py for backward compatibility
