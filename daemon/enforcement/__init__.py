@@ -155,6 +155,54 @@ except ImportError:
     VolumeInfo = None
     get_encryption_checker = None
 
+# eBPF Real-Time Monitor (Phase 2: Eliminates polling race condition)
+try:
+    from .ebpf_monitor import (
+        EBPFMonitor,
+        EBPFMonitorError,
+        EventType as EBPFEventType,
+        MonitorAction,
+        SecurityEvent,
+        MonitorPolicy,
+        check_ebpf_requirements,
+        get_ebpf_monitor,
+        BCC_AVAILABLE,
+    )
+    EBPF_AVAILABLE = BCC_AVAILABLE
+except ImportError:
+    EBPF_AVAILABLE = False
+    EBPFMonitor = None
+    EBPFMonitorError = None
+    EBPFEventType = None
+    MonitorAction = None
+    SecurityEvent = None
+    MonitorPolicy = None
+    check_ebpf_requirements = None
+    get_ebpf_monitor = None
+    BCC_AVAILABLE = False
+
+# Hardware Watchdog (Phase 3: Daemon death protection)
+try:
+    from .hardware_watchdog import (
+        HardwareWatchdogManager,
+        HardwareWatchdogError,
+        WatchdogCapability,
+        WatchdogInfo,
+        WatchdogLockdownManager,
+        check_watchdog_support,
+        get_hardware_watchdog,
+    )
+    HARDWARE_WATCHDOG_AVAILABLE = True
+except ImportError:
+    HARDWARE_WATCHDOG_AVAILABLE = False
+    HardwareWatchdogManager = None
+    HardwareWatchdogError = None
+    WatchdogCapability = None
+    WatchdogInfo = None
+    WatchdogLockdownManager = None
+    check_watchdog_support = None
+    get_hardware_watchdog = None
+
 __all__ = [
     # Network Enforcement (Plan 1 Phase 1)
     'NetworkEnforcer',
@@ -223,4 +271,24 @@ __all__ = [
     'VolumeInfo',
     'get_encryption_checker',
     'DISK_ENCRYPTION_AVAILABLE',
+    # eBPF Real-Time Monitor (Phase 2)
+    'EBPFMonitor',
+    'EBPFMonitorError',
+    'EBPFEventType',
+    'MonitorAction',
+    'SecurityEvent',
+    'MonitorPolicy',
+    'check_ebpf_requirements',
+    'get_ebpf_monitor',
+    'BCC_AVAILABLE',
+    'EBPF_AVAILABLE',
+    # Hardware Watchdog (Phase 3)
+    'HardwareWatchdogManager',
+    'HardwareWatchdogError',
+    'WatchdogCapability',
+    'WatchdogInfo',
+    'WatchdogLockdownManager',
+    'check_watchdog_support',
+    'get_hardware_watchdog',
+    'HARDWARE_WATCHDOG_AVAILABLE',
 ]

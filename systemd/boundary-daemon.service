@@ -48,10 +48,21 @@ WorkingDirectory=/opt/boundary-daemon
 Environment="PYTHONUNBUFFERED=1"
 Environment="BOUNDARY_LOG_DIR=/var/log/boundary-daemon"
 Environment="BOUNDARY_RUN_DIR=/var/run/boundary-daemon"
+Environment="BOUNDARY_CONFIG_DIR=/etc/boundary-daemon"
+
+# PHASE 1 ENFORCEMENT: Enable kernel-level enforcement
+# These environment variables activate actual blocking (not just logging)
+Environment="BOUNDARY_ENFORCEMENT_MODE=enforcing"
+Environment="BOUNDARY_NETWORK_ENFORCE=1"
+Environment="BOUNDARY_USB_ENFORCE=1"
+Environment="BOUNDARY_PROCESS_ENFORCE=1"
+Environment="BOUNDARY_PERSIST_PROTECTIONS=1"
 
 # Start daemon with enforcement enabled
 ExecStart=/usr/bin/python3 -m daemon.boundary_daemon \
-    --mode=open \
+    --mode=trusted \
+    --config=/etc/boundary-daemon/boundary.conf \
+    --enforcement-config=/etc/boundary-daemon/enforcement.conf \
     --log-dir=/var/log/boundary-daemon
 
 # Graceful shutdown
@@ -71,6 +82,18 @@ StartLimitBurst=5
 # Notify systemd when ready
 NotifyAccess=main
 
+# PHASE 3: Systemd watchdog integration
+# If daemon doesn't ping systemd within WatchdogSec, systemd will:
+# 1. Kill the daemon (SIGABRT)
+# 2. Restart it (due to Restart=always)
+# 3. If StartLimitBurst exceeded, take FailureAction
+WatchdogSec=30
+
+# PHASE 3: Hardware watchdog flag
+# Enable hardware watchdog integration
+Environment="BOUNDARY_HARDWARE_WATCHDOG=1"
+Environment="BOUNDARY_WATCHDOG_TIMEOUT=60"
+
 # Security hardening
 NoNewPrivileges=no
 PrivateTmp=yes
@@ -84,6 +107,8 @@ ProtectControlGroups=yes
 ReadWritePaths=/var/log/boundary-daemon
 ReadWritePaths=/var/run/boundary-daemon
 ReadWritePaths=/etc/boundary-daemon
+ReadWritePaths=/var/lib/boundary-daemon
+ReadWritePaths=/etc/udev/rules.d
 RuntimeDirectory=boundary-daemon
 RuntimeDirectoryMode=0700
 LogsDirectory=boundary-daemon
