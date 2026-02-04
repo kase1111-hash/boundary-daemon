@@ -95,17 +95,40 @@ daemon/tui/
 
 ## Completed Work
 
-The following modules have been created as the first phase:
+The following modules have been created:
 
-1. **models.py** - Contains PanelType, DashboardEvent, DashboardAlert, SandboxStatus
-2. **colors.py** - Contains Colors class with all color pair definitions
+| Module | Contents | Lines | Status |
+|--------|----------|-------|--------|
+| **models.py** | PanelType, DashboardEvent, DashboardAlert, SandboxStatus | ~60 | Complete |
+| **colors.py** | Colors class with all color pair definitions | ~200 | Complete |
+| **weather.py** | WeatherMode enum, MatrixRain particle system | ~820 | Complete |
+| **backdrop.py** | TunnelBackdrop 3D tunnel effect | ~230 | Complete |
+| **creatures.py** | LightningBolt, AlleyRat, LurkingShadow | ~470 | Complete |
+
+**Remaining to extract:**
+- **client.py** - DashboardClient (~950 lines)
+- **scene.py** - AlleyScene (~7000 lines) - largest component
 
 These modules are ready for integration but dashboard.py has not yet been updated
-to use them (to avoid breaking changes during initial evaluation phase).
+to use them (to avoid breaking changes during this phase).
+
+## Integration Strategy
+
+When integrating, update dashboard.py imports like this:
+
+```python
+# Replace local class definitions with imports
+from .models import PanelType, DashboardEvent, DashboardAlert, SandboxStatus
+from .colors import Colors
+from .weather import WeatherMode, MatrixRain
+from .backdrop import TunnelBackdrop
+from .creatures import LightningBolt, AlleyRat, LurkingShadow
+```
 
 ## Next Steps
 
-1. Complete extraction of remaining modules
-2. Update dashboard.py imports incrementally
-3. Add integration tests for modular structure
-4. Update __init__.py for backward compatibility
+1. Extract DashboardClient to client.py
+2. Extract AlleyScene to scene.py (largest component)
+3. Update dashboard.py imports incrementally
+4. Add integration tests for modular structure
+5. Update __init__.py for backward compatibility
