@@ -181,6 +181,28 @@ except ImportError:
     get_ebpf_monitor = None
     BCC_AVAILABLE = False
 
+# Hardware Watchdog (Phase 3: Daemon death protection)
+try:
+    from .hardware_watchdog import (
+        HardwareWatchdogManager,
+        HardwareWatchdogError,
+        WatchdogCapability,
+        WatchdogInfo,
+        WatchdogLockdownManager,
+        check_watchdog_support,
+        get_hardware_watchdog,
+    )
+    HARDWARE_WATCHDOG_AVAILABLE = True
+except ImportError:
+    HARDWARE_WATCHDOG_AVAILABLE = False
+    HardwareWatchdogManager = None
+    HardwareWatchdogError = None
+    WatchdogCapability = None
+    WatchdogInfo = None
+    WatchdogLockdownManager = None
+    check_watchdog_support = None
+    get_hardware_watchdog = None
+
 __all__ = [
     # Network Enforcement (Plan 1 Phase 1)
     'NetworkEnforcer',
@@ -260,4 +282,13 @@ __all__ = [
     'get_ebpf_monitor',
     'BCC_AVAILABLE',
     'EBPF_AVAILABLE',
+    # Hardware Watchdog (Phase 3)
+    'HardwareWatchdogManager',
+    'HardwareWatchdogError',
+    'WatchdogCapability',
+    'WatchdogInfo',
+    'WatchdogLockdownManager',
+    'check_watchdog_support',
+    'get_hardware_watchdog',
+    'HARDWARE_WATCHDOG_AVAILABLE',
 ]

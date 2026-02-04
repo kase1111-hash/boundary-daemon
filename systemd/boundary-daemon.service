@@ -82,6 +82,18 @@ StartLimitBurst=5
 # Notify systemd when ready
 NotifyAccess=main
 
+# PHASE 3: Systemd watchdog integration
+# If daemon doesn't ping systemd within WatchdogSec, systemd will:
+# 1. Kill the daemon (SIGABRT)
+# 2. Restart it (due to Restart=always)
+# 3. If StartLimitBurst exceeded, take FailureAction
+WatchdogSec=30
+
+# PHASE 3: Hardware watchdog flag
+# Enable hardware watchdog integration
+Environment="BOUNDARY_HARDWARE_WATCHDOG=1"
+Environment="BOUNDARY_WATCHDOG_TIMEOUT=60"
+
 # Security hardening
 NoNewPrivileges=no
 PrivateTmp=yes
