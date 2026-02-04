@@ -105,9 +105,9 @@ The following modules have been created:
 | **backdrop.py** | TunnelBackdrop 3D tunnel effect | ~230 | Complete |
 | **creatures.py** | LightningBolt, AlleyRat, LurkingShadow | ~470 | Complete |
 | **client.py** | DashboardClient API communication | ~970 | Complete |
+| **scene.py** | AlleyScene visual scene rendering | ~7050 | Complete |
 
-**Remaining to extract:**
-- **scene.py** - AlleyScene (~7000 lines) - largest component
+**All major components extracted!**
 
 These modules are ready for integration but dashboard.py has not yet been updated
 to use them (to avoid breaking changes during this phase).
@@ -124,12 +124,22 @@ from .weather import WeatherMode, MatrixRain
 from .backdrop import TunnelBackdrop
 from .creatures import LightningBolt, AlleyRat, LurkingShadow
 from .client import DashboardClient
+from .scene import AlleyScene
 ```
 
 ## Next Steps
 
 1. ~~Extract DashboardClient to client.py~~ ✓ Complete
-2. Extract AlleyScene to scene.py (largest component - ~7000 lines)
+2. ~~Extract AlleyScene to scene.py~~ ✓ Complete
 3. Update dashboard.py imports incrementally
 4. Add integration tests for modular structure
 5. Update __init__.py for backward compatibility
+
+## Summary
+
+**Total lines extracted: ~9,800** across 7 modules
+**Remaining in dashboard.py: ~2,850 lines** (Dashboard class + run_dashboard function)
+
+The monolithic 12,647-line file has been decomposed into 8 focused modules:
+- 7 extracted modules (9,800 lines)
+- 1 main dashboard.py (2,850 lines with Dashboard class and entry point)
