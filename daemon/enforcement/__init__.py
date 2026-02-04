@@ -12,6 +12,10 @@ Components:
 - SecureProfileManager: Cryptographically signed seccomp profiles with integrity verification
 - ProtectionPersistenceManager: Ensures protections survive daemon restarts
 - SecureProcessTerminator: Safe process termination without broad pattern matching
+- EBPFMonitor: Real-time kernel tracepoint monitoring (Phase 2)
+- HardwareWatchdogManager: Hardware watchdog for daemon death protection (Phase 3)
+- DynamicMACPolicyManager: SELinux/AppArmor policy generation (Phase 4)
+- SecurityVerifier: Comprehensive verification suite for all phases (Phase 5)
 
 SECURITY: SecureProfileManager addresses "Seccomp Profiles Stored in Writable Directory"
 by providing HMAC integrity verification, restrictive permissions, and optional immutable flags.
@@ -229,6 +233,28 @@ except ImportError:
     check_mac_support = None
     get_mac_policy_manager = None
 
+# Security Verification (Phase 5: Comprehensive verification suite)
+try:
+    from .security_verification import (
+        SecurityVerifier,
+        SecurityReport,
+        PhaseReport,
+        TestCase,
+        TestResult,
+        SecurityLevel,
+        run_verification,
+    )
+    SECURITY_VERIFICATION_AVAILABLE = True
+except ImportError:
+    SECURITY_VERIFICATION_AVAILABLE = False
+    SecurityVerifier = None
+    SecurityReport = None
+    PhaseReport = None
+    TestCase = None
+    TestResult = None
+    SecurityLevel = None
+    run_verification = None
+
 __all__ = [
     # Network Enforcement (Plan 1 Phase 1)
     'NetworkEnforcer',
@@ -328,4 +354,13 @@ __all__ = [
     'check_mac_support',
     'get_mac_policy_manager',
     'DYNAMIC_MAC_AVAILABLE',
+    # Security Verification (Phase 5)
+    'SecurityVerifier',
+    'SecurityReport',
+    'PhaseReport',
+    'TestCase',
+    'TestResult',
+    'SecurityLevel',
+    'run_verification',
+    'SECURITY_VERIFICATION_AVAILABLE',
 ]
