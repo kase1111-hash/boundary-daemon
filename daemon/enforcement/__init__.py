@@ -203,6 +203,32 @@ except ImportError:
     check_watchdog_support = None
     get_hardware_watchdog = None
 
+# Dynamic MAC Policy (Phase 4: Kernel-level mandatory access control)
+try:
+    from .dynamic_mac_policy import (
+        DynamicMACPolicyManager,
+        SELinuxPolicyGenerator,
+        AppArmorPolicyGenerator,
+        MACSystem,
+        PolicyMode,
+        ModePolicy,
+        MODE_POLICIES,
+        check_mac_support,
+        get_mac_policy_manager,
+    )
+    DYNAMIC_MAC_AVAILABLE = True
+except ImportError:
+    DYNAMIC_MAC_AVAILABLE = False
+    DynamicMACPolicyManager = None
+    SELinuxPolicyGenerator = None
+    AppArmorPolicyGenerator = None
+    MACSystem = None
+    PolicyMode = None
+    ModePolicy = None
+    MODE_POLICIES = None
+    check_mac_support = None
+    get_mac_policy_manager = None
+
 __all__ = [
     # Network Enforcement (Plan 1 Phase 1)
     'NetworkEnforcer',
@@ -291,4 +317,15 @@ __all__ = [
     'check_watchdog_support',
     'get_hardware_watchdog',
     'HARDWARE_WATCHDOG_AVAILABLE',
+    # Dynamic MAC Policy (Phase 4)
+    'DynamicMACPolicyManager',
+    'SELinuxPolicyGenerator',
+    'AppArmorPolicyGenerator',
+    'MACSystem',
+    'PolicyMode',
+    'ModePolicy',
+    'MODE_POLICIES',
+    'check_mac_support',
+    'get_mac_policy_manager',
+    'DYNAMIC_MAC_AVAILABLE',
 ]
