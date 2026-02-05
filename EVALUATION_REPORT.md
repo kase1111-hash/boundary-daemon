@@ -557,7 +557,7 @@ pyttsx3>=2.90          # TTS (optional)
 
 ### Long-term
 
-1. **Consider scope reduction** — 140+ modules may exceed maintainability
+1. ~~**Scope reduction**~~ **DONE** - Archived 5 orphaned modules (~6,860 lines): intelligence, containment, blockchain, federation, airgap. See SCOPE_REDUCTION.md
 2. ~~**Extract TUI**~~ **DONE** - Created standalone `boundary-tui` package with DaemonProtocol interface
 3. **Add contributor documentation** to reduce bus factor
 4. **Performance benchmarking** for production deployments
