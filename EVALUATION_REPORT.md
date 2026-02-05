@@ -558,7 +558,7 @@ pyttsx3>=2.90          # TTS (optional)
 ### Long-term
 
 1. **Consider scope reduction** — 140+ modules may exceed maintainability
-2. **Extract TUI** to separate package (it's 549KB of visualization code)
+2. ~~**Extract TUI**~~ **DONE** - Created standalone `boundary-tui` package with DaemonProtocol interface
 3. **Add contributor documentation** to reduce bus factor
 4. **Performance benchmarking** for production deployments
 
