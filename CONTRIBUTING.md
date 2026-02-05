@@ -12,6 +12,18 @@ Before contributing, please understand that this project prioritizes security ov
 4. **Include comprehensive tests**
 5. **Pass security review**
 
+## Documentation
+
+Before diving in, familiarize yourself with the codebase:
+
+| Document | Purpose |
+|----------|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design and security model |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Practical guide for new contributors |
+| [docs/MODULE_MAP.md](docs/MODULE_MAP.md) | Module organization and navigation |
+| [SPEC.md](SPEC.md) | Formal specification |
+| [ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md) | How enforcement works |
+
 ## Getting Started
 
 ### Prerequisites
