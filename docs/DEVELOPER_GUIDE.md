@@ -358,6 +358,43 @@ elif IS_WINDOWS:
     pass
 ```
 
+## Performance Benchmarking
+
+Run the benchmark suite to measure component performance:
+
+```bash
+# Run all benchmarks (default: 10,000 iterations)
+python -m benchmarks.run_benchmarks
+
+# Quick run (1,000 iterations)
+python -m benchmarks.run_benchmarks --quick
+
+# Full run (50,000 iterations)
+python -m benchmarks.run_benchmarks --full
+
+# Run specific component
+python -m benchmarks.run_benchmarks --component policy
+python -m benchmarks.run_benchmarks --component eventlog
+python -m benchmarks.run_benchmarks --component tripwire
+
+# Export results as JSON
+python -m benchmarks.run_benchmarks --json > results.json
+
+# Save to file
+python -m benchmarks.run_benchmarks --save results.json
+```
+
+### Performance Thresholds
+
+| Benchmark | Max Latency | Min Throughput | Notes |
+|-----------|-------------|----------------|-------|
+| `policy_eval_simple` | 50 µs | 20,000 ops/sec | Core decision path |
+| `policy_eval_complex` | 100 µs | 10,000 ops/sec | With network checks |
+| `log_event_simple` | 5,000 µs | 200 ops/sec | Uses fsync() for durability |
+| `check_violations_clean` | 100 µs | 10,000 ops/sec | Tripwire checks |
+
+These thresholds ensure the daemon doesn't introduce noticeable latency to agent operations. Event logging is slower due to fsync() after each write, which ensures crash recovery.
+
 ## Getting Help
 
 1. **Read the docs**: `ARCHITECTURE.md`, `SPEC.md`, `ENFORCEMENT_MODEL.md`
