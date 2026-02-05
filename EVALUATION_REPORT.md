@@ -555,12 +555,12 @@ pyttsx3>=2.90          # TTS (optional)
 2. ~~**Document Windows limitations**~~ **DONE** - Added comprehensive Windows Limitations section to README
 3. ~~**Add integration test suite**~~ **DONE** - Created `tests/integration/test_enforcement_integration.py` with Docker support
 
-### Long-term
+### Long-term - ALL COMPLETE
 
-1. **Consider scope reduction** — 140+ modules may exceed maintainability
-2. **Extract TUI** to separate package (it's 549KB of visualization code)
-3. **Add contributor documentation** to reduce bus factor
-4. **Performance benchmarking** for production deployments
+1. ~~**Scope reduction**~~ **DONE** - Archived 5 orphaned modules (~6,860 lines): intelligence, containment, blockchain, federation, airgap. See SCOPE_REDUCTION.md
+2. ~~**Extract TUI**~~ **DONE** - Created standalone `boundary-tui` package with DaemonProtocol interface
+3. ~~**Add contributor documentation**~~ **DONE** - Created `docs/DEVELOPER_GUIDE.md` and `docs/MODULE_MAP.md` with practical onboarding guides
+4. ~~**Performance benchmarking**~~ **DONE** - Created `benchmarks/` suite with policy engine, event logger, and tripwire benchmarks. Run with `python -m benchmarks.run_benchmarks`
 
 ---
 
