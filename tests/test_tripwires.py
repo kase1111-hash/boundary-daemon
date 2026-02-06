@@ -446,3 +446,638 @@ class TestTripwireEdgeCases:
         assert correct_time >= 0
         assert wrong_start_time >= 0
         assert wrong_end_time >= 0
+
+
+# ===========================================================================
+# Helper: Create EnvironmentState for testing
+# ===========================================================================
+
+def _make_env_state(
+    network=None,
+    hardware_trust=None,
+    usb_devices=None,
+    external_model_endpoints=None,
+    suspicious_processes=None,
+    shell_escapes_detected=0,
+    active_interfaces=None,
+):
+    """Build an EnvironmentState with sensible defaults for testing."""
+    from daemon.state_monitor import (
+        EnvironmentState, NetworkState, HardwareTrust,
+        SpecialtyNetworkStatus,
+    )
+    return EnvironmentState(
+        timestamp="2025-01-01T00:00:00Z",
+        network=network or NetworkState.OFFLINE,
+        hardware_trust=hardware_trust or HardwareTrust.HIGH,
+        active_interfaces=active_interfaces or [],
+        interface_types={},
+        has_internet=False,
+        vpn_active=False,
+        dns_available=False,
+        specialty_networks=SpecialtyNetworkStatus(
+            lora_devices=[], thread_devices=[], wimax_interfaces=[],
+            irda_devices=[], ant_plus_devices=[], cellular_alerts=[],
+        ),
+        dns_security_alerts=[],
+        arp_security_alerts=[],
+        wifi_security_alerts=[],
+        threat_intel_alerts=[],
+        file_integrity_alerts=[],
+        traffic_anomaly_alerts=[],
+        process_security_alerts=[],
+        usb_devices=usb_devices if usb_devices is not None else set(),
+        block_devices=set(),
+        camera_available=False,
+        mic_available=False,
+        tpm_present=True,
+        external_model_endpoints=external_model_endpoints or [],
+        suspicious_processes=suspicious_processes or [],
+        shell_escapes_detected=shell_escapes_detected,
+        keyboard_active=False,
+        screen_unlocked=False,
+        last_activity=None,
+    )
+
+
+# ===========================================================================
+# Violation Detection Tests — NETWORK_IN_AIRGAP
+# ===========================================================================
+
+class TestViolationNetworkInAirgap:
+    """Tests for network-in-airgap violation detection."""
+
+    def test_network_online_in_airgap_triggers_violation(self):
+        """Network online in AIRGAP mode should trigger violation."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        # First check sets baseline (offline)
+        env_offline = _make_env_state(network=NetworkState.OFFLINE)
+        result = ts.check_violations(BoundaryMode.AIRGAP, env_offline)
+        assert result is None
+
+        # Network comes online — should trigger
+        env_online = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["eth0"])
+        result = ts.check_violations(BoundaryMode.AIRGAP, env_online)
+        assert result is not None
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_network_already_online_in_airgap_triggers(self):
+        """Network already online when first checked in AIRGAP should trigger."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env_online = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["wlan0"])
+        result = ts.check_violations(BoundaryMode.AIRGAP, env_online)
+        assert result is not None
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_network_online_in_coldroom_triggers(self):
+        """Network online in COLDROOM (>= AIRGAP) should also trigger."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env_online = _make_env_state(network=NetworkState.ONLINE)
+        result = ts.check_violations(BoundaryMode.COLDROOM, env_online)
+        assert result is not None
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_network_online_in_lockdown_triggers(self):
+        """Network online in LOCKDOWN (>= AIRGAP) should trigger."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env_online = _make_env_state(network=NetworkState.ONLINE)
+        result = ts.check_violations(BoundaryMode.LOCKDOWN, env_online)
+        assert result is not None
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_network_online_in_open_does_not_trigger(self):
+        """Network online in OPEN mode should NOT trigger."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env_online = _make_env_state(network=NetworkState.ONLINE)
+        result = ts.check_violations(BoundaryMode.OPEN, env_online)
+        assert result is None
+
+    def test_network_online_in_trusted_does_not_trigger(self):
+        """Network online in TRUSTED mode (< AIRGAP) should NOT trigger."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env_online = _make_env_state(network=NetworkState.ONLINE)
+        result = ts.check_violations(BoundaryMode.TRUSTED, env_online)
+        assert result is None
+
+    def test_network_offline_in_airgap_does_not_trigger(self):
+        """Network offline in AIRGAP is expected — should NOT trigger."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env_offline = _make_env_state(network=NetworkState.OFFLINE)
+        result = ts.check_violations(BoundaryMode.AIRGAP, env_offline)
+        assert result is None
+
+    def test_violation_records_interface_details(self):
+        """Violation details should include which interfaces are active."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["eth0", "wlan0"])
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert "eth0" in result.details or "wlan0" in result.details
+
+
+# ===========================================================================
+# Violation Detection Tests — USB_IN_COLDROOM
+# ===========================================================================
+
+class TestViolationUsbInColdroom:
+    """Tests for USB-in-coldroom violation detection."""
+
+    def test_new_usb_device_in_coldroom_triggers(self):
+        """New USB device in COLDROOM should trigger violation."""
+        ts = TripwireSystem()
+
+        # First check sets baseline with no USB
+        env_no_usb = _make_env_state(usb_devices=set())
+        ts.check_violations(BoundaryMode.COLDROOM, env_no_usb)
+
+        # USB inserted
+        env_usb = _make_env_state(usb_devices={"usb-flash-drive"})
+        result = ts.check_violations(BoundaryMode.COLDROOM, env_usb)
+        assert result is not None
+        assert result.violation_type == ViolationType.USB_IN_COLDROOM
+
+    def test_new_usb_device_in_lockdown_triggers(self):
+        """New USB device in LOCKDOWN (>= COLDROOM) should trigger."""
+        ts = TripwireSystem()
+
+        env_no_usb = _make_env_state(usb_devices=set())
+        ts.check_violations(BoundaryMode.LOCKDOWN, env_no_usb)
+
+        env_usb = _make_env_state(usb_devices={"usb-keyboard"})
+        result = ts.check_violations(BoundaryMode.LOCKDOWN, env_usb)
+        assert result is not None
+        assert result.violation_type == ViolationType.USB_IN_COLDROOM
+
+    def test_usb_in_airgap_does_not_trigger(self):
+        """USB in AIRGAP (< COLDROOM) should NOT trigger USB violation."""
+        ts = TripwireSystem()
+
+        env_no_usb = _make_env_state(usb_devices=set())
+        ts.check_violations(BoundaryMode.AIRGAP, env_no_usb)
+
+        env_usb = _make_env_state(usb_devices={"usb-device"})
+        result = ts.check_violations(BoundaryMode.AIRGAP, env_usb)
+        # Should be None (no network violation either since offline)
+        assert result is None
+
+    def test_baseline_usb_devices_not_flagged(self):
+        """USB devices present at baseline should NOT trigger."""
+        ts = TripwireSystem()
+
+        # Baseline includes a device
+        env_with_device = _make_env_state(usb_devices={"keyboard", "mouse"})
+        ts.check_violations(BoundaryMode.COLDROOM, env_with_device)
+
+        # Same devices — should be fine
+        result = ts.check_violations(BoundaryMode.COLDROOM, env_with_device)
+        assert result is None
+
+    def test_additional_usb_beyond_baseline_triggers(self):
+        """Only NEW devices beyond baseline should trigger."""
+        ts = TripwireSystem()
+
+        env_baseline = _make_env_state(usb_devices={"keyboard"})
+        ts.check_violations(BoundaryMode.COLDROOM, env_baseline)
+
+        # Add a new device while keeping baseline device
+        env_new = _make_env_state(usb_devices={"keyboard", "usb-storage"})
+        result = ts.check_violations(BoundaryMode.COLDROOM, env_new)
+        assert result is not None
+        assert "usb-storage" in result.details
+
+
+# ===========================================================================
+# Violation Detection Tests — EXTERNAL_MODEL_VIOLATION
+# ===========================================================================
+
+class TestViolationExternalModel:
+    """Tests for external model violation detection."""
+
+    def test_external_model_in_airgap_triggers(self):
+        """External model endpoints in AIRGAP should trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(external_model_endpoints=["http://api.openai.com"])
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
+
+    def test_external_model_in_coldroom_triggers(self):
+        """External model endpoints in COLDROOM should trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(external_model_endpoints=["http://localhost:11434"])
+        result = ts.check_violations(BoundaryMode.COLDROOM, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
+
+    def test_external_model_in_open_does_not_trigger(self):
+        """External model endpoints in OPEN should NOT trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(external_model_endpoints=["http://api.openai.com"])
+        result = ts.check_violations(BoundaryMode.OPEN, env)
+        assert result is None
+
+    def test_no_external_models_in_airgap_ok(self):
+        """No external models in AIRGAP is expected — should NOT trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(external_model_endpoints=[])
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result is None
+
+
+# ===========================================================================
+# Violation Detection Tests — SUSPICIOUS_PROCESS
+# ===========================================================================
+
+class TestViolationSuspiciousProcess:
+    """Tests for suspicious process detection."""
+
+    def test_shell_escapes_above_threshold_triggers(self):
+        """Shell escapes > 10 should trigger in any mode."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(shell_escapes_detected=11)
+        result = ts.check_violations(BoundaryMode.OPEN, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
+
+    def test_shell_escapes_at_threshold_does_not_trigger(self):
+        """Shell escapes == 10 should NOT trigger (> 10 required)."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(shell_escapes_detected=10)
+        result = ts.check_violations(BoundaryMode.OPEN, env)
+        assert result is None
+
+    def test_suspicious_processes_in_trusted_triggers(self):
+        """Suspicious processes in TRUSTED+ mode should trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(suspicious_processes=["sudo", "pkexec"])
+        result = ts.check_violations(BoundaryMode.TRUSTED, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
+
+    def test_suspicious_processes_in_open_does_not_trigger(self):
+        """Suspicious processes in OPEN mode should NOT trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(suspicious_processes=["sudo"])
+        result = ts.check_violations(BoundaryMode.OPEN, env)
+        assert result is None
+
+    def test_suspicious_processes_in_restricted_does_not_trigger(self):
+        """Suspicious processes in RESTRICTED (< TRUSTED) should NOT trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(suspicious_processes=["su"])
+        result = ts.check_violations(BoundaryMode.RESTRICTED, env)
+        assert result is None
+
+
+# ===========================================================================
+# Violation Detection Tests — HARDWARE_TRUST_DEGRADED
+# ===========================================================================
+
+class TestViolationHardwareTrust:
+    """Tests for hardware trust degradation detection."""
+
+    def test_low_trust_in_airgap_triggers(self):
+        """LOW hardware trust in AIRGAP should trigger."""
+        from daemon.state_monitor import HardwareTrust
+        ts = TripwireSystem()
+
+        env = _make_env_state(hardware_trust=HardwareTrust.LOW)
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
+
+    def test_low_trust_in_coldroom_triggers(self):
+        """LOW hardware trust in COLDROOM should trigger."""
+        from daemon.state_monitor import HardwareTrust
+        ts = TripwireSystem()
+
+        env = _make_env_state(hardware_trust=HardwareTrust.LOW)
+        result = ts.check_violations(BoundaryMode.COLDROOM, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
+
+    def test_medium_trust_in_airgap_does_not_trigger(self):
+        """MEDIUM hardware trust in AIRGAP should NOT trigger (only LOW triggers)."""
+        from daemon.state_monitor import HardwareTrust
+        ts = TripwireSystem()
+
+        env = _make_env_state(hardware_trust=HardwareTrust.MEDIUM)
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result is None
+
+    def test_low_trust_in_trusted_does_not_trigger(self):
+        """LOW hardware trust in TRUSTED (< AIRGAP) should NOT trigger."""
+        from daemon.state_monitor import HardwareTrust
+        ts = TripwireSystem()
+
+        env = _make_env_state(hardware_trust=HardwareTrust.LOW)
+        result = ts.check_violations(BoundaryMode.TRUSTED, env)
+        assert result is None
+
+
+# ===========================================================================
+# Violation Detection Tests — Disabled State
+# ===========================================================================
+
+class TestViolationDetectionDisabled:
+    """Tests that disabled tripwires don't detect violations."""
+
+    def test_check_violations_returns_none_when_disabled(self):
+        """check_violations should return None when tripwires disabled."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        ts.disable(token, reason="test")
+
+        # This would normally trigger
+        env = _make_env_state(network=NetworkState.ONLINE)
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result is None
+
+
+# ===========================================================================
+# Callback Tests
+# ===========================================================================
+
+class TestTripwireCallbacks:
+    """Tests for callback registration, invocation, and error isolation."""
+
+    def test_callback_invoked_on_violation(self):
+        """Registered callback should be called when violation is detected."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        violations_received = []
+        ts.register_callback(lambda v: violations_received.append(v))
+
+        env = _make_env_state(network=NetworkState.ONLINE)
+        ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert len(violations_received) == 1
+        assert violations_received[0].violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_multiple_callbacks_all_invoked(self):
+        """All registered callbacks should be called on violation."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        call_counts = [0, 0, 0]
+
+        ts.register_callback(lambda v: call_counts.__setitem__(0, call_counts[0] + 1))
+        ts.register_callback(lambda v: call_counts.__setitem__(1, call_counts[1] + 1))
+        ts.register_callback(lambda v: call_counts.__setitem__(2, call_counts[2] + 1))
+
+        env = _make_env_state(network=NetworkState.ONLINE)
+        ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert call_counts == [1, 1, 1]
+
+    def test_callback_error_does_not_prevent_others(self):
+        """If one callback raises, the rest should still execute."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        results = []
+
+        ts.register_callback(lambda v: results.append("first"))
+        ts.register_callback(lambda v: (_ for _ in ()).throw(RuntimeError("boom")))
+        ts.register_callback(lambda v: results.append("third"))
+
+        env = _make_env_state(network=NetworkState.ONLINE)
+        ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert "first" in results
+        assert "third" in results
+
+    def test_unregister_callback(self):
+        """Unregistered callback should not be invoked."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        results = []
+
+        cb_id = ts.register_callback(lambda v: results.append("called"))
+        removed = ts.unregister_callback(cb_id)
+        assert removed is True
+
+        env = _make_env_state(network=NetworkState.ONLINE)
+        ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert len(results) == 0
+
+    def test_unregister_invalid_id_returns_false(self):
+        """Unregister with invalid ID should return False."""
+        ts = TripwireSystem()
+        assert ts.unregister_callback(9999) is False
+
+    def test_cleanup_clears_callbacks(self):
+        """cleanup() should remove all callbacks."""
+        ts = TripwireSystem()
+        ts.register_callback(lambda v: None)
+        ts.register_callback(lambda v: None)
+        assert len(ts._callbacks) == 2
+        ts.cleanup()
+        assert len(ts._callbacks) == 0
+
+    def test_callback_invoked_on_trigger_violation(self):
+        """Callbacks should fire for externally triggered violations too."""
+        ts = TripwireSystem()
+        violations_received = []
+        ts.register_callback(lambda v: violations_received.append(v))
+
+        ts.trigger_violation(
+            ViolationType.CLOCK_MANIPULATION,
+            "NTP drift > 5s",
+            BoundaryMode.TRUSTED,
+            {"clock_drift": 5.2},
+        )
+        assert len(violations_received) == 1
+        assert violations_received[0].violation_type == ViolationType.CLOCK_MANIPULATION
+
+
+# ===========================================================================
+# Lifecycle Tests — trigger_violation, get/count/clear, lock, status
+# ===========================================================================
+
+class TestTripwireLifecycle:
+    """Tests for violation lifecycle: trigger, retrieve, clear, lock."""
+
+    def test_trigger_violation_stores_record(self):
+        """trigger_violation should store the violation in history."""
+        ts = TripwireSystem()
+        v = ts.trigger_violation(
+            ViolationType.CLOCK_MANIPULATION,
+            "System clock jumped forward 60s",
+            BoundaryMode.AIRGAP,
+            {"drift_seconds": 60},
+        )
+        assert v is not None
+        assert v.violation_type == ViolationType.CLOCK_MANIPULATION
+        assert ts.get_violation_count() == 1
+
+    def test_trigger_violation_returns_none_when_disabled(self):
+        """trigger_violation should return None when disabled."""
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        ts.disable(token, reason="test")
+
+        v = ts.trigger_violation(
+            ViolationType.NETWORK_TRUST_VIOLATION,
+            "rogue cert",
+            BoundaryMode.OPEN,
+            {},
+        )
+        assert v is None
+        assert ts.get_violation_count() == 0
+
+    def test_get_violations_returns_copies(self):
+        """get_violations should return a copy, not internal state."""
+        ts = TripwireSystem()
+        ts.trigger_violation(
+            ViolationType.DAEMON_TAMPERING, "modified binary",
+            BoundaryMode.TRUSTED, {},
+        )
+        violations = ts.get_violations()
+        assert len(violations) == 1
+        # Mutating the returned list should not affect internal state
+        violations.clear()
+        assert ts.get_violation_count() == 1
+
+    def test_get_violation_count(self):
+        """get_violation_count should track accumulated violations."""
+        ts = TripwireSystem()
+        assert ts.get_violation_count() == 0
+
+        ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "a", BoundaryMode.OPEN, {})
+        assert ts.get_violation_count() == 1
+
+        ts.trigger_violation(ViolationType.CLOCK_MANIPULATION, "b", BoundaryMode.OPEN, {})
+        assert ts.get_violation_count() == 2
+
+    def test_clear_violations_with_valid_token(self):
+        """clear_violations should clear history with valid token."""
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+
+        ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "x", BoundaryMode.OPEN, {})
+        ts.trigger_violation(ViolationType.CLOCK_MANIPULATION, "y", BoundaryMode.OPEN, {})
+        assert ts.get_violation_count() == 2
+
+        success, msg = ts.clear_violations(token, reason="incident resolved")
+        assert success is True
+        assert "2" in msg
+        assert ts.get_violation_count() == 0
+
+    def test_clear_violations_with_invalid_token(self):
+        """clear_violations should refuse with invalid token."""
+        ts = TripwireSystem()
+        ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "x", BoundaryMode.OPEN, {})
+
+        success, msg = ts.clear_violations("bad-token", reason="hacker")
+        assert success is False
+        assert ts.get_violation_count() == 1
+
+    def test_clear_violations_tracks_failed_attempts(self):
+        """Failed clear_violations should increment failed attempt counter."""
+        ts = TripwireSystem()
+        ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "x", BoundaryMode.OPEN, {})
+        initial = ts._failed_attempts
+        ts.clear_violations("bad-token")
+        assert ts._failed_attempts == initial + 1
+
+    def test_lock_prevents_disable(self):
+        """lock() should prevent disable even with valid token."""
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        ts.lock()
+
+        success, msg = ts.disable(token, reason="test")
+        assert success is False
+        assert "LOCKED" in msg
+
+    def test_is_locked(self):
+        """is_locked() should reflect lock state."""
+        ts = TripwireSystem()
+        assert ts.is_locked() is False
+        ts.lock()
+        assert ts.is_locked() is True
+
+    def test_is_enabled(self):
+        """is_enabled() should reflect enabled state."""
+        ts = TripwireSystem()
+        assert ts.is_enabled() is True
+        token = ts._generate_auth_token()
+        ts.disable(token, reason="test")
+        assert ts.is_enabled() is False
+        ts.enable()
+        assert ts.is_enabled() is True
+
+    def test_get_security_status(self):
+        """get_security_status should return correct summary."""
+        ts = TripwireSystem()
+        ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "x", BoundaryMode.OPEN, {})
+        ts.disable("bad-token")  # Fail once
+
+        status = ts.get_security_status()
+        assert status['enabled'] is True
+        assert status['locked'] is False
+        assert status['violation_count'] == 1
+        assert status['failed_auth_attempts'] == 1
+        assert status['max_attempts_before_lock'] == 3
+
+    def test_check_daemon_health_returns_true_normally(self):
+        """check_daemon_health should return True under normal conditions."""
+        ts = TripwireSystem()
+        assert ts.check_daemon_health() is True
+
+    def test_successful_auth_resets_failed_counter(self):
+        """Successful disable should reset the failed attempt counter."""
+        ts = TripwireSystem()
+        ts.disable("bad-1")
+        ts.disable("bad-2")
+        assert ts._failed_attempts == 2
+
+        token = ts._generate_auth_token()
+        success, _ = ts.disable(token, reason="legit")
+        assert success is True
+        assert ts._failed_attempts == 0
+
+    def test_violation_stores_environment_snapshot(self):
+        """Violations should store the environment snapshot for forensics."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["eth0"])
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result is not None
+        assert 'network' in result.environment_snapshot
+
+    def test_violation_has_unique_id(self):
+        """Each violation should have a unique ID."""
+        ts = TripwireSystem()
+        v1 = ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "a", BoundaryMode.OPEN, {})
+        v2 = ts.trigger_violation(ViolationType.CLOCK_MANIPULATION, "b", BoundaryMode.OPEN, {})
+        assert v1.violation_id != v2.violation_id
+
+    def test_violation_deque_bounded(self):
+        """Violation history should be bounded (maxlen=1000)."""
+        ts = TripwireSystem()
+        for i in range(1050):
+            ts.trigger_violation(ViolationType.DAEMON_TAMPERING, f"v{i}", BoundaryMode.OPEN, {})
+        assert ts.get_violation_count() == 1000

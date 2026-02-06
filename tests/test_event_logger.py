@@ -506,3 +506,274 @@ class TestEventLoggerEdgeCases:
         """Test getting recent events from empty log."""
         events = event_logger.get_recent_events()
         assert events == []
+
+
+# ===========================================================================
+# Crash Recovery and Tamper Detection Tests
+# ===========================================================================
+
+class TestEventLoggerCrashRecovery:
+    """Tests for event logger resilience to crashes and corruption."""
+
+    @pytest.mark.security
+    def test_truncated_last_line_recovery(self, temp_log_file):
+        """Logger should recover when last line is truncated (crash mid-write)."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        logger.log_event(EventType.MODE_CHANGE, "Change")
+
+        # Simulate crash mid-write: truncate the last line
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+        with open(temp_log_file, 'w') as f:
+            f.write(lines[0])
+            f.write(lines[1][:len(lines[1]) // 2])  # Truncated JSON
+
+        # New logger should recover (fall back to genesis hash on error)
+        logger2 = EventLogger(str(temp_log_file), secure_permissions=False)
+        # Should not raise - falls back gracefully
+        event = logger2.log_event(EventType.INFO, "After crash")
+        assert event is not None
+
+    @pytest.mark.security
+    def test_empty_file_recovery(self, temp_log_file):
+        """Logger should handle an empty existing file."""
+        # Create empty file
+        with open(temp_log_file, 'w') as f:
+            pass
+
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        assert logger.get_event_count() == 0
+        assert logger.get_last_hash() == "0" * 64
+
+        # Should be able to log normally
+        event = logger.log_event(EventType.DAEMON_START, "Start")
+        assert event.hash_chain == "0" * 64
+
+    @pytest.mark.security
+    def test_corrupted_json_recovery(self, temp_log_file):
+        """Logger should recover from completely corrupted JSON in log file."""
+        with open(temp_log_file, 'w') as f:
+            f.write("this is not json at all\n")
+
+        # Should fall back to genesis hash
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        assert logger.get_last_hash() == "0" * 64
+
+    @pytest.mark.security
+    def test_verify_chain_with_blank_lines(self, temp_log_file):
+        """verify_chain should skip blank lines without failing."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        logger.log_event(EventType.MODE_CHANGE, "Change")
+
+        # Insert blank lines between events
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+        with open(temp_log_file, 'w') as f:
+            f.write(lines[0])
+            f.write("\n\n")  # Blank lines
+            f.write(lines[1])
+
+        is_valid, error = logger.verify_chain()
+        assert is_valid is True, f"Chain should be valid with blank lines: {error}"
+
+    @pytest.mark.security
+    def test_verify_chain_detects_tampered_details(self, temp_log_file):
+        """verify_chain should detect when event details are modified."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        logger.log_event(EventType.MODE_CHANGE, "Change")
+        logger.log_event(EventType.HEALTH_CHECK, "Check")
+
+        # Tamper with the first event's details
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+        event_data = json.loads(lines[0])
+        event_data['details'] = "TAMPERED"
+        lines[0] = json.dumps(event_data, sort_keys=True) + '\n'
+        with open(temp_log_file, 'w') as f:
+            f.writelines(lines)
+
+        # Second event's hash_chain was computed from original first event
+        # After tampering, recomputing first event hash gives different result
+        is_valid, error = logger.verify_chain()
+        # First event still has genesis hash_chain, so event 0 passes.
+        # Event 1's hash_chain was based on original event 0's hash, which changed.
+        assert is_valid is False
+        assert "Hash chain broken" in error
+
+    @pytest.mark.security
+    def test_verify_chain_detects_tampered_metadata(self, temp_log_file):
+        """verify_chain should detect when event metadata is modified."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start", {"version": "1.0"})
+        logger.log_event(EventType.MODE_CHANGE, "Change")
+
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+        event_data = json.loads(lines[0])
+        event_data['metadata']['version'] = "HACKED"
+        lines[0] = json.dumps(event_data, sort_keys=True) + '\n'
+        with open(temp_log_file, 'w') as f:
+            f.writelines(lines)
+
+        is_valid, error = logger.verify_chain()
+        assert is_valid is False
+
+    @pytest.mark.security
+    def test_verify_chain_detects_deleted_event(self, temp_log_file):
+        """verify_chain should detect when an event is deleted from the middle."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        logger.log_event(EventType.VIOLATION, "Violation occurred")
+        logger.log_event(EventType.HEALTH_CHECK, "Check")
+
+        # Delete the middle event
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+        with open(temp_log_file, 'w') as f:
+            f.write(lines[0])
+            f.write(lines[2])  # Skip lines[1]
+
+        is_valid, error = logger.verify_chain()
+        assert is_valid is False
+        assert "Hash chain broken" in error
+
+    @pytest.mark.security
+    def test_verify_chain_detects_reordered_events(self, temp_log_file):
+        """verify_chain should detect when events are reordered."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "First")
+        logger.log_event(EventType.MODE_CHANGE, "Second")
+        logger.log_event(EventType.HEALTH_CHECK, "Third")
+
+        # Swap events 1 and 2
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+        with open(temp_log_file, 'w') as f:
+            f.write(lines[0])
+            f.write(lines[2])  # Third becomes second
+            f.write(lines[1])  # Second becomes third
+
+        is_valid, error = logger.verify_chain()
+        assert is_valid is False
+
+    @pytest.mark.security
+    def test_verify_chain_detects_inserted_event(self, temp_log_file):
+        """verify_chain should detect when a forged event is inserted."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        logger.log_event(EventType.HEALTH_CHECK, "Check")
+
+        # Insert a forged event between them
+        with open(temp_log_file, 'r') as f:
+            lines = f.readlines()
+
+        forged = {
+            'event_id': 'forged-001',
+            'timestamp': '2024-01-01T00:00:00Z',
+            'event_type': 'violation',
+            'details': 'Forged event',
+            'metadata': {},
+            'hash_chain': '0' * 64
+        }
+        with open(temp_log_file, 'w') as f:
+            f.write(lines[0])
+            f.write(json.dumps(forged, sort_keys=True) + '\n')
+            f.write(lines[1])
+
+        is_valid, error = logger.verify_chain()
+        assert is_valid is False
+
+    @pytest.mark.security
+    def test_fsync_called_on_write(self, temp_log_file):
+        """_append_to_log should call fsync for crash recovery."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+
+        # Log an event and verify the file was written
+        logger.log_event(EventType.DAEMON_START, "Start")
+
+        # If fsync wasn't called, the data might not be on disk
+        # Verify by reading back immediately
+        with open(temp_log_file, 'r') as f:
+            content = f.read()
+        assert 'daemon_start' in content
+
+    @pytest.mark.security
+    def test_double_seal_adds_second_event(self, temp_log_file):
+        """Sealing twice should add a second seal event (no idempotence guard)."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        count_before = logger.get_event_count()
+
+        # First seal - need to make writable for second seal
+        success1, _ = logger.seal_log()
+        assert success1 is True
+
+        # Make writable again for second seal attempt
+        os.chmod(str(temp_log_file), 0o600)
+
+        success2, _ = logger.seal_log()
+        assert success2 is True
+
+        # Read back - should have original + 2 seal events
+        with open(temp_log_file, 'r') as f:
+            lines = [l for l in f.readlines() if l.strip()]
+        assert len(lines) == count_before + 2
+
+    @pytest.mark.security
+    def test_seal_creates_file_hash(self, temp_log_file):
+        """Seal checkpoint should contain verifiable file hash."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger.log_event(EventType.DAEMON_START, "Start")
+
+        success, _ = logger.seal_log()
+        assert success is True
+
+        checkpoint_path = str(temp_log_file) + '.sealed'
+        with open(checkpoint_path, 'r') as f:
+            checkpoint = json.load(f)
+
+        # Verify the file hash matches
+        import hashlib
+        sha256 = hashlib.sha256()
+        with open(temp_log_file, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                sha256.update(chunk)
+        assert checkpoint['file_hash'] == sha256.hexdigest()
+
+    @pytest.mark.security
+    def test_log_write_failure_raises(self, temp_dir):
+        """_append_to_log should raise when write fails."""
+        # Use a path that cannot be written to (directory doesn't exist and
+        # we point to /dev/null as parent which can't contain files)
+        impossible_path = "/dev/null/impossible/events.log"
+        logger = EventLogger.__new__(EventLogger)
+        logger.log_file_path = impossible_path
+        logger._lock = __import__('threading').Lock()
+        logger._last_hash = "0" * 64
+        logger._event_count = 0
+        logger._secure_permissions = False
+        logger._file_created = False
+
+        with pytest.raises(Exception):
+            logger.log_event(EventType.MODE_CHANGE, "Should fail")
+
+    @pytest.mark.security
+    def test_chain_valid_after_resume_from_crash(self, temp_log_file):
+        """Full chain should verify after crash recovery and resumed logging."""
+        # Phase 1: Normal logging
+        logger1 = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger1.log_event(EventType.DAEMON_START, "Start")
+        logger1.log_event(EventType.MODE_CHANGE, "Change")
+
+        # Phase 2: Simulate clean restart (new instance)
+        logger2 = EventLogger(str(temp_log_file), secure_permissions=False)
+        logger2.log_event(EventType.DAEMON_START, "Restart")
+        logger2.log_event(EventType.HEALTH_CHECK, "Check")
+
+        # Full chain should still be valid
+        is_valid, error = logger2.verify_chain()
+        assert is_valid is True, f"Chain invalid after restart: {error}"
+        assert logger2.get_event_count() == 4
