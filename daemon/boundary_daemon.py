@@ -111,6 +111,20 @@ except ImportError:
     ClusterManager = None
     FileCoordinator = None
 
+# Import sandbox enforcement bridge (ROADMAP §5: Sandbox as Enforcement Bridge)
+try:
+    from .sandbox import SandboxManager, SandboxProfile
+    from .sandbox.enforcement_bridge import SandboxEnforcementBridge, EnforcementConsumer
+    from .sandbox.telemetry import SandboxTelemetryCollector
+    SANDBOX_BRIDGE_AVAILABLE = True
+except ImportError:
+    SANDBOX_BRIDGE_AVAILABLE = False
+    SandboxManager = None
+    SandboxProfile = None
+    SandboxEnforcementBridge = None
+    EnforcementConsumer = None
+    SandboxTelemetryCollector = None
+
 # Import custom policy module (Plan 5: Custom Policy Language)
 try:
     from .policy import CustomPolicyEngine
@@ -680,6 +694,55 @@ class BoundaryDaemon:
         else:
             logger.info("Protection persistence: not available")
             logger.warning("  Protections will be removed on daemon shutdown!")
+
+        # Initialize Sandbox Enforcement Bridge (ROADMAP §5: Sandbox as Enforcement Bridge)
+        # The bridge translates policy engine mode transitions into OS-level sandbox enforcement.
+        # It automatically tightens running sandboxes when the boundary mode escalates,
+        # and feeds kernel-level violations back into the hash-chained event log.
+        self.sandbox_manager = None
+        self.sandbox_telemetry = None
+        self.sandbox_bridge = None
+        self.sandbox_bridge_enabled = False
+        if SANDBOX_BRIDGE_AVAILABLE and SandboxManager is not None:
+            try:
+                # Create telemetry collector for kernel-level violation tracking
+                self.sandbox_telemetry = SandboxTelemetryCollector(
+                    event_logger=self.event_logger,
+                    poll_interval=2.0,
+                )
+
+                # Create sandbox manager with policy engine integration
+                self.sandbox_manager = SandboxManager(
+                    policy_engine=self.policy_engine,
+                    ceremony_manager=self.ceremony_manager if hasattr(self, 'ceremony_manager') else None,
+                    event_callback=self._on_sandbox_event,
+                    telemetry=self.sandbox_telemetry,
+                )
+
+                # Create and activate the enforcement bridge
+                self.sandbox_bridge = SandboxEnforcementBridge(
+                    sandbox_manager=self.sandbox_manager,
+                    policy_engine=self.policy_engine,
+                    event_logger=self.event_logger,
+                    telemetry=self.sandbox_telemetry,
+                )
+                self.sandbox_manager.set_enforcement_bridge(self.sandbox_bridge)
+                self.sandbox_bridge.activate()
+
+                # Start telemetry monitoring
+                self.sandbox_telemetry.start()
+
+                self.sandbox_bridge_enabled = True
+                caps = self.sandbox_manager.get_capabilities()
+                can_sandbox = caps.get('can_sandbox', False)
+                logger.info(f"Sandbox enforcement bridge activated (can_sandbox={can_sandbox})")
+                if not can_sandbox:
+                    logger.info("  Sandbox isolation limited: namespaces/cgroups not available")
+                    logger.info("  Bridge still tracks policy->profile mapping for audit")
+            except Exception as e:
+                logger.warning(f"Sandbox enforcement bridge failed to initialize: {e}")
+        else:
+            logger.info("Sandbox enforcement bridge: not available")
 
         # Initialize TPM manager (Plan 2: TPM Integration)
         self.tpm_manager = None
@@ -1449,6 +1512,41 @@ class BoundaryDaemon:
             }
         )
 
+    def _on_sandbox_event(self, event_type: str, data: dict):
+        """
+        Handle sandbox events and log them to the hash-chained event log.
+
+        This callback bridges sandbox lifecycle events into the daemon's
+        immutable audit trail, ensuring sandbox activity is part of the
+        same tamper-evident log chain as all other boundary events.
+        """
+        try:
+            # Map sandbox events to appropriate EventType
+            event_map = {
+                'sandbox_start': EventType.SANDBOX_ENFORCEMENT,
+                'sandbox_stop': EventType.SANDBOX_ENFORCEMENT,
+                'sandbox_tightened': EventType.SANDBOX_TIGHTENED,
+                'sandbox_terminate': EventType.SANDBOX_TERMINATED,
+                'sandbox_error': EventType.SANDBOX_VIOLATION,
+                'sandbox_pause': EventType.SANDBOX_ENFORCEMENT,
+                'sandbox_resume': EventType.SANDBOX_ENFORCEMENT,
+                'sandbox_cleanup': EventType.SANDBOX_ENFORCEMENT,
+            }
+
+            etype = event_map.get(event_type, EventType.INFO)
+            sandbox_id = data.get('sandbox_id', 'unknown')
+
+            self.event_logger.log_event(
+                etype,
+                f"Sandbox event [{event_type}]: {sandbox_id}",
+                metadata={
+                    'sandbox_event_type': event_type,
+                    **data,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to log sandbox event: {e}")
+
     def _reapply_persisted_protections(self):
         """
         Re-apply any protections that were persisted from a previous daemon run.
@@ -1999,6 +2097,28 @@ class BoundaryDaemon:
                 logger.info("Daemon integrity monitoring stopped")
             except Exception as e:
                 logger.warning(f"Failed to stop integrity monitoring: {e}")
+
+        # Stop sandbox enforcement bridge and telemetry (ROADMAP §5)
+        if self.sandbox_bridge and self.sandbox_bridge_enabled:
+            try:
+                self.sandbox_bridge.deactivate()
+                logger.info("Sandbox enforcement bridge deactivated")
+            except Exception as e:
+                logger.warning(f"Failed to deactivate sandbox bridge: {e}")
+
+        if self.sandbox_telemetry:
+            try:
+                self.sandbox_telemetry.stop()
+                logger.info("Sandbox telemetry stopped")
+            except Exception as e:
+                logger.warning(f"Failed to stop sandbox telemetry: {e}")
+
+        if self.sandbox_manager:
+            try:
+                self.sandbox_manager.cleanup()
+                logger.info("Sandbox manager cleaned up")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup sandbox manager: {e}")
 
         # Stop redundant logger health monitoring
         if self._redundant_logger and self.redundant_logging:
