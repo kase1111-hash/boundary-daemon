@@ -92,6 +92,14 @@ class PolicyDeniedError(BoundaryDaemonError):
     pass
 
 
+SOCKET_SEARCH_ORDER = [
+    ('env', 'BOUNDARY_DAEMON_SOCKET'),
+    ('production', '/var/run/boundary-daemon/boundary.sock'),
+    ('user', '~/.agent-os/api/boundary.sock'),
+    ('development', './api/boundary.sock'),
+]
+
+
 def get_socket_path() -> str:
     """
     Get the boundary daemon socket path.
@@ -124,6 +132,97 @@ def get_socket_path() -> str:
 
     # Default to production path even if not exists (will fail with clear error)
     return prod_path
+
+
+def diagnose_connection() -> Dict[str, Any]:
+    """
+    Diagnose boundary daemon connection issues.
+
+    Returns a dict with diagnostic information about socket discovery,
+    connectivity, and authentication. Useful for debugging integration
+    problems and reducing time-to-first-policy-check.
+
+    Returns:
+        Dict with keys: socket_path, socket_found, searched_paths,
+        connectable, daemon_status, token_configured, error
+    """
+    result: Dict[str, Any] = {
+        'socket_path': None,
+        'socket_found': False,
+        'searched_paths': [],
+        'connectable': False,
+        'daemon_status': None,
+        'token_configured': False,
+        'error': None,
+    }
+
+    # 1. Report all searched paths and which was selected
+    env_val = os.environ.get('BOUNDARY_DAEMON_SOCKET')
+    candidates = [
+        ('env ($BOUNDARY_DAEMON_SOCKET)', env_val),
+        ('production', '/var/run/boundary-daemon/boundary.sock'),
+        ('user', os.path.expanduser('~/.agent-os/api/boundary.sock')),
+        ('development', './api/boundary.sock'),
+    ]
+    for label, path in candidates:
+        if path is None:
+            result['searched_paths'].append({
+                'label': label, 'path': '(not set)', 'exists': False,
+            })
+        else:
+            result['searched_paths'].append({
+                'label': label, 'path': path, 'exists': os.path.exists(path),
+            })
+
+    # 2. Resolve socket path
+    sock_path = get_socket_path()
+    result['socket_path'] = sock_path
+    result['socket_found'] = os.path.exists(sock_path)
+
+    if not result['socket_found']:
+        result['error'] = (
+            f"Socket not found at {sock_path}. "
+            f"Searched: {[c['path'] for c in result['searched_paths']]}. "
+            f"Set BOUNDARY_DAEMON_SOCKET or start the daemon."
+        )
+        return result
+
+    # 3. Check token configuration
+    token = os.environ.get('BOUNDARY_API_TOKEN')
+    result['token_configured'] = token is not None and len(token.strip()) > 0
+
+    # 4. Try to connect
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(3.0)
+        sock.connect(sock_path)
+        request = json.dumps({'command': 'status', 'params': {}})
+        if token:
+            request = json.dumps({'command': 'status', 'params': {}, 'token': token.strip()})
+        sock.sendall(request.encode('utf-8'))
+        data = sock.recv(65536)
+        sock.close()
+        response = json.loads(data.decode('utf-8'))
+        result['connectable'] = True
+        result['daemon_status'] = response.get('status', response)
+    except ConnectionRefusedError:
+        result['error'] = (
+            f"Socket exists at {sock_path} but connection refused. "
+            f"The daemon may not be running."
+        )
+    except FileNotFoundError:
+        result['error'] = f"Socket file disappeared: {sock_path}"
+    except socket.timeout:
+        result['error'] = (
+            f"Connected to {sock_path} but timed out waiting for response. "
+            f"The daemon may be overloaded or hung."
+        )
+    except json.JSONDecodeError as e:
+        result['error'] = f"Connected but received invalid JSON: {e}"
+    except Exception as e:
+        result['error'] = f"Unexpected error: {type(e).__name__}: {e}"
+
+    return result
 
 
 class BoundaryClient:
@@ -215,10 +314,32 @@ class BoundaryClient:
                     logger.debug(f"Retry {attempt + 1}/{self.max_retries} after {delay}s: {e}")
                     time.sleep(delay)
 
-        # All retries failed
+        # All retries failed — build actionable error message
+        sock_exists = os.path.exists(self.socket_path)
         if self.fail_closed:
+            if isinstance(last_error, FileNotFoundError) or not sock_exists:
+                hint = (
+                    f"Socket not found at {self.socket_path}. "
+                    f"Is the daemon running? Check with: "
+                    f"BOUNDARY_DAEMON_SOCKET=/path/to/boundary.sock "
+                    f"or run diagnose_connection() for details."
+                )
+            elif isinstance(last_error, ConnectionRefusedError):
+                hint = (
+                    f"Socket exists at {self.socket_path} but connection refused. "
+                    f"The daemon process may have stopped. "
+                    f"Restart with: boundary-daemon start"
+                )
+            elif isinstance(last_error, socket.timeout):
+                hint = (
+                    f"Connected to {self.socket_path} but timed out after {self.timeout}s. "
+                    f"The daemon may be overloaded. "
+                    f"Try increasing timeout or check daemon health."
+                )
+            else:
+                hint = str(last_error)
             raise DaemonUnavailableError(
-                f"Boundary daemon unavailable after {self.max_retries} attempts: {last_error}"
+                f"Boundary daemon unavailable after {self.max_retries} attempts. {hint}"
             )
         return {'success': False, 'error': str(last_error)}
 
