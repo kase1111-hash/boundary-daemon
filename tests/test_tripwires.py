@@ -1081,3 +1081,206 @@ class TestTripwireLifecycle:
         for i in range(1050):
             ts.trigger_violation(ViolationType.DAEMON_TAMPERING, f"v{i}", BoundaryMode.OPEN, {})
         assert ts.get_violation_count() == 1000
+
+
+# ===========================================================================
+# SECURITY INVARIANT: Violation Priority Ordering
+# ===========================================================================
+
+class TestViolationPriorityOrdering:
+    """Security invariant: check_violations returns the FIRST violation found
+    in priority order: network > USB > external_model > suspicious_process > hardware_trust.
+
+    When multiple violations occur simultaneously, the most critical one
+    (network isolation breach) takes priority over less critical ones.
+    """
+
+    def test_network_violation_takes_priority_over_usb(self):
+        """INVARIANT: Network breach outranks USB insertion in COLDROOM+."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        # First check sets baseline (clean)
+        env_clean = _make_env_state(network=NetworkState.OFFLINE, usb_devices=set())
+        ts.check_violations(BoundaryMode.COLDROOM, env_clean)
+
+        # Both violations present: network online AND new USB
+        env_both = _make_env_state(
+            network=NetworkState.ONLINE,
+            usb_devices={"rogue-usb-stick"},
+        )
+        result = ts.check_violations(BoundaryMode.COLDROOM, env_both)
+        assert result is not None
+        # Network check comes first in priority
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_network_violation_takes_priority_over_external_model(self):
+        """INVARIANT: Network breach outranks external model violation."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        env = _make_env_state(
+            network=NetworkState.ONLINE,
+            external_model_endpoints=["http://api.openai.com"],
+        )
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+    def test_usb_violation_takes_priority_over_external_model(self):
+        """INVARIANT: USB insertion outranks external model in COLDROOM."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+
+        # Baseline: offline, no USB
+        env_clean = _make_env_state(network=NetworkState.OFFLINE, usb_devices=set())
+        ts.check_violations(BoundaryMode.COLDROOM, env_clean)
+
+        # USB + external model, still offline (no network violation)
+        env = _make_env_state(
+            network=NetworkState.OFFLINE,
+            usb_devices={"rogue-usb"},
+            external_model_endpoints=["http://localhost:11434"],
+        )
+        result = ts.check_violations(BoundaryMode.COLDROOM, env)
+        assert result.violation_type == ViolationType.USB_IN_COLDROOM
+
+    def test_external_model_takes_priority_over_suspicious_process(self):
+        """INVARIANT: External model outranks suspicious process in AIRGAP."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(
+            external_model_endpoints=["http://api.openai.com"],
+            shell_escapes_detected=20,
+        )
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
+
+    def test_suspicious_process_takes_priority_over_hardware_trust(self):
+        """INVARIANT: Suspicious process outranks hardware trust degradation."""
+        from daemon.state_monitor import HardwareTrust
+        ts = TripwireSystem()
+
+        env = _make_env_state(
+            shell_escapes_detected=20,
+            hardware_trust=HardwareTrust.LOW,
+        )
+        result = ts.check_violations(BoundaryMode.AIRGAP, env)
+        assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
+
+    def test_only_first_violation_returned(self):
+        """check_violations returns exactly one violation, not a list."""
+        from daemon.state_monitor import NetworkState, HardwareTrust
+        ts = TripwireSystem()
+
+        # Baseline
+        env_clean = _make_env_state(network=NetworkState.OFFLINE, usb_devices=set())
+        ts.check_violations(BoundaryMode.COLDROOM, env_clean)
+
+        # Everything goes wrong at once
+        env_all_bad = _make_env_state(
+            network=NetworkState.ONLINE,
+            usb_devices={"rogue-usb"},
+            external_model_endpoints=["http://evil.com"],
+            shell_escapes_detected=100,
+            hardware_trust=HardwareTrust.LOW,
+        )
+        result = ts.check_violations(BoundaryMode.COLDROOM, env_all_bad)
+        # Should return exactly one violation (the highest priority)
+        assert result is not None
+        assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+
+
+# ===========================================================================
+# Tripwire Event Logger Failure Resilience
+# ===========================================================================
+
+class TestTripwireLoggerFailure:
+    """Tests that tripwire violations are still recorded and callbacks still fire
+    even when the event logger is unavailable or throws."""
+
+    def test_trigger_violation_with_none_logger(self):
+        """Violation should be recorded even if event_logger is None."""
+        ts = TripwireSystem()
+        # Default construction has _event_logger=None
+        assert ts._event_logger is None
+
+        v = ts.trigger_violation(
+            ViolationType.DAEMON_TAMPERING, "binary modified",
+            BoundaryMode.TRUSTED, {"hash": "different"},
+        )
+        assert v is not None
+        assert ts.get_violation_count() == 1
+
+    def test_trigger_violation_with_broken_logger_still_records(self):
+        """Violation should be recorded even if event_logger raises."""
+        from unittest.mock import MagicMock
+        ts = TripwireSystem()
+
+        # Attach a mock logger that raises on log_event
+        broken_logger = MagicMock()
+        broken_logger.log_event.side_effect = RuntimeError("disk full")
+        ts._event_logger = broken_logger
+
+        v = ts.trigger_violation(
+            ViolationType.CLOCK_MANIPULATION, "clock jumped",
+            BoundaryMode.AIRGAP, {"drift": 60},
+        )
+        assert v is not None
+        assert ts.get_violation_count() == 1
+
+    def test_trigger_violation_with_broken_logger_still_calls_callbacks(self):
+        """Callbacks should fire even when event logger raises."""
+        from unittest.mock import MagicMock
+        ts = TripwireSystem()
+
+        # Broken logger
+        broken_logger = MagicMock()
+        broken_logger.log_event.side_effect = RuntimeError("disk full")
+        ts._event_logger = broken_logger
+
+        # Register callback
+        callback_violations = []
+        ts.register_callback(lambda v: callback_violations.append(v))
+
+        ts.trigger_violation(
+            ViolationType.NETWORK_TRUST_VIOLATION, "rogue cert",
+            BoundaryMode.OPEN, {},
+        )
+        assert len(callback_violations) == 1
+        assert callback_violations[0].violation_type == ViolationType.NETWORK_TRUST_VIOLATION
+
+
+# ===========================================================================
+# Fail-Closed: Lockout After Max Failed Attempts
+# ===========================================================================
+
+class TestTripwireLockout:
+    """Security invariant: After max_disable_attempts failed auth attempts,
+    tripwires auto-lock to prevent brute force."""
+
+    def test_auto_lock_after_max_failed_attempts(self):
+        """SECURITY INVARIANT: 3 failed disable attempts → auto-lock."""
+        ts = TripwireSystem()
+        assert ts.is_locked() is False
+
+        # Fail 3 times
+        ts.disable("bad-1")
+        ts.disable("bad-2")
+        ts.disable("bad-3")
+
+        assert ts.is_locked() is True
+
+    def test_auto_lock_prevents_even_valid_token(self):
+        """SECURITY INVARIANT: Once locked, even valid tokens can't disable."""
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+
+        # Fail enough to lock
+        ts.disable("bad-1")
+        ts.disable("bad-2")
+        ts.disable("bad-3")
+
+        # Valid token should still fail
+        success, msg = ts.disable(token, reason="legitimate")
+        assert success is False
+        assert "LOCKED" in msg

@@ -1059,3 +1059,249 @@ class TestCallbackManagement:
         policy_engine.register_transition_callback(good_callback)
         policy_engine.transition_mode(BoundaryMode.RESTRICTED, Operator.HUMAN, "test")
         assert len(calls) == 1
+
+
+# ===========================================================================
+# SECURITY INVARIANT: Recall Policy Exhaustive Truth Table
+# ===========================================================================
+
+class TestRecallPolicyTruthTable:
+    """Exhaustive test of the recall policy decision matrix.
+
+    Security invariant: MemoryClass(N) requires BoundaryMode >= required_mode(N).
+    This truth table documents every combination so any change to the mapping
+    breaks a test with an obvious name.
+    """
+
+    # Expected decision for (mode, memory_class) → ALLOW or DENY
+    # Format: (BoundaryMode, MemoryClass, expected_decision)
+    TRUTH_TABLE = [
+        # PUBLIC (required: OPEN) — accessible in any mode
+        (BoundaryMode.OPEN, MemoryClass.PUBLIC, PolicyDecision.ALLOW),
+        (BoundaryMode.RESTRICTED, MemoryClass.PUBLIC, PolicyDecision.ALLOW),
+        (BoundaryMode.TRUSTED, MemoryClass.PUBLIC, PolicyDecision.ALLOW),
+        (BoundaryMode.AIRGAP, MemoryClass.PUBLIC, PolicyDecision.ALLOW),
+        (BoundaryMode.COLDROOM, MemoryClass.PUBLIC, PolicyDecision.ALLOW),
+        # INTERNAL (required: OPEN) — same as PUBLIC
+        (BoundaryMode.OPEN, MemoryClass.INTERNAL, PolicyDecision.ALLOW),
+        (BoundaryMode.RESTRICTED, MemoryClass.INTERNAL, PolicyDecision.ALLOW),
+        (BoundaryMode.TRUSTED, MemoryClass.INTERNAL, PolicyDecision.ALLOW),
+        (BoundaryMode.AIRGAP, MemoryClass.INTERNAL, PolicyDecision.ALLOW),
+        (BoundaryMode.COLDROOM, MemoryClass.INTERNAL, PolicyDecision.ALLOW),
+        # CONFIDENTIAL (required: RESTRICTED)
+        (BoundaryMode.OPEN, MemoryClass.CONFIDENTIAL, PolicyDecision.DENY),
+        (BoundaryMode.RESTRICTED, MemoryClass.CONFIDENTIAL, PolicyDecision.ALLOW),
+        (BoundaryMode.TRUSTED, MemoryClass.CONFIDENTIAL, PolicyDecision.ALLOW),
+        (BoundaryMode.AIRGAP, MemoryClass.CONFIDENTIAL, PolicyDecision.ALLOW),
+        (BoundaryMode.COLDROOM, MemoryClass.CONFIDENTIAL, PolicyDecision.ALLOW),
+        # SECRET (required: TRUSTED)
+        (BoundaryMode.OPEN, MemoryClass.SECRET, PolicyDecision.DENY),
+        (BoundaryMode.RESTRICTED, MemoryClass.SECRET, PolicyDecision.DENY),
+        (BoundaryMode.TRUSTED, MemoryClass.SECRET, PolicyDecision.ALLOW),
+        (BoundaryMode.AIRGAP, MemoryClass.SECRET, PolicyDecision.ALLOW),
+        (BoundaryMode.COLDROOM, MemoryClass.SECRET, PolicyDecision.ALLOW),
+        # TOP_SECRET (required: AIRGAP)
+        (BoundaryMode.OPEN, MemoryClass.TOP_SECRET, PolicyDecision.DENY),
+        (BoundaryMode.RESTRICTED, MemoryClass.TOP_SECRET, PolicyDecision.DENY),
+        (BoundaryMode.TRUSTED, MemoryClass.TOP_SECRET, PolicyDecision.DENY),
+        (BoundaryMode.AIRGAP, MemoryClass.TOP_SECRET, PolicyDecision.ALLOW),
+        (BoundaryMode.COLDROOM, MemoryClass.TOP_SECRET, PolicyDecision.ALLOW),
+        # CROWN_JEWEL (required: COLDROOM)
+        (BoundaryMode.OPEN, MemoryClass.CROWN_JEWEL, PolicyDecision.DENY),
+        (BoundaryMode.RESTRICTED, MemoryClass.CROWN_JEWEL, PolicyDecision.DENY),
+        (BoundaryMode.TRUSTED, MemoryClass.CROWN_JEWEL, PolicyDecision.DENY),
+        (BoundaryMode.AIRGAP, MemoryClass.CROWN_JEWEL, PolicyDecision.DENY),
+        (BoundaryMode.COLDROOM, MemoryClass.CROWN_JEWEL, PolicyDecision.ALLOW),
+    ]
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("mode,mem_class,expected", TRUTH_TABLE,
+        ids=[f"{m.name}-{mc.name}" for m, mc, _ in TRUTH_TABLE])
+    def test_recall_decision(self, mode, mem_class, expected, mock_env_state):
+        """Verify recall decision for every (mode, memory_class) pair."""
+        engine = PolicyEngine(initial_mode=mode)
+        request = PolicyRequest(request_type='recall', memory_class=mem_class)
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == expected, (
+            f"SECURITY INVARIANT VIOLATED: {mode.name} + {mem_class.name} "
+            f"should be {expected.value}, got {decision.value}"
+        )
+
+
+# ===========================================================================
+# SECURITY INVARIANT: Mode Monotonicity
+# ===========================================================================
+
+class TestModeMonotonicity:
+    """Security invariant: higher modes are never MORE permissive than lower modes.
+
+    For any request R and environment E, if mode_a < mode_b, then:
+    - If mode_b ALLOWs R, mode_a must also ALLOW R
+    - Equivalently: if mode_a DENYs R, mode_b must also DENY R
+
+    This is the fundamental safety guarantee of the mode hierarchy.
+    """
+
+    @pytest.mark.security
+    def test_recall_monotonicity(self, mock_env_state):
+        """Higher modes never deny recall that lower modes allow."""
+        modes = [BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+                 BoundaryMode.AIRGAP, BoundaryMode.COLDROOM]
+
+        for mem_class in MemoryClass:
+            allowed_modes = []
+            for mode in modes:
+                engine = PolicyEngine(initial_mode=mode)
+                request = PolicyRequest(request_type='recall', memory_class=mem_class)
+                decision = engine.evaluate_policy(request, mock_env_state)
+                if decision == PolicyDecision.ALLOW:
+                    allowed_modes.append(mode)
+
+            # All allowed modes should be contiguous from some threshold upward
+            if allowed_modes:
+                min_allowed = min(allowed_modes)
+                for mode in modes:
+                    if mode >= min_allowed:
+                        assert mode in allowed_modes, (
+                            f"MONOTONICITY VIOLATED: {mem_class.name} allowed in "
+                            f"{min_allowed.name} but denied in higher {mode.name}"
+                        )
+
+    @pytest.mark.security
+    def test_tool_network_monotonicity(self, mock_env_state):
+        """SECURITY INVARIANT: If a network tool is denied in mode X,
+        it must be denied in all modes > X."""
+        modes = [BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+                 BoundaryMode.AIRGAP, BoundaryMode.COLDROOM]
+
+        request = PolicyRequest(request_type='tool', requires_network=True)
+        first_deny = None
+        for mode in modes:
+            engine = PolicyEngine(initial_mode=mode)
+            decision = engine.evaluate_policy(request, mock_env_state)
+            if decision == PolicyDecision.DENY:
+                first_deny = mode
+            elif first_deny is not None:
+                # Found an ALLOW after a DENY — monotonicity violated
+                assert False, (
+                    f"MONOTONICITY VIOLATED: network tool denied in "
+                    f"{first_deny.name} but allowed in higher {mode.name}"
+                )
+
+    @pytest.mark.security
+    def test_tool_usb_policy_shape(self, mock_env_state):
+        """Document the USB tool policy across all modes.
+
+        USB policy is intentionally non-monotonic between RESTRICTED and TRUSTED:
+        - RESTRICTED adds a ceremony requirement (paranoid about USB)
+        - TRUSTED removes it (environment verified, USB is safe)
+        - AIRGAP+ denies USB entirely
+
+        This is correct: TRUSTED means "environment is verified" which
+        is a different trust model than RESTRICTED's "be cautious."
+        """
+        expected = {
+            BoundaryMode.OPEN: PolicyDecision.ALLOW,
+            BoundaryMode.RESTRICTED: PolicyDecision.REQUIRE_CEREMONY,
+            BoundaryMode.TRUSTED: PolicyDecision.ALLOW,
+            BoundaryMode.AIRGAP: PolicyDecision.DENY,
+            BoundaryMode.COLDROOM: PolicyDecision.DENY,
+        }
+        request = PolicyRequest(request_type='tool', requires_usb=True)
+        for mode, expected_decision in expected.items():
+            engine = PolicyEngine(initial_mode=mode)
+            decision = engine.evaluate_policy(request, mock_env_state)
+            assert decision == expected_decision, (
+                f"USB tool in {mode.name}: expected {expected_decision.value}, "
+                f"got {decision.value}"
+            )
+
+    @pytest.mark.security
+    def test_usb_strict_monotonicity_airgap_and_above(self, mock_env_state):
+        """SECURITY INVARIANT: From AIRGAP upward, USB is always denied."""
+        request = PolicyRequest(request_type='tool', requires_usb=True)
+        for mode in [BoundaryMode.AIRGAP, BoundaryMode.COLDROOM]:
+            engine = PolicyEngine(initial_mode=mode)
+            assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.DENY, (
+                f"SECURITY INVARIANT: USB must be denied in {mode.name}"
+            )
+
+    @pytest.mark.security
+    def test_model_monotonicity(self, mock_env_state):
+        """SECURITY INVARIANT: Model access restrictions escalate with mode."""
+        modes = [BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+                 BoundaryMode.AIRGAP, BoundaryMode.COLDROOM]
+
+        request = PolicyRequest(request_type='model')
+        # For offline env: OPEN denies (needs network), RESTRICTED denies,
+        # TRUSTED allows (offline is safe), AIRGAP denies, COLDROOM denies
+        # This is NOT strictly monotonic for offline because TRUSTED allows
+        # what RESTRICTED denies. That's by design (TRUSTED = verified offline).
+        # We test that AIRGAP and above always deny.
+        for mode in [BoundaryMode.AIRGAP, BoundaryMode.COLDROOM]:
+            engine = PolicyEngine(initial_mode=mode)
+            decision = engine.evaluate_policy(request, mock_env_state)
+            assert decision == PolicyDecision.DENY, (
+                f"SECURITY INVARIANT: model access should be denied in {mode.name}"
+            )
+
+
+# ===========================================================================
+# Fail-Closed Edge Cases
+# ===========================================================================
+
+class TestFailClosedEdgeCases:
+    """Tests verifying fail-closed behavior with malformed or edge-case inputs."""
+
+    @pytest.mark.security
+    def test_none_memory_class_denied(self, policy_engine, mock_env_state):
+        """FAIL-CLOSED: None memory class must be denied, not crash."""
+        request = PolicyRequest(request_type='recall', memory_class=None)
+        decision = policy_engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY
+
+    @pytest.mark.security
+    def test_tool_no_requirements_allowed_in_open(self, policy_engine, mock_env_state):
+        """Tool with no IO requirements should be allowed in OPEN."""
+        request = PolicyRequest(
+            request_type='tool',
+            requires_network=False,
+            requires_filesystem=False,
+            requires_usb=False,
+        )
+        decision = policy_engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.ALLOW
+
+    @pytest.mark.security
+    def test_tool_no_requirements_allowed_in_coldroom(self, mock_env_state):
+        """COLDROOM allows tools with no IO (keyboard/display only)."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
+        request = PolicyRequest(
+            request_type='tool',
+            requires_network=False,
+            requires_filesystem=False,
+            requires_usb=False,
+        )
+        assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
+
+    @pytest.mark.security
+    def test_trusted_filesystem_without_network_allowed(self, mock_env_state):
+        """TRUSTED should allow filesystem-only tools (no network check needed)."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
+        request = PolicyRequest(
+            request_type='tool',
+            requires_filesystem=True,
+            requires_network=False,
+        )
+        assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
+
+    @pytest.mark.security
+    def test_trusted_usb_without_network_allowed(self, mock_env_state):
+        """TRUSTED should allow USB-only tools (USB restriction is COLDROOM)."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
+        request = PolicyRequest(
+            request_type='tool',
+            requires_usb=True,
+            requires_network=False,
+        )
+        assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
