@@ -270,14 +270,6 @@ class Features:
             "Ollama LLM integration for reports"
         )
 
-        # Antivirus
-        self._detect_feature(
-            "ANTIVIRUS",
-            "daemon.security.antivirus",
-            ["AntivirusEngine"],
-            "Malware scanning engine"
-        )
-
         # SIEM
         self._detect_feature(
             "SIEM",
