@@ -899,3 +899,53 @@ class TestStateMonitorUnregister:
         monitor.register_callback(lambda old, new: None)
         monitor.stop()
         assert len(monitor._callbacks) == 0
+
+
+# ===========================================================================
+# get_usb_changes Tests
+# ===========================================================================
+
+class TestGetUsbChanges:
+    """Tests for USB change detection via get_usb_changes()."""
+
+    def test_get_usb_changes_before_baseline_returns_empty(self):
+        """get_usb_changes before first sample should return empty sets."""
+        monitor = StateMonitor()
+        added, removed = monitor.get_usb_changes()
+        assert added == set()
+        assert removed == set()
+
+    def test_get_usb_changes_no_state_returns_empty(self):
+        """get_usb_changes with no current state should return empty sets."""
+        monitor = StateMonitor()
+        monitor._baseline_usb = {'device-a'}
+        # No current state sampled
+        added, removed = monitor.get_usb_changes()
+        assert added == set()
+        assert removed == set()
+
+
+# ===========================================================================
+# SECURITY INVARIANT: Interface Type Detection Completeness
+# ===========================================================================
+
+class TestInterfaceTypeUnknown:
+    """Tests that unknown interface names safely return UNKNOWN type."""
+
+    def test_unknown_interface_name(self):
+        """Unrecognized interface names should return UNKNOWN."""
+        monitor = StateMonitor()
+        result = monitor._detect_interface_type('foo0')
+        assert result == NetworkType.UNKNOWN
+
+    def test_numeric_interface_name(self):
+        """Numeric-only interface names should return UNKNOWN."""
+        monitor = StateMonitor()
+        result = monitor._detect_interface_type('12345')
+        assert result == NetworkType.UNKNOWN
+
+    def test_empty_interface_name(self):
+        """Empty interface name should return UNKNOWN."""
+        monitor = StateMonitor()
+        result = monitor._detect_interface_type('')
+        assert result == NetworkType.UNKNOWN
