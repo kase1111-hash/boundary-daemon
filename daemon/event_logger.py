@@ -54,6 +54,10 @@ class EventType(Enum):
     PII_REDACTED = "pii_redacted"  # PII redacted from content
     ALERT = "alert"  # System alert (critical/warning)
     INFO = "info"  # Informational event
+    SANDBOX_ENFORCEMENT = "sandbox_enforcement"  # Sandbox enforcement action taken
+    SANDBOX_VIOLATION = "sandbox_violation"  # Kernel-level violation in sandbox
+    SANDBOX_TIGHTENED = "sandbox_tightened"  # Sandbox profile tightened on mode escalation
+    SANDBOX_TERMINATED = "sandbox_terminated"  # Sandbox terminated due to mode change
 
 
 @dataclass

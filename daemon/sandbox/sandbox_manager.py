@@ -610,6 +610,62 @@ class Sandbox:
 
         return False
 
+    def tighten_profile(self, new_profile: 'SandboxProfile', reason: str = "") -> bool:
+        """
+        Tighten the sandbox profile to a stricter level.
+
+        If the sandbox is RUNNING, freezes it, updates cgroup limits
+        and firewall rules, then resumes. If CREATED, just swaps the
+        profile reference.
+
+        This is called by the enforcement bridge when the boundary mode
+        escalates. It only tightens — never loosens.
+
+        Args:
+            new_profile: The stricter profile to apply
+            reason: Why the profile is being tightened
+
+        Returns:
+            True if the profile was changed
+        """
+        old_profile = self._profile
+
+        if self._state == SandboxState.RUNNING:
+            frozen = self.pause()
+            try:
+                # Update cgroup limits (can be changed on running cgroup)
+                if self._cgroup_path and new_profile.cgroup_limits:
+                    self._cgroup_manager.set_limits(
+                        self._cgroup_path, new_profile.cgroup_limits
+                    )
+                # Update firewall rules
+                if self._sandbox_firewall and new_profile.network_policy:
+                    self._cleanup_firewall()
+                    self._profile = new_profile
+                    self._setup_firewall()
+                else:
+                    self._profile = new_profile
+            finally:
+                if frozen:
+                    self.resume()
+
+        elif self._state == SandboxState.CREATED:
+            self._profile = new_profile
+        else:
+            self._profile = new_profile
+
+        self._emit_event('sandbox_tightened', {
+            'old_profile': old_profile.name,
+            'new_profile': new_profile.name,
+            'reason': reason,
+        })
+
+        logger.info(
+            f"Sandbox {self.sandbox_id} tightened: "
+            f"{old_profile.name} -> {new_profile.name}"
+        )
+        return True
+
     def get_usage(self) -> Optional[ResourceUsage]:
         """Get current resource usage."""
         if self._cgroup_path:
@@ -648,10 +704,12 @@ class SandboxManager:
         policy_engine: Optional[Any] = None,  # PolicyEngine from daemon.policy_engine
         ceremony_manager: Optional[Any] = None,  # CeremonyManager for break-glass
         event_callback: Optional[Callable[[str, Dict], None]] = None,
+        telemetry: Optional[Any] = None,  # SandboxTelemetryCollector for violation tracking
     ):
         self._policy_engine = policy_engine
         self._ceremony_manager = ceremony_manager
         self._event_callback = event_callback
+        self._telemetry = telemetry
 
         # Initialize managers
         self._namespace_manager = NamespaceManager()
@@ -662,10 +720,21 @@ class SandboxManager:
         self._sandboxes: Dict[str, Sandbox] = {}
         self._lock = threading.Lock()
 
+        # Enforcement bridge (set externally via set_enforcement_bridge)
+        self._enforcement_bridge = None
+
         # Stats
         self._total_created = 0
         self._total_completed = 0
         self._total_failed = 0
+
+    def set_enforcement_bridge(self, bridge: Any) -> None:
+        """Set the enforcement bridge for automatic profile tightening."""
+        self._enforcement_bridge = bridge
+
+    def set_telemetry(self, telemetry: Any) -> None:
+        """Set the telemetry collector for violation tracking."""
+        self._telemetry = telemetry
 
     def get_capabilities(self) -> Dict[str, Any]:
         """Get sandbox capabilities on this system."""
@@ -761,6 +830,17 @@ class SandboxManager:
             self._sandboxes[sandbox_id] = sandbox
             self._total_created += 1
 
+        # Register with telemetry for violation tracking
+        if self._telemetry:
+            try:
+                self._telemetry.track_sandbox(
+                    sandbox_id=sandbox_id,
+                    profile_name=profile.name,
+                    boundary_mode=self.get_current_boundary_mode(),
+                )
+            except Exception as e:
+                logger.debug(f"Telemetry tracking registration failed: {e}")
+
         logger.info(f"Created sandbox: {sandbox_id} (profile: {profile.name})")
 
         return sandbox
@@ -811,6 +891,11 @@ class SandboxManager:
 
         finally:
             sandbox.cleanup()
+            if self._telemetry:
+                try:
+                    self._telemetry.untrack_sandbox(sandbox.sandbox_id)
+                except Exception:
+                    pass
             with self._lock:
                 self._sandboxes.pop(sandbox.sandbox_id, None)
 
@@ -868,7 +953,7 @@ class SandboxManager:
                 state = sandbox.state.name
                 active_by_state[state] = active_by_state.get(state, 0) + 1
 
-            return {
+            stats = {
                 'capabilities': self.get_capabilities(),
                 'current_boundary_mode': self.get_current_boundary_mode(),
                 'active_sandboxes': len(self._sandboxes),
@@ -877,6 +962,22 @@ class SandboxManager:
                 'total_completed': self._total_completed,
                 'total_failed': self._total_failed,
             }
+
+        # Include enforcement bridge stats if available
+        if self._enforcement_bridge:
+            try:
+                stats['enforcement_bridge'] = self._enforcement_bridge.get_stats()
+            except Exception:
+                stats['enforcement_bridge'] = {'error': 'unavailable'}
+
+        # Include telemetry stats if available
+        if self._telemetry:
+            try:
+                stats['telemetry'] = self._telemetry.get_stats()
+            except Exception:
+                stats['telemetry'] = {'error': 'unavailable'}
+
+        return stats
 
 
 if __name__ == '__main__':

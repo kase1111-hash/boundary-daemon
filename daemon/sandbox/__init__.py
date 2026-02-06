@@ -92,6 +92,19 @@ from .profile_config import (
     YAML_AVAILABLE,
 )
 
+from .enforcement_bridge import (
+    SandboxEnforcementBridge,
+    EnforcementConsumer,
+    EnforcementAction,
+    EnforcementResult,
+)
+
+from .telemetry import (
+    SandboxTelemetryCollector,
+    SandboxViolation,
+    ViolationType,
+)
+
 __all__ = [
     # Namespace
     'NamespaceManager',
@@ -132,4 +145,13 @@ __all__ = [
     'NetworkPolicyConfig',
     'get_profile_loader',
     'YAML_AVAILABLE',
+    # Enforcement Bridge
+    'SandboxEnforcementBridge',
+    'EnforcementConsumer',
+    'EnforcementAction',
+    'EnforcementResult',
+    # Telemetry
+    'SandboxTelemetryCollector',
+    'SandboxViolation',
+    'ViolationType',
 ]
