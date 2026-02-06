@@ -88,6 +88,9 @@ class PolicyEngine:
     """
     Evaluates policies based on (mode × signal × request) → decision.
     Enforces fail-closed, deterministic policies.
+
+    Supports optional custom policy refinement via load_custom_policies().
+    Custom rules can only tighten (ALLOW→CEREMONY, ALLOW→DENY), never loosen.
     """
 
     def __init__(self, initial_mode: BoundaryMode = BoundaryMode.OPEN):
@@ -104,6 +107,7 @@ class PolicyEngine:
         self._transition_callbacks: Dict[int, callable] = {}  # Use dict for O(1) unregister
         self._next_callback_id = 0
         self._callback_lock = threading.Lock()  # Protect callback modifications
+        self._custom_policies = None  # Optional PolicySet for custom rules
 
     def register_transition_callback(self, callback: callable) -> int:
         """
@@ -137,10 +141,41 @@ class PolicyEngine:
                 return True
             return False
 
+    def load_custom_policies(self, policy_set) -> Tuple[bool, str]:
+        """
+        Load a custom PolicySet for policy refinement.
+
+        Custom rules can only tighten decisions, never loosen them.
+        The PolicySet is validated before loading; invalid policies are rejected.
+
+        Args:
+            policy_set: A PolicySet instance from daemon.policy_language
+
+        Returns:
+            (success, message)
+        """
+        from .policy_language import validate_policy_set
+        errors = validate_policy_set(policy_set)
+        real_errors = [e for e in errors if e.severity == 'error']
+        if real_errors:
+            msgs = '; '.join(f"{e.rule_name}: {e.message}" for e in real_errors)
+            return (False, f"Validation failed: {msgs}")
+        self._custom_policies = policy_set
+        return (True, f"Loaded {len(policy_set.rules)} custom rules")
+
+    def clear_custom_policies(self):
+        """Remove all custom policy rules."""
+        self._custom_policies = None
+
+    def get_custom_policies(self):
+        """Get the currently loaded custom PolicySet, or None."""
+        return self._custom_policies
+
     def cleanup(self):
         """Cleanup resources and clear callbacks to prevent memory leaks."""
         with self._callback_lock:
             self._transition_callbacks.clear()
+        self._custom_policies = None
 
     def get_current_state(self) -> BoundaryState:
         """Get current boundary state"""
@@ -201,13 +236,18 @@ class PolicyEngine:
             self._boundary_state.hardware_trust = env_state.hardware_trust
             self._boundary_state.external_models = len(env_state.external_model_endpoints) > 0
 
-    def evaluate_policy(self, request: PolicyRequest, env_state: EnvironmentState) -> PolicyDecision:
+    def evaluate_policy(self, request: PolicyRequest, env_state: EnvironmentState,
+                        agent: str = None) -> PolicyDecision:
         """
         Evaluate a policy request against current mode and environment.
+
+        If custom policies are loaded, they refine the base decision
+        (can tighten but never loosen).
 
         Args:
             request: The policy request to evaluate
             env_state: Current environment state
+            agent: Optional agent identifier for per-agent custom rules
 
         Returns:
             PolicyDecision (ALLOW, DENY, or REQUIRE_CEREMONY)
@@ -215,22 +255,39 @@ class PolicyEngine:
         with self._state_lock:
             current_mode = self._boundary_state.mode
 
-            # LOCKDOWN mode: deny everything
+            # LOCKDOWN mode: deny everything (custom rules cannot override)
             if current_mode == BoundaryMode.LOCKDOWN:
                 return PolicyDecision.DENY
 
-            # Evaluate based on request type
+            # Base matrix evaluation
             if request.request_type == 'recall':
-                return self._evaluate_recall_policy(request, current_mode, env_state)
+                base = self._evaluate_recall_policy(request, current_mode, env_state)
             elif request.request_type == 'tool':
-                return self._evaluate_tool_policy(request, current_mode, env_state)
+                base = self._evaluate_tool_policy(request, current_mode, env_state)
             elif request.request_type == 'model':
-                return self._evaluate_model_policy(request, current_mode, env_state)
+                base = self._evaluate_model_policy(request, current_mode, env_state)
             elif request.request_type == 'io':
-                return self._evaluate_io_policy(request, current_mode, env_state)
+                base = self._evaluate_io_policy(request, current_mode, env_state)
             else:
                 # Unknown request type: fail closed
                 return PolicyDecision.DENY
+
+            # Apply custom policy refinement if loaded
+            if self._custom_policies is not None:
+                try:
+                    from .policy_language import (
+                        EvaluationContext, evaluate_with_custom_policies
+                    )
+                    ctx = EvaluationContext.build(
+                        current_mode, request, env_state, agent=agent,
+                    )
+                    return evaluate_with_custom_policies(base, self._custom_policies, ctx)
+                except Exception as e:
+                    logger.error(f"Custom policy evaluation error: {e}")
+                    # Fail-closed: if custom evaluation crashes, deny
+                    return PolicyDecision.DENY
+
+            return base
 
     def _evaluate_recall_policy(self, request: PolicyRequest,
                                mode: BoundaryMode,
