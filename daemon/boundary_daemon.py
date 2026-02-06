@@ -125,6 +125,22 @@ except ImportError:
     EnforcementConsumer = None
     SandboxTelemetryCollector = None
 
+# Import operator observability (ROADMAP §6: Operator Observability)
+try:
+    from .operator_observability import (
+        OperatorConsole,
+        IntegrationHealthRegistry,
+        DecisionTrace,
+        trace_policy_decision,
+    )
+    OPERATOR_OBSERVABILITY_AVAILABLE = True
+except ImportError:
+    OPERATOR_OBSERVABILITY_AVAILABLE = False
+    OperatorConsole = None
+    IntegrationHealthRegistry = None
+    DecisionTrace = None
+    trace_policy_decision = None
+
 # Import custom policy module (Plan 5: Custom Policy Language)
 try:
     from .policy import CustomPolicyEngine
@@ -743,6 +759,19 @@ class BoundaryDaemon:
                 logger.warning(f"Sandbox enforcement bridge failed to initialize: {e}")
         else:
             logger.info("Sandbox enforcement bridge: not available")
+
+        # Initialize Operator Observability Console (ROADMAP §6)
+        # Unified operator-facing view: mode rationale, decision traces,
+        # tripwire status, log health, integration health, evidence bundles.
+        self.operator_console = None
+        if OPERATOR_OBSERVABILITY_AVAILABLE and OperatorConsole is not None:
+            try:
+                self.operator_console = OperatorConsole(self)
+                logger.info("Operator observability console available")
+            except Exception as e:
+                logger.warning(f"Operator observability failed to initialize: {e}")
+        else:
+            logger.info("Operator observability: not available")
 
         # Initialize TPM manager (Plan 2: TPM Integration)
         self.tpm_manager = None
@@ -3019,6 +3048,21 @@ class BoundaryDaemon:
                 }
             except Exception as e:
                 status['redundant_logger'] = {'error': str(e)}
+
+        # Add operator observability status (ROADMAP §6)
+        if self.operator_console:
+            try:
+                status['operator_observability'] = {
+                    'available': True,
+                    'decision_log_size': len(self.operator_console._decision_log),
+                    'integration_health': self.operator_console.integration_registry.get_status(),
+                    'log_chain_last_verified': self.operator_console._chain_last_verified,
+                    'log_chain_valid': self.operator_console._chain_last_valid,
+                }
+            except Exception as e:
+                status['operator_observability'] = {'error': str(e)}
+        else:
+            status['operator_observability'] = {'available': False}
 
         return status
 
