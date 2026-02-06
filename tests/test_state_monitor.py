@@ -653,3 +653,249 @@ class TestStateMonitorEdgeCases:
 
         # Should not crash or leak threads
         assert monitor._running is False
+
+
+# ===========================================================================
+# Hardware Trust Calculation Tests
+# ===========================================================================
+
+class TestHardwareTrustCalculation:
+    """Tests for _calculate_hardware_trust logic.
+
+    Trust rules:
+    - NEW USB devices since baseline → LOW
+    - NEW block devices since baseline → LOW
+    - TPM present and no new devices → HIGH
+    - No TPM, no new devices → MEDIUM
+    """
+
+    def _make_monitor(self):
+        """Create a StateMonitor and set its baselines."""
+        monitor = StateMonitor()
+        return monitor
+
+    def test_new_usb_device_gives_low_trust(self):
+        """New USB devices beyond baseline should yield LOW trust."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = {'device-a', 'device-b'}
+        monitor._baseline_block_devices = set()
+
+        hardware_info = {
+            'usb_devices': {'device-a', 'device-b', 'device-c'},  # device-c is new
+            'block_devices': set(),
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.LOW
+
+    def test_removed_usb_device_not_low_trust(self):
+        """Removed USB device (subset of baseline) should not trigger LOW."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = {'device-a', 'device-b'}
+        monitor._baseline_block_devices = set()
+
+        hardware_info = {
+            'usb_devices': {'device-a'},  # device-b removed
+            'block_devices': set(),
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        # No NEW devices, just removed → should not be LOW
+        assert trust == HardwareTrust.HIGH  # TPM present
+
+    def test_new_block_device_gives_low_trust(self):
+        """New block devices beyond baseline should yield LOW trust."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = set()
+        monitor._baseline_block_devices = {'/dev/sda'}
+
+        hardware_info = {
+            'usb_devices': set(),
+            'block_devices': {'/dev/sda', '/dev/sdb'},  # sdb is new
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.LOW
+
+    def test_tpm_present_no_new_devices_gives_high(self):
+        """TPM present with no new devices should yield HIGH trust."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = {'device-a'}
+        monitor._baseline_block_devices = {'/dev/sda'}
+
+        hardware_info = {
+            'usb_devices': {'device-a'},
+            'block_devices': {'/dev/sda'},
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.HIGH
+
+    def test_no_tpm_no_new_devices_gives_medium(self):
+        """No TPM with no new devices should yield MEDIUM trust."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = {'device-a'}
+        monitor._baseline_block_devices = {'/dev/sda'}
+
+        hardware_info = {
+            'usb_devices': {'device-a'},
+            'block_devices': {'/dev/sda'},
+            'camera': False,
+            'mic': False,
+            'tpm': False,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.MEDIUM
+
+    def test_baseline_not_set_with_tpm_gives_high(self):
+        """When baseline is None (first sample), USB check is skipped → TPM → HIGH."""
+        monitor = self._make_monitor()
+        # Baselines are None by default
+
+        hardware_info = {
+            'usb_devices': {'device-a'},
+            'block_devices': {'/dev/sda'},
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.HIGH
+
+    def test_baseline_not_set_without_tpm_gives_medium(self):
+        """When baseline is None and no TPM → MEDIUM."""
+        monitor = self._make_monitor()
+
+        hardware_info = {
+            'usb_devices': {'device-a'},
+            'block_devices': {'/dev/sda'},
+            'camera': False,
+            'mic': False,
+            'tpm': False,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.MEDIUM
+
+    def test_empty_baseline_new_usb_gives_low(self):
+        """Empty baseline set with any USB device should give LOW."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = set()
+        monitor._baseline_block_devices = set()
+
+        hardware_info = {
+            'usb_devices': {'new-device'},
+            'block_devices': set(),
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.LOW
+
+    def test_usb_checked_before_block_devices(self):
+        """USB changes should be checked before block devices (both trigger LOW)."""
+        monitor = self._make_monitor()
+        monitor._baseline_usb = set()
+        monitor._baseline_block_devices = set()
+
+        hardware_info = {
+            'usb_devices': {'new-usb'},
+            'block_devices': {'new-block'},
+            'camera': False,
+            'mic': False,
+            'tpm': True,
+        }
+        # Both are new, but result should still be LOW
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == HardwareTrust.LOW
+
+
+# ===========================================================================
+# Interface Type Detection Tests
+# ===========================================================================
+
+class TestInterfaceTypeDetection:
+    """Tests for _detect_interface_type classification."""
+
+    def test_ethernet_interfaces(self):
+        """Common ethernet interface names should be detected."""
+        monitor = StateMonitor()
+        for iface in ['eth0', 'enp0s3', 'eno1', 'ens160', 'em1']:
+            result = monitor._detect_interface_type(iface)
+            assert result == NetworkType.ETHERNET, f"{iface} should be ETHERNET"
+
+    def test_wifi_interfaces(self):
+        """Common wifi interface names should be detected."""
+        monitor = StateMonitor()
+        for iface in ['wlan0', 'wlp3s0', 'wlx001122334455']:
+            result = monitor._detect_interface_type(iface)
+            assert result == NetworkType.WIFI, f"{iface} should be WIFI"
+
+    def test_vpn_interfaces(self):
+        """VPN interface names should be detected."""
+        monitor = StateMonitor()
+        for iface in ['tun0', 'tap0', 'wg0']:
+            result = monitor._detect_interface_type(iface)
+            assert result == NetworkType.VPN, f"{iface} should be VPN"
+
+    def test_bluetooth_interfaces(self):
+        """Bluetooth interface names should be detected."""
+        monitor = StateMonitor()
+        for iface in ['bnep0']:
+            result = monitor._detect_interface_type(iface)
+            assert result == NetworkType.BLUETOOTH, f"{iface} should be BLUETOOTH"
+
+    def test_bridge_interfaces(self):
+        """Bridge/container interface names should be detected."""
+        monitor = StateMonitor()
+        for iface in ['br0', 'docker0', 'virbr0', 'veth12345']:
+            result = monitor._detect_interface_type(iface)
+            assert result == NetworkType.BRIDGE, f"{iface} should be BRIDGE"
+
+    def test_ppp_interfaces(self):
+        """PPP interfaces should be classified as cellular."""
+        monitor = StateMonitor()
+        result = monitor._detect_interface_type('ppp0')
+        assert result == NetworkType.CELLULAR_4G
+
+
+# ===========================================================================
+# Callback Unregister Tests
+# ===========================================================================
+
+class TestStateMonitorUnregister:
+    """Tests for callback unregistration."""
+
+    def test_unregister_callback_returns_true(self):
+        """Unregistering an existing callback should return True."""
+        monitor = StateMonitor()
+        cb_id = monitor.register_callback(lambda old, new: None)
+        assert monitor.unregister_callback(cb_id) is True
+
+    def test_unregister_callback_removes_it(self):
+        """Unregistered callback should no longer be in the dict."""
+        monitor = StateMonitor()
+        cb_id = monitor.register_callback(lambda old, new: None)
+        monitor.unregister_callback(cb_id)
+        assert cb_id not in monitor._callbacks
+
+    def test_unregister_nonexistent_returns_false(self):
+        """Unregistering a non-existent callback should return False."""
+        monitor = StateMonitor()
+        assert monitor.unregister_callback(9999) is False
+
+    def test_stop_clears_callbacks(self):
+        """stop() should clear all callbacks to prevent memory leaks."""
+        monitor = StateMonitor()
+        monitor.register_callback(lambda old, new: None)
+        monitor.register_callback(lambda old, new: None)
+        monitor.stop()
+        assert len(monitor._callbacks) == 0
