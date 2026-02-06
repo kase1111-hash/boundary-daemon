@@ -3,9 +3,11 @@ Security Module for Boundary Daemon
 
 Provides:
 - Advisory-only code vulnerability scanning using local LLMs
-- Antivirus scanning focused on keylogger and malware detection
 - Native DNS resolution without external tool dependencies
 - Daemon binary integrity protection
+
+NOTE: Antivirus scanning has been extracted to the standalone
+boundary-antivirus package. See boundary-antivirus/README.md.
 
 SECURITY: The native DNS resolver addresses the vulnerability:
 "DNS Response Verification Uses External Tools" by providing
@@ -22,19 +24,6 @@ from .code_advisor import (
     AdvisorySeverity,
     AdvisoryStatus,
     ScanResult
-)
-
-from .antivirus import (
-    AntivirusScanner,
-    RealTimeMonitor,
-    StartupMonitor,
-    ThreatIndicator,
-    ThreatLevel,
-    ThreatCategory,
-    KeyloggerSignatures,
-    ScreenSharingSignatures,
-    NetworkMonitoringSignatures,
-    ScanResult as AntivirusScanResult,
 )
 
 from .native_dns_resolver import (
@@ -237,17 +226,6 @@ __all__ = [
     'AdvisorySeverity',
     'AdvisoryStatus',
     'ScanResult',
-    # Antivirus
-    'AntivirusScanner',
-    'RealTimeMonitor',
-    'StartupMonitor',
-    'ThreatIndicator',
-    'ThreatLevel',
-    'ThreatCategory',
-    'KeyloggerSignatures',
-    'ScreenSharingSignatures',
-    'NetworkMonitoringSignatures',
-    'AntivirusScanResult',
     # Native DNS Resolver (SECURITY: No external tools)
     'NativeDNSResolver',
     'SecureDNSVerifier',

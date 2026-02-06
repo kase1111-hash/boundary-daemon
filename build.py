@@ -544,8 +544,6 @@ def get_hidden_imports() -> List[str]:
         # Daemon subpackages - security
         "--hidden-import=daemon.security",
         "--hidden-import=daemon.security.agent_attestation",
-        "--hidden-import=daemon.security.antivirus",
-        "--hidden-import=daemon.security.antivirus_gui",
         "--hidden-import=daemon.security.arp_security",
         "--hidden-import=daemon.security.clock_monitor",
         "--hidden-import=daemon.security.code_advisor",
@@ -588,8 +586,6 @@ def get_hidden_imports() -> List[str]:
         "--hidden-import=daemon.blockchain",
         "--hidden-import=daemon.blockchain.validator_protection",
         "--hidden-import=daemon.blockchain.rpc_protection",
-        # Daemon core - dreaming status reporter
-        "--hidden-import=daemon.dreaming",
     ]
 
 

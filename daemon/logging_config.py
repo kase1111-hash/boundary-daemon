@@ -11,8 +11,8 @@ Usage:
     setup_logging(verbose=True)
 
     # Get feature-specific logger
-    logger = get_logger('security.antivirus')
-    logger.info("Scan complete", extra={'files_scanned': 100})
+    logger = get_logger('security.prompt_injection')
+    logger.info("Check complete", extra={'patterns_checked': 50})
 
     # Toggle verbose mode at runtime
     set_verbose(True)

@@ -390,21 +390,6 @@ except ImportError:
     init_siem = None
     set_siem_integration = None
 
-# Import dreaming status reporter (CLI status updates)
-try:
-    from .dreaming import (
-        DreamingReporter,
-        DreamPhase,
-        create_dreaming_reporter,
-        set_dreaming_reporter,
-    )
-    DREAMING_AVAILABLE = True
-except ImportError:
-    DREAMING_AVAILABLE = False
-    DreamingReporter = None
-    DreamPhase = None
-    create_dreaming_reporter = None
-    set_dreaming_reporter = None
 
 
 class BoundaryDaemon:
@@ -1225,27 +1210,6 @@ class BoundaryDaemon:
         else:
             logger.info("API server: not available")
 
-        # Initialize dreaming status reporter (CLI status updates)
-        self._dreaming_reporter = None
-        self.dreaming_enabled = True  # Can be disabled via config
-        if DREAMING_AVAILABLE and self.dreaming_enabled:
-            try:
-                self._dreaming_reporter = create_dreaming_reporter(
-                    interval=5.0,  # Report every 5 seconds
-                    use_colors=True,
-                )
-                # Register state callback for mode display
-                if self._dreaming_reporter:
-                    self._dreaming_reporter.register_state_callback(
-                        'mode',
-                        lambda: f"mode:{self.policy_engine.get_current_mode().name}"
-                    )
-                    logger.info("Dreaming status reporter initialized (5s interval)")
-            except Exception as e:
-                logger.warning(f"Failed to initialize dreaming reporter: {e}")
-        else:
-            logger.info("Dreaming reporter: not available")
-
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -1879,12 +1843,6 @@ class BoundaryDaemon:
         # Start state monitoring
         self.state_monitor.start()
 
-        # Start dreaming status reporter
-        if self._dreaming_reporter:
-            self._dreaming_reporter.start()
-            self._dreaming_reporter.set_phase(DreamPhase.WATCHING)
-            logger.info("Dreaming status reporter started")
-
         # Start enforcement loop
         self._enforcement_thread = threading.Thread(target=self._enforcement_loop, daemon=False)
         self._enforcement_thread.start()
@@ -2025,14 +1983,6 @@ class BoundaryDaemon:
                 logger.info("Tripwire system callbacks cleaned up")
             except Exception as e:
                 logger.warning(f"Failed to cleanup tripwire system: {e}")
-
-        # Stop dreaming status reporter
-        if self._dreaming_reporter:
-            try:
-                self._dreaming_reporter.stop()
-                logger.info("Dreaming status reporter stopped")
-            except Exception as e:
-                logger.warning(f"Failed to stop dreaming reporter: {e}")
 
         # Stop API server
         if self.api_server:
@@ -2257,16 +2207,8 @@ class BoundaryDaemon:
 
     def _perform_health_check(self):
         """Perform periodic health check"""
-        # Update dreaming phase
-        if self._dreaming_reporter:
-            self._dreaming_reporter.set_phase(DreamPhase.VERIFYING)
-
         # Check daemon health (tripwire system)
-        if self._dreaming_reporter:
-            self._dreaming_reporter.start_operation("check:daemon_health")
         daemon_healthy = self.tripwire_system.check_daemon_health()
-        if self._dreaming_reporter:
-            self._dreaming_reporter.complete_operation("check:daemon_health", success=daemon_healthy)
 
         if not daemon_healthy:
             # Daemon health check failed - this is a critical violation
@@ -2278,11 +2220,7 @@ class BoundaryDaemon:
             logger.warning("*** Daemon health check failed ***")
 
         # Verify event log integrity
-        if self._dreaming_reporter:
-            self._dreaming_reporter.start_operation("check:event_log_integrity")
         is_valid, error = self.event_logger.verify_chain()
-        if self._dreaming_reporter:
-            self._dreaming_reporter.complete_operation("check:event_log_integrity", success=is_valid)
 
         if not is_valid:
             logger.critical(f"*** Event log chain integrity violation: {error} ***")
@@ -2292,10 +2230,6 @@ class BoundaryDaemon:
                 metadata={'healthy': False}
             )
 
-        # Return to watching phase
-        if self._dreaming_reporter:
-            self._dreaming_reporter.set_phase(DreamPhase.WATCHING)
-
     def _perform_cache_cleanup(self):
         """
         Perform periodic cache cleanup to prevent memory leaks.
@@ -2303,9 +2237,6 @@ class BoundaryDaemon:
         This method clears caches that can be safely reset without losing
         essential state. It also forces garbage collection to reclaim memory.
         """
-        if self._dreaming_reporter:
-            self._dreaming_reporter.start_operation("cleanup:caches")
-
         try:
             # Get memory before cleanup (if available)
             mem_before = None
@@ -2339,14 +2270,6 @@ class BoundaryDaemon:
             if hasattr(self, '_tpm_manager') and self._tpm_manager:
                 try:
                     self._tpm_manager._pcr_cache.clear()
-                    caches_cleared += 1
-                except Exception:
-                    pass
-
-            # Clear antivirus hash cache (will be re-queried on demand)
-            if hasattr(self, '_antivirus') and self._antivirus:
-                try:
-                    self._antivirus._cache.clear()
                     caches_cleared += 1
                 except Exception:
                     pass
@@ -2392,13 +2315,8 @@ class BoundaryDaemon:
 
             logger.info(log_msg)
 
-            if self._dreaming_reporter:
-                self._dreaming_reporter.complete_operation("cleanup:caches", success=True)
-
         except Exception as e:
             logger.error(f"Error during cache cleanup: {e}")
-            if self._dreaming_reporter:
-                self._dreaming_reporter.complete_operation("cleanup:caches", success=False)
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""

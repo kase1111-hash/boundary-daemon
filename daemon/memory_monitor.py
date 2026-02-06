@@ -23,7 +23,6 @@ from datetime import datetime
 from enum import Enum
 from collections import deque
 
-from .dreaming import dream_operation_start, dream_operation_complete
 
 logger = logging.getLogger(__name__)
 
@@ -615,9 +614,6 @@ class MemoryMonitor:
         """Main monitoring loop"""
         while self._running:
             try:
-                # Report to dreaming reporter
-                dream_operation_start("check:memory_usage")
-
                 snapshot = self._take_snapshot()
 
                 with self._lock:
@@ -640,14 +636,10 @@ class MemoryMonitor:
                 # Check debug mode auto-disable timer
                 self._check_debug_auto_disable()
 
-                # Report completion to dreaming reporter
-                dream_operation_complete("check:memory_usage", success=True)
-
                 time.sleep(self.config.sample_interval)
 
             except Exception as e:
                 logger.error(f"Error in memory monitor loop: {e}")
-                dream_operation_complete("check:memory_usage", success=False)
                 time.sleep(self.config.sample_interval)
 
     def _check_debug_auto_disable(self):

@@ -23,7 +23,6 @@ from enum import Enum
 from collections import deque
 from pathlib import Path
 
-from .dreaming import dream_operation_start, dream_operation_complete
 
 logger = logging.getLogger(__name__)
 
@@ -309,9 +308,6 @@ class ResourceMonitor:
         """Main monitoring loop"""
         while self._running:
             try:
-                # Report to dreaming reporter
-                dream_operation_start("check:resources")
-
                 snapshot = self._take_snapshot()
 
                 with self._lock:
@@ -342,14 +338,10 @@ class ResourceMonitor:
                 # Export metrics
                 self._export_metrics(snapshot)
 
-                # Report completion to dreaming reporter
-                dream_operation_complete("check:resources", success=True)
-
                 time.sleep(self.config.sample_interval)
 
             except Exception as e:
                 logger.error(f"Error in resource monitor loop: {e}")
-                dream_operation_complete("check:resources", success=False)
                 time.sleep(self.config.sample_interval)
 
     def _take_snapshot(self) -> ResourceSnapshot:
