@@ -19,7 +19,7 @@
 
 The Boundary Daemon (Agent Smith) is a trust boundary enforcement system that monitors and controls security boundaries for AI agent systems. It provides:
 
-- **Security Mode Enforcement**: Four security levels from permissive to complete lockdown
+- **Security Mode Enforcement**: Six security modes from permissive to complete lockdown
 - **Real-time Monitoring**: Memory, CPU, disk, network, and health monitoring
 - **Cryptographic Logging**: Signed, tamper-evident event logs
 - **AI-Powered Analysis**: Natural language queries via Ollama integration
@@ -27,15 +27,15 @@ The Boundary Daemon (Agent Smith) is a trust boundary enforcement system that mo
 
 ### Platform Support
 
-| Feature | Linux | Windows |
-|---------|-------|---------|
-| Core Daemon | ✅ | ✅ |
-| Monitoring | ✅ | ✅ |
-| Config Encryption | ✅ | ✅ |
-| Ollama Integration | ✅ | ✅ |
-| Network Enforcement | ✅ | ❌ (Linux-only) |
-| USB Enforcement | ✅ | ❌ (Linux-only) |
-| Process Enforcement | ✅ | ❌ (Linux-only) |
+| Feature | Linux | Windows | macOS |
+|---------|-------|---------|-------|
+| Core Daemon | ✅ | ✅ | ✅ |
+| Monitoring | ✅ | ✅ | ✅ |
+| Config Encryption | ✅ | ✅ | ✅ |
+| Ollama Integration | ✅ | ✅ | ✅ |
+| Network Enforcement | ✅ (iptables/nftables) | ⚠️ Partial (Windows Firewall) | ❌ |
+| USB Enforcement | ✅ (udev) | ❌ | ❌ |
+| Process Enforcement | ✅ (seccomp, namespaces) | ❌ | ❌ |
 
 ---
 
@@ -561,8 +561,8 @@ status = client.get_status()
 # Get current mode
 mode = client.get_mode()
 
-# Set mode (OPEN, GUARDED, AIRGAP, LOCKDOWN)
-client.set_mode("GUARDED")
+# Set mode (OPEN, RESTRICTED, TRUSTED, AIRGAP, COLDROOM, LOCKDOWN)
+client.set_mode("RESTRICTED")
 ```
 
 #### Monitoring
@@ -697,7 +697,7 @@ On Windows, some features work without Administrator, but enforcement modules re
 
 1. **Production:** Use a persistent signing key
 2. **Production:** Set `allow_missing_manifest=False`
-3. **Production:** Run in GUARDED or higher mode
+3. **Production:** Run in RESTRICTED or higher mode
 4. **Development:** OPEN mode is acceptable
 5. **Always:** Keep Ollama running locally (not exposed to network)
 
@@ -716,8 +716,10 @@ On Windows, some features work without Administrator, but enforcement modules re
 | Mode | Network | USB | Processes | Logging | Use Case |
 |------|---------|-----|-----------|---------|----------|
 | OPEN | Allowed | Allowed | Allowed | Yes | Development |
-| GUARDED | Monitored | Monitored | Monitored | Yes | Normal ops |
-| AIRGAP | Blocked | Controlled | Controlled | Yes | Sensitive work |
+| RESTRICTED | Monitored | Monitored | Monitored | Yes | Research |
+| TRUSTED | VPN only | No USB | Controlled | Yes | Serious work |
+| AIRGAP | Blocked | Controlled | Controlled | Yes | High-value IP |
+| COLDROOM | Blocked | Blocked | Display only | Yes | Crown jewels |
 | LOCKDOWN | Blocked | Blocked | Blocked | Yes | Emergency |
 
 ---
@@ -743,13 +745,15 @@ The Boundary Daemon includes comprehensive security features specifically design
 Detects and blocks prompt injection attacks across 10+ categories:
 
 ```python
-from daemon.security.prompt_injection import PromptInjectionDetector
+from daemon.security.prompt_injection import get_prompt_injection_detector
 
-detector = PromptInjectionDetector(sensitivity="high")
-result = detector.scan(user_input)
+detector = get_prompt_injection_detector(sensitivity="high")
+result = detector.analyze(user_input)
 
-if result.is_threat:
-    print(f"Blocked: {result.category} - {result.description}")
+if not result.is_safe:
+    print(f"Blocked: {result.action.value}")
+    for detection in result.detections:
+        print(f"  - {detection.injection_type.value}: {detection.description}")
 ```
 
 **Detection Categories:**
@@ -767,19 +771,24 @@ if result.is_threat:
 Validates and sanitizes tool outputs:
 
 ```python
-from daemon.security.tool_validator import ToolOutputValidator
+from daemon.security.tool_validator import get_tool_validator, ToolPolicy
 
-validator = ToolOutputValidator()
+validator = get_tool_validator()
 
 # Register tool policies
-validator.register_tool("web_search", {
-    "max_output_size": 10000,
-    "max_calls_per_minute": 10,
-    "pii_scan": True
-})
+validator.register_policy(ToolPolicy(
+    name="web_search",
+    max_output_size=10_000,
+    max_calls_per_minute=10,
+    sanitize_pii=True,
+))
 
-# Validate output
-result = validator.validate("web_search", tool_output)
+# Start a tool call and validate output
+call_id, violation = validator.start_tool_call(
+    tool_name="web_search",
+    tool_input={"query": "example"},
+)
+result = validator.validate_output("web_search", tool_output, call_id)
 ```
 
 ### Response Guardrails
@@ -787,13 +796,15 @@ result = validator.validate("web_search", tool_output)
 Ensures AI responses meet safety standards:
 
 ```python
-from daemon.security.response_guardrails import ResponseGuardrails
+from daemon.security.response_guardrails import get_response_guardrails
 
-guardrails = ResponseGuardrails(mode="RESTRICTED")
-result = guardrails.check(response_text)
+guardrails = get_response_guardrails()
+result = guardrails.analyze(response_text)
 
-if not result.safe:
-    response_text = result.sanitized_content
+if not result.passed:
+    response_text = result.modified_response or response_text
+    for v in result.violations:
+        print(f"  - {v.category.value}: {v.description}")
 ```
 
 ### RAG Injection Detection
@@ -801,13 +812,17 @@ if not result.safe:
 Detects poisoned documents in RAG pipelines:
 
 ```python
-from daemon.security.rag_injection import RAGInjectionDetector
+from daemon.security.rag_injection import get_rag_detector, RetrievedDocument
 
-detector = RAGInjectionDetector()
-for doc in retrieved_documents:
-    result = detector.scan_document(doc)
-    if result.is_poisoned:
-        documents.remove(doc)
+detector = get_rag_detector()
+result = detector.analyze_documents(retrieved_documents, query=user_query)
+
+if not result.is_safe:
+    print(f"Documents blocked: {result.documents_blocked}")
+    for threat in result.threats:
+        print(f"  - {threat.threat_type.value}: {threat.description}")
+# Use only safe documents
+safe_docs = result.safe_documents
 ```
 
 ### Agent Attestation
@@ -815,22 +830,36 @@ for doc in retrieved_documents:
 Cryptographic identity for AI agents:
 
 ```python
-from daemon.security.agent_attestation import AgentAttestationSystem
+from daemon.security.agent_attestation import (
+    get_attestation_system,
+    AgentCapability,
+    TrustLevel,
+)
+from datetime import timedelta
 
-attestation = AgentAttestationSystem()
+attestation = get_attestation_system()
 
 # Register an agent
-agent_id = attestation.register_agent(
-    name="research_agent",
-    capabilities=["file_read", "web_search"],
-    trust_level="STANDARD"
+identity = attestation.register_agent(
+    agent_name="research_agent",
+    agent_type="tool",
+    capabilities={AgentCapability.FILE_READ, AgentCapability.NETWORK_LOCAL},
+    trust_level=TrustLevel.STANDARD,
 )
 
 # Issue attestation token
-token = attestation.issue_token(agent_id, ttl=3600)
+token = attestation.issue_token(
+    agent_id=identity.agent_id,
+    capabilities={AgentCapability.FILE_READ},
+    validity=timedelta(hours=1),
+)
 
 # Verify token before action
-if attestation.verify_token(token, required_capability="web_search"):
+result = attestation.verify_token(
+    token,
+    required_capabilities={AgentCapability.FILE_READ},
+)
+if result.is_valid:
     # Perform action
     pass
 ```
@@ -844,22 +873,27 @@ Export security events to enterprise SIEMs:
 ### CEF/LEEF Format
 
 ```python
-from daemon.integrations.siem import CEFFormatter
+from daemon.integrations.siem.cef_leef import CEFExporter
 
-formatter = CEFFormatter()
-cef_events = formatter.format_events(daemon.get_events())
+exporter = CEFExporter()
+cef_events = exporter.format_events(daemon.get_events())
 ```
 
 ### Log Shipping
 
 ```python
-from daemon.integrations.siem import LogShipper
+from daemon.integrations.siem.log_shipper import create_shipper, ShipperConfig, ShipperProtocol
 
-shipper = LogShipper(
-    destination="kafka",
-    endpoint="kafka://broker:9092/boundary-events"
+config = ShipperConfig(
+    protocol=ShipperProtocol.KAFKA,
+    kafka_bootstrap_servers="broker:9092",
+    kafka_topic="boundary-events",
 )
-shipper.ship_events(events)
+shipper = create_shipper(config)
+shipper.start()
+for event in events:
+    shipper.add_event(event)
+shipper.stop()
 ```
 
 **Supported Destinations:**
@@ -867,7 +901,7 @@ shipper.ship_events(events)
 - Amazon S3
 - Google Cloud Storage
 - HTTP/HTTPS endpoints
-- Syslog (RFC 5424)
+- File
 
 ---
 
