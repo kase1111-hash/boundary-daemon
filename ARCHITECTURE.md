@@ -452,8 +452,8 @@ External components cannot connect (fail-closed)
 - Network: None (local only)
 
 ### Scalability
-- Single daemon per host
-- No distributed coordination
+- Single daemon per host (default)
+- Optional distributed coordination via `daemon/distributed/` (cluster manager, consensus)
 - Handles ~1000 requests/sec
 - Log size: ~1 GB per million events
 

@@ -127,9 +127,9 @@ Agent Smith serves as the **policy authority and audit system** - the decision-m
 
 ---
 
-## Alpha Feature Summary
+## Beta Feature Summary
 
-This Alpha release includes **140+ modules** across the following capability areas:
+This Beta release includes **150+ modules** across the following capability areas:
 
 ### Core Security Engine
 | Feature | Status | Description |
@@ -323,7 +323,7 @@ python daemon/boundary_daemon.py --mode=airgap
 
 ```
 boundary-daemon/
-├─ daemon/                    # Core daemon components (140+ modules)
+├─ daemon/                    # Core daemon components (150+ modules)
 │  ├─ boundary_daemon.py          # Main service orchestrator
 │  ├─ state_monitor.py            # Environment sensing
 │  ├─ policy_engine.py            # Mode enforcement
@@ -503,7 +503,7 @@ boundary-daemon/
 ├─ api/                           # External interface
 │  └─ boundary_api.py                 # Unix socket API + client
 │
-├─ tests/                         # Comprehensive test suite (15+ modules)
+├─ tests/                         # Comprehensive test suite (17+ modules)
 │  ├─ test_*.py                       # Test modules
 │  └─ conftest.py                     # Test fixtures
 │
@@ -1243,28 +1243,29 @@ python daemon/tui/art_editor.py --load SPRITE_NAME
 | **Environment Monitoring** | Continuous sensing of network, USB, processes |
 | **Coordination Point** | Central authority for distributed policy queries |
 
-### What This System Does NOT Provide
+### What This System Does NOT Provide (by Default)
 
-| Not Provided | Why |
-|--------------|-----|
-| **Runtime Enforcement** | Returns decisions but cannot block operations |
-| **Process Isolation** | No sandboxing - requires external container/VM |
-| **Network Blocking** | Detects but doesn't control network access |
-| **Memory Protection** | Cannot prevent unauthorized memory reads |
+| Not Provided (by Default) | Details |
+|---------------------------|---------|
+| **Runtime Enforcement** | Core daemon returns advisory decisions; enforcement requires optional modules or external cooperation |
+| **Network Blocking** | Optional enforcement modules (iptables/nftables, Windows Firewall) can provide this on supported platforms |
+| **Memory Protection** | Cannot prevent unauthorized memory reads at the OS level |
+
+> **Note:** The optional sandbox module (Linux) provides process isolation via namespaces, seccomp-bpf, and cgroups. The optional enforcement modules can control network and USB access. See [ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md) for details.
 
 ### Security Architecture (Defense in Depth)
 
 For actual security, deploy this daemon as **one layer** in a defense-in-depth strategy:
 
 ```
-Layer 1: Kernel enforcement (SELinux, seccomp-bpf)     ← BLOCKS operations
-Layer 2: Container isolation (namespaces, cgroups)     ← ISOLATES processes
-Layer 3: This daemon (policy + logging)                ← DECIDES + LOGS
-Layer 4: Application cooperation (Memory Vault, etc.)  ← RESPECTS decisions
 Layer 5: Hardware controls (disabled USB, air-gap)     ← PHYSICAL security
+Layer 4: Kernel enforcement (SELinux, seccomp-bpf)     ← BLOCKS operations
+Layer 3: Container isolation (namespaces, cgroups)     ← ISOLATES processes
+Layer 2: This daemon (policy + logging)                ← DECIDES + LOGS
+Layer 1: Application cooperation (Memory Vault, etc.)  ← RESPECTS decisions
 ```
 
-**This daemon operates at Layer 3.** Without Layers 1-2, decisions are advisory only.
+**This daemon operates at Layer 2.** Without Layers 3-5, decisions are advisory only.
 
 ### Mitigations
 

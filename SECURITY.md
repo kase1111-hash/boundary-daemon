@@ -239,7 +239,7 @@ All PRs modifying security-sensitive code require this checklist:
 
 1. **Do NOT** commit fixes without security team review
 2. **Do NOT** disclose publicly until patched
-3. **DO** report via security@example.com or private issue
+3. **DO** report via GitHub private security advisory or private issue
 
 ### Severity Classification
 
@@ -283,6 +283,8 @@ We minimize dependencies to reduce attack surface:
 - `pynacl`: Ed25519 cryptography (libsodium bindings)
 - `cryptography`: Additional cryptographic primitives (Fernet, PBKDF2)
 - `cffi`: C library bindings (dependency of pynacl)
+- `yara-python`: YARA rule engine for threat detection
+- `PyYAML`: YAML parsing (for Sigma rule support and sandbox profiles)
 
 All dependencies are regularly scanned for vulnerabilities using `safety` and GitHub Dependabot.
 
@@ -406,9 +408,10 @@ The following security issues have been addressed:
 
 | Role | Contact | Responsibility |
 |------|---------|----------------|
-| Security Lead | security@example.com | Policy, incidents |
-| On-call | pager@example.com | Critical issues |
+| Security Lead | [Open a private security advisory on GitHub](https://github.com/kase1111-hash/boundary-daemon-/security/advisories/new) | Policy, incidents |
 | Maintainers | GitHub issues (private) | Code review |
+
+> **Note:** For security vulnerabilities, use GitHub's private security advisory feature rather than public issues.
 
 ---
 
