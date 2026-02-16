@@ -257,36 +257,44 @@ class StateMonitor:
         return self.monitoring_config
 
     def set_monitoring_config(self, config: MonitoringConfig):
-        """Set the monitoring configuration"""
-        self.monitoring_config = config
+        """Set the monitoring configuration (thread-safe)"""
+        with self._state_lock:
+            self.monitoring_config = config
 
     def set_monitor_lora(self, enabled: bool):
         """Enable or disable LoRa/LoRaWAN monitoring"""
-        self.monitoring_config.monitor_lora = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_lora = enabled
 
     def set_monitor_thread(self, enabled: bool):
         """Enable or disable Thread/Matter monitoring"""
-        self.monitoring_config.monitor_thread = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_thread = enabled
 
     def set_monitor_cellular_security(self, enabled: bool):
         """Enable or disable cellular security (IMSI catcher) monitoring"""
-        self.monitoring_config.monitor_cellular_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_cellular_security = enabled
 
     def set_monitor_wimax(self, enabled: bool):
         """Enable or disable WiMAX monitoring"""
-        self.monitoring_config.monitor_wimax = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_wimax = enabled
 
     def set_monitor_irda(self, enabled: bool):
         """Enable or disable IrDA monitoring"""
-        self.monitoring_config.monitor_irda = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_irda = enabled
 
     def set_monitor_ant_plus(self, enabled: bool):
         """Enable or disable ANT+ monitoring"""
-        self.monitoring_config.monitor_ant_plus = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_ant_plus = enabled
 
     def set_monitor_dns_security(self, enabled: bool):
         """Enable or disable DNS security monitoring"""
-        self.monitoring_config.monitor_dns_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_dns_security = enabled
 
     def _get_dns_security_monitor(self):
         """Get or create DNS security monitor (lazy initialization)"""

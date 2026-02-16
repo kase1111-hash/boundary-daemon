@@ -159,8 +159,14 @@ class EventLogger:
                         self._last_hash = event.compute_hash()
                         self._event_count = sum(1 for l in lines if l.strip())
         except Exception as e:
-            logger.warning(f"Error loading existing log: {e}")
-            # Continue with genesis hash
+            # SECURITY: A corrupted log file could mean tampering.
+            # Do NOT silently fork the hash chain with a fresh genesis hash.
+            # Raise to prevent the logger from starting with a broken chain.
+            raise RuntimeError(
+                f"Failed to load existing log {self.log_file_path}: {e}. "
+                f"Hash chain integrity cannot be guaranteed. "
+                f"Investigate for possible tampering before proceeding."
+            )
 
     def log_event(self, event_type: EventType, details: str, metadata: Optional[Dict] = None) -> BoundaryEvent:
         """

@@ -516,8 +516,12 @@ class TestEventLoggerCrashRecovery:
     """Tests for event logger resilience to crashes and corruption."""
 
     @pytest.mark.security
-    def test_truncated_last_line_recovery(self, temp_log_file):
-        """Logger should recover when last line is truncated (crash mid-write)."""
+    def test_truncated_last_line_raises_on_corruption(self, temp_log_file):
+        """Logger should raise RuntimeError when log is corrupted (potential tampering).
+
+        SECURITY: A corrupted log file must NOT silently fork the hash chain.
+        The operator must investigate before proceeding.
+        """
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         logger.log_event(EventType.MODE_CHANGE, "Change")
@@ -529,11 +533,9 @@ class TestEventLoggerCrashRecovery:
             f.write(lines[0])
             f.write(lines[1][:len(lines[1]) // 2])  # Truncated JSON
 
-        # New logger should recover (fall back to genesis hash on error)
-        logger2 = EventLogger(str(temp_log_file), secure_permissions=False)
-        # Should not raise - falls back gracefully
-        event = logger2.log_event(EventType.INFO, "After crash")
-        assert event is not None
+        # SECURITY: Must raise on corrupted log to prevent silent chain fork
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(temp_log_file), secure_permissions=False)
 
     @pytest.mark.security
     def test_empty_file_recovery(self, temp_log_file):
@@ -551,14 +553,17 @@ class TestEventLoggerCrashRecovery:
         assert event.hash_chain == "0" * 64
 
     @pytest.mark.security
-    def test_corrupted_json_recovery(self, temp_log_file):
-        """Logger should recover from completely corrupted JSON in log file."""
+    def test_corrupted_json_raises_on_corruption(self, temp_log_file):
+        """Logger should raise RuntimeError on corrupted JSON (potential tampering).
+
+        SECURITY: Corrupted logs must never silently start a new hash chain.
+        """
         with open(temp_log_file, 'w') as f:
             f.write("this is not json at all\n")
 
-        # Should fall back to genesis hash
-        logger = EventLogger(str(temp_log_file), secure_permissions=False)
-        assert logger.get_last_hash() == "0" * 64
+        # SECURITY: Must raise on corrupted log
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(temp_log_file), secure_permissions=False)
 
     @pytest.mark.security
     def test_verify_chain_with_blank_lines(self, temp_log_file):

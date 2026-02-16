@@ -360,8 +360,12 @@ class Sandbox:
 
         # Need cgroup path for cgroup-based firewall rules
         if not self._cgroup_path:
-            logger.warning("No cgroup path, firewall rules may not be sandbox-specific")
-            return
+            # SECURITY: Fail-closed - if cgroups are unavailable, network
+            # isolation cannot be guaranteed. Raise instead of silently skipping.
+            raise RuntimeError(
+                "Cannot apply sandbox firewall rules without cgroup path. "
+                "Network isolation for this sandbox is not available."
+            )
 
         success, msg = self._sandbox_firewall.setup_sandbox_rules(
             sandbox_id=self.sandbox_id,

@@ -113,11 +113,12 @@ class TripwireSystem:
         Returns:
             New auth token if current token is valid, None otherwise
         """
-        if not self._verify_token(current_token):
-            self._log_failed_attempt("get_new_auth_token")
-            return None
+        with self._lock:
+            if not self._verify_token(current_token):
+                self._log_failed_attempt("get_new_auth_token")
+                return None
 
-        return self._generate_auth_token()
+            return self._generate_auth_token()
 
     def _verify_token(self, token: str) -> bool:
         """Verify an authentication token."""
@@ -129,20 +130,26 @@ class TripwireSystem:
         return hmac.compare_digest(token_hash, self._auth_token_hash)
 
     def _log_failed_attempt(self, operation: str):
-        """Log and track a failed authorization attempt."""
+        """Log and track a failed authorization attempt.
+
+        SECURITY: Must be called while holding self._lock to prevent
+        lost increments from concurrent access to _failed_attempts.
+        All callers (get_new_auth_token, disable, clear_violations) hold the lock.
+        """
         self._failed_attempts += 1
+        current_attempts = self._failed_attempts
         attempt = {
             'timestamp': datetime.utcnow().isoformat() + "Z",
             'operation': operation,
-            'attempt_number': self._failed_attempts,
+            'attempt_number': current_attempts,
         }
         self._disable_attempts.append(attempt)
 
         logger.warning(f"SECURITY: Failed tripwire auth attempt for {operation} "
-                      f"(attempt {self._failed_attempts}/{self._max_disable_attempts})")
+                      f"(attempt {current_attempts}/{self._max_disable_attempts})")
 
-        # Lock after too many failed attempts
-        if self._failed_attempts >= self._max_disable_attempts:
+        # Lock after too many failed attempts (already holding self._lock)
+        if current_attempts >= self._max_disable_attempts:
             self._locked = True
             logger.critical("SECURITY: Tripwire system LOCKED due to excessive failed auth attempts")
 
@@ -155,12 +162,12 @@ class TripwireSystem:
                         data={
                             'event': 'tripwire_locked',
                             'reason': 'excessive_failed_auth_attempts',
-                            'attempts': self._failed_attempts,
+                            'attempts': current_attempts,
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"SECURITY: Failed to log tripwire lock event: {e}")
 
     def register_callback(self, callback: Callable) -> int:
         """
@@ -252,8 +259,8 @@ class TripwireSystem:
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"SECURITY: Failed to log tripwire disable event: {e}")
 
             return (True, "Tripwire monitoring disabled")
 
@@ -596,8 +603,8 @@ class TripwireSystem:
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"SECURITY: Failed to log violations cleared event: {e}")
 
             logger.warning(f"SECURITY: Clearing {violation_count} tripwire violations. "
                           f"Reason: {reason}")

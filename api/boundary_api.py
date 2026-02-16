@@ -379,7 +379,20 @@ class BoundaryAPIServer:
         params: Dict[str, Any],
         token: Any
     ) -> Dict[str, Any]:
-        """Dispatch command to appropriate handler."""
+        """Dispatch command to appropriate handler.
+
+        SECURITY: Validates that non-public commands have an authenticated token.
+        This serves as a defense-in-depth check in case the caller bypasses
+        the authentication layer.
+        """
+        # Defense-in-depth: commands that modify state require a valid token
+        WRITE_COMMANDS = {
+            'set_mode', 'create_token', 'revoke_token', 'create_tui_token',
+            'check_message', 'check_natlangchain', 'check_agentos',
+        }
+        if command in WRITE_COMMANDS and token is None:
+            return {'success': False, 'error': 'Authentication required for this command'}
+
         # Handle token management commands
         if command == 'create_token':
             return self._handle_create_token(params, token)

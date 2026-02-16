@@ -12,6 +12,7 @@ Provides file integrity monitoring capabilities including:
 import os
 import stat
 import hashlib
+import hmac
 import threading
 import json
 import re
@@ -496,7 +497,7 @@ class FileIntegrityMonitor:
 
         # Check hash
         if self.config.monitor_hash and baseline.hash and current.hash:
-            if baseline.hash != current.hash:
+            if not hmac.compare_digest(baseline.hash, current.hash):
                 alert_type = FileIntegrityAlert.HASH_MISMATCH
 
                 # Check if it's a binary

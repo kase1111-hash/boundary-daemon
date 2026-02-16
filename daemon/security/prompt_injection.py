@@ -610,7 +610,9 @@ class PromptInjectionDetector:
             for d in detections
         )
 
-        # Normalize score (cap at 1.0)
+        # SECURITY: Preserve raw score for multi-detection severity awareness.
+        # Cap display score at 1.0, but use raw score for severity escalation.
+        raw_score = total_score
         total_score = min(total_score, 1.0)
 
         # Determine highest severity
@@ -627,6 +629,11 @@ class PromptInjectionDetector:
                 (d.severity for d in detections),
                 key=lambda s: severity_order.index(s)
             )
+
+            # SECURITY: Multi-vector attacks (multiple independent detections
+            # with combined raw score > 1.5) escalate to CRITICAL
+            if raw_score > 1.5 and len(detections) > 1:
+                highest_severity = DetectionSeverity.CRITICAL
 
         # Determine action
         action = self._determine_action(total_score, highest_severity, context)

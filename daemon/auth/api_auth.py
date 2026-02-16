@@ -605,20 +605,23 @@ class TokenManager:
         token_hash = self._hash_token(raw_token)
 
         with self._lock:
-            # Check global rate limit first (before token lookup)
-            is_global_allowed, global_reason = self._check_global_rate_limit()
-            if not is_global_allowed:
-                return False, None, global_reason
-
             token = self._tokens.get(token_hash)
 
             if not token:
                 return False, None, "Token not found"
 
-            # Check validity
+            # Check validity BEFORE rate limiting
+            # SECURITY: Rate limit checks should not modify state until
+            # we confirm the token is valid (prevents TOCTOU between
+            # rate limiting and token validation)
             is_valid, reason = token.is_valid()
             if not is_valid:
                 return False, token, reason
+
+            # Now check rate limits (token is confirmed valid)
+            is_global_allowed, global_reason = self._check_global_rate_limit()
+            if not is_global_allowed:
+                return False, token, global_reason
 
             # Check per-token rate limit
             is_allowed, rate_reason = self._check_rate_limit(token.token_id)
