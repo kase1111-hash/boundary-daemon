@@ -988,7 +988,13 @@ class BoundaryDaemon:
             siem_host = os.environ.get('BOUNDARY_SIEM_HOST', None)
             if siem_host:
                 try:
-                    siem_port = int(os.environ.get('BOUNDARY_SIEM_PORT', '514'))
+                    try:
+                        siem_port = int(os.environ.get('BOUNDARY_SIEM_PORT', '514'))
+                        if not (1 <= siem_port <= 65535):
+                            raise ValueError(f"Port out of range: {siem_port}")
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Invalid BOUNDARY_SIEM_PORT: {e}, using default 514")
+                        siem_port = 514
                     siem_transport = os.environ.get('BOUNDARY_SIEM_TRANSPORT', 'tls').lower()
                     siem_format = os.environ.get('BOUNDARY_SIEM_FORMAT', 'json').lower()
 
@@ -1051,14 +1057,30 @@ class BoundaryDaemon:
         if MEMORY_MONITOR_AVAILABLE and MemoryMonitor is not None:
             try:
                 # Get optional config from environment
-                sample_interval = float(os.environ.get('BOUNDARY_MEMORY_INTERVAL', '5.0'))
-                rss_warning_mb = float(os.environ.get('BOUNDARY_MEMORY_WARNING_MB', '500'))
-                rss_critical_mb = float(os.environ.get('BOUNDARY_MEMORY_CRITICAL_MB', '1000'))
+                try:
+                    sample_interval = float(os.environ.get('BOUNDARY_MEMORY_INTERVAL', '5.0'))
+                except (ValueError, TypeError):
+                    logger.error("Invalid BOUNDARY_MEMORY_INTERVAL, using default 5.0")
+                    sample_interval = 5.0
+                try:
+                    rss_warning_mb = float(os.environ.get('BOUNDARY_MEMORY_WARNING_MB', '500'))
+                except (ValueError, TypeError):
+                    logger.error("Invalid BOUNDARY_MEMORY_WARNING_MB, using default 500")
+                    rss_warning_mb = 500.0
+                try:
+                    rss_critical_mb = float(os.environ.get('BOUNDARY_MEMORY_CRITICAL_MB', '1000'))
+                except (ValueError, TypeError):
+                    logger.error("Invalid BOUNDARY_MEMORY_CRITICAL_MB, using default 1000")
+                    rss_critical_mb = 1000.0
                 leak_detection = os.environ.get('BOUNDARY_MEMORY_LEAK_DETECT', 'true').lower() == 'true'
 
                 # Debug mode (tracemalloc) - WARNING: performance overhead
                 debug_enabled = os.environ.get('BOUNDARY_MEMORY_DEBUG', 'false').lower() == 'true'
-                debug_auto_disable = int(os.environ.get('BOUNDARY_MEMORY_DEBUG_TIMEOUT', '300'))
+                try:
+                    debug_auto_disable = int(os.environ.get('BOUNDARY_MEMORY_DEBUG_TIMEOUT', '300'))
+                except (ValueError, TypeError):
+                    logger.error("Invalid BOUNDARY_MEMORY_DEBUG_TIMEOUT, using default 300")
+                    debug_auto_disable = 300
 
                 config = MemoryMonitorConfig(
                     sample_interval=sample_interval,
@@ -1281,6 +1303,7 @@ class BoundaryDaemon:
 
         # Daemon state (initialized early so closures below can reference _running)
         self._running = False
+        self._shutdown_requested = False
         self._shutdown_event = threading.Event()
         self._enforcement_thread: Optional[threading.Thread] = None
 
@@ -1605,7 +1628,8 @@ class BoundaryDaemon:
                 st = os.stat(file_path)
                 # Warn if file is group/world readable
                 if st.st_mode & 0o077:
-                    logger.warning(f"SECURITY: Secret file {file_path} has overly permissive mode {oct(st.st_mode)}")
+                    logger.error(f"SECURITY: Refusing to use secret file {file_path} with mode {oct(st.st_mode)}")
+                    return None  # Do not use insecure secret
                 with open(file_path, 'r') as f:
                     return f.read().strip()
             except (OSError, IOError) as e:
@@ -2407,6 +2431,10 @@ class BoundaryDaemon:
 
         while self._running and not self._shutdown_event.is_set():
             try:
+                if self._shutdown_requested:
+                    logger.info("Shutdown requested via signal")
+                    break
+
                 current_time = time.time()
 
                 # Periodic health check
@@ -2551,10 +2579,11 @@ class BoundaryDaemon:
             logger.error(f"Error during cache cleanup: {e}")
 
     def _signal_handler(self, signum, frame):
-        """Handle shutdown signals"""
-        logger.info(f"Received signal {signum}")
-        self.stop()
-        sys.exit(0)
+        """Handle shutdown signals (async-signal-safe: only set flag)"""
+        # SECURITY: Signal handlers must be async-signal-safe.
+        # Logging, file I/O, and thread operations are NOT safe in signal context.
+        # Set a flag and let the main loop handle shutdown cleanly.
+        self._shutdown_requested = True
 
     # Public API methods for other components
 
@@ -3170,7 +3199,8 @@ class BoundaryDaemon:
                 raise RuntimeError(f"SECURITY: Config path is a symlink: {config_path} -> {real_path}")
             st = os.stat(config_path)
             if st.st_mode & 0o077:
-                logger.warning(f"SECURITY: Config file {config_path} has overly permissive mode {oct(st.st_mode)}")
+                raise RuntimeError(f"SECURITY: Config file {config_path} has overly permissive "
+                                  f"mode {oct(st.st_mode)}. Fix with: chmod 600 {config_path}")
             import json
             with open(config_path) as f:
                 content = f.read()
@@ -3343,26 +3373,16 @@ class BoundaryDaemon:
                 require_biometric=require_biometric
             )
         else:
-            # Fall back to basic keyboard ceremony
-            logger.info(f"Override ceremony for: {action}")
-            logger.info(f"Reason: {reason}")
-            logger.info("Biometric not available. Using keyboard ceremony.")
-            logger.info("Type 'CONFIRM' to proceed:")
-            user_input = input("> ")
-            if user_input == "CONFIRM":
-                self.event_logger.log_event(
-                    EventType.OVERRIDE,
-                    f"Override ceremony success (keyboard): {action}",
-                    metadata={'action': action, 'reason': reason, 'method': 'keyboard'}
-                )
-                return (True, "Override ceremony completed")
-            else:
-                self.event_logger.log_event(
-                    EventType.OVERRIDE,
-                    f"Override ceremony failed (keyboard): {action}",
-                    metadata={'action': action, 'reason': reason, 'method': 'keyboard'}
-                )
-                return (False, "Confirmation failed")
+            # SECURITY: No interactive input() in daemon mode - can be piped/automated
+            logger.warning("Override ceremony requires biometric auth or ceremony token. "
+                          "Interactive input not supported in daemon mode.")
+            self.event_logger.log_event(
+                EventType.OVERRIDE,
+                f"Override ceremony rejected (no biometric): {action}",
+                metadata={'action': action, 'reason': reason, 'method': 'rejected'}
+            )
+            return (False, "Override ceremony requires biometric authentication or ceremony token. "
+                          "Interactive mode not available.")
 
     def list_biometric_templates(self) -> list:
         """

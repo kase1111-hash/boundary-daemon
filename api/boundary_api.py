@@ -49,6 +49,7 @@ from daemon.policy_engine import BoundaryMode, Operator, MemoryClass
 from daemon.auth.api_auth import (
     TokenManager,
     AuthenticationMiddleware,
+    APICapability,
 )
 
 
@@ -207,10 +208,14 @@ class BoundaryAPIServer:
             if HAS_UNIX_SOCKETS and not IS_WINDOWS:
                 # Unix domain socket (Linux/macOS)
                 self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                self._socket.bind(self.socket_path)
+                # SECURITY: Set umask before bind to avoid TOCTOU window
+                # where socket has default permissions between bind() and chmod()
+                old_umask = os.umask(0o177)  # Only owner rw
+                try:
+                    self._socket.bind(self.socket_path)
+                finally:
+                    os.umask(old_umask)
                 self._socket.listen(5)
-                # Set permissions (owner only)
-                os.chmod(self.socket_path, 0o600)
             else:
                 # TCP socket on localhost (Windows)
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -257,9 +262,12 @@ class BoundaryAPIServer:
         success = False
 
         try:
-            # Read request (max 4KB)
-            data = conn.recv(4096)
+            # Read request (max 64KB, reject larger payloads)
+            data = conn.recv(65536)
             if not data:
+                return
+            if len(data) > 65536:
+                conn.sendall(json.dumps({'error': 'Request too large'}).encode('utf-8'))
                 return
 
             # Parse JSON request
@@ -397,13 +405,13 @@ class BoundaryAPIServer:
         if command == 'create_token':
             return self._handle_create_token(params, token)
         elif command == 'create_tui_token':
-            return self._handle_create_tui_token(params)
+            return self._handle_create_tui_token(params, token)
         elif command == 'revoke_token':
             return self._handle_revoke_token(params, token)
         elif command == 'list_tokens':
-            return self._handle_list_tokens(params)
+            return self._handle_list_tokens(params, token)
         elif command == 'rate_limit_status':
-            return self._handle_rate_limit_status(params)
+            return self._handle_rate_limit_status(params, token)
 
         if command == 'status':
             return self._handle_status()
@@ -531,9 +539,9 @@ class BoundaryAPIServer:
             log_auth_error(e, "create_token", token_name=name)
             return {'success': False, 'error': str(e)}
 
-    def _handle_create_tui_token(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_create_tui_token(self, params: Dict[str, Any], requesting_token=None) -> Dict[str, Any]:
         """
-        Create a limited TUI dashboard token (no auth required).
+        Create a limited TUI dashboard token.
 
         This allows the TUI to auto-authenticate on first connection.
         The token has read-only capabilities and is saved for future use.
@@ -546,8 +554,15 @@ class BoundaryAPIServer:
             name = params.get('name', 'tui-dashboard')
             client = params.get('client', 'unknown')
 
-            # Check if a TUI token already exists
+            # SECURITY: Require auth when tokens already exist (bootstrap exception)
             existing_tokens = self.token_manager.list_tokens()
+            if existing_tokens and requesting_token is None:
+                return {
+                    'success': False,
+                    'error': 'Authentication required for TUI token creation when tokens exist',
+                }
+
+            # Check if a TUI token already exists
             for tok in existing_tokens:
                 if tok.get('name', '').startswith('tui-'):
                     # Return error - TUI token already exists
@@ -613,13 +628,16 @@ class BoundaryAPIServer:
             log_auth_error(e, "revoke_token", token_id=token_id)
             return {'success': False, 'error': str(e)}
 
-    def _handle_list_tokens(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_list_tokens(self, params: Dict[str, Any], requesting_token=None) -> Dict[str, Any]:
         """
         List all API tokens.
 
         Params:
             include_revoked: bool (optional) - Include revoked tokens (default: False)
         """
+        # SECURITY: Require MANAGE_TOKENS capability to enumerate tokens
+        if not requesting_token or not requesting_token.has_capability(APICapability.MANAGE_TOKENS):
+            return {'success': False, 'error': 'Insufficient permissions: MANAGE_TOKENS required'}
         try:
             include_revoked = params.get('include_revoked', False)
             tokens = self.token_manager.list_tokens(include_revoked=include_revoked)
@@ -634,7 +652,7 @@ class BoundaryAPIServer:
             log_auth_error(e, "list_tokens")
             return {'success': False, 'error': str(e)}
 
-    def _handle_rate_limit_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_rate_limit_status(self, params: Dict[str, Any], requesting_token=None) -> Dict[str, Any]:
         """
         Get rate limit status.
 
@@ -647,6 +665,8 @@ class BoundaryAPIServer:
             include_all = params.get('include_all', False)
 
             if include_all:
+                if not requesting_token or not requesting_token.has_capability(APICapability.MANAGE_TOKENS):
+                    return {'success': False, 'error': 'Insufficient permissions for viewing all rate limits'}
                 # Get global + all token rate limits
                 all_status = self.token_manager.get_all_rate_limit_status()
                 return {

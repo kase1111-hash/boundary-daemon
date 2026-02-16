@@ -553,7 +553,12 @@ class DaemonIntegrityProtector:
         if not self._manifest:
             raise ValueError("No manifest to save")
 
-        save_path = path or self.config.manifest_path
+        save_path = os.path.realpath(path) if path else self.config.manifest_path
+        # SECURITY: Validate against path traversal
+        allowed_base = os.path.realpath(os.path.dirname(self.config.manifest_path))
+        default_manifest = os.path.realpath(self.config.manifest_path)
+        if save_path != default_manifest and not save_path.startswith(allowed_base + os.sep):
+            raise ValueError(f"SECURITY: Path traversal detected in manifest save: {path}")
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(save_path), exist_ok=True)

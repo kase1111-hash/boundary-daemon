@@ -636,7 +636,9 @@ class PromptInjectionDetector:
                 highest_severity = DetectionSeverity.CRITICAL
 
         # Determine action
-        action = self._determine_action(total_score, highest_severity, context)
+        # SECURITY: Use raw_score (uncapped) for action determination so that
+        # multi-vector attacks with combined score > cap still trigger BLOCK
+        action = self._determine_action(raw_score, highest_severity, context)
 
         # Calculate analysis time
         analysis_time_ms = (time.time() - start_time) * 1000

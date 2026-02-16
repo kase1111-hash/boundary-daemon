@@ -55,6 +55,33 @@ class SignedEventLogger(EventLogger):
         self.signing_key = self._load_or_create_signing_key()
         self.verify_key = self.signing_key.verify_key
 
+        # SECURITY: Pin public key hash to detect key substitution attacks
+        self._verify_key_pin(self.signing_key)
+
+    def _verify_key_pin(self, signing_key):
+        """Verify signing key against pinned public key hash."""
+        import hashlib
+        import hmac as _hmac
+
+        pubkey_hash_path = self.signing_key_path + '.pubkey_hash'
+        current_hash = hashlib.sha256(bytes(signing_key.verify_key)).hexdigest()
+
+        if os.path.exists(pubkey_hash_path):
+            with open(pubkey_hash_path, 'r') as f:
+                pinned_hash = f.read().strip()
+            if not _hmac.compare_digest(current_hash, pinned_hash):
+                raise RuntimeError(
+                    "SECURITY: Signing key public key hash mismatch! "
+                    "Possible key substitution attack. "
+                    f"Expected: {pinned_hash[:16]}..., Got: {current_hash[:16]}..."
+                )
+        else:
+            # First time - pin the key
+            fd = os.open(pubkey_hash_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+            with os.fdopen(fd, 'w') as f:
+                f.write(current_hash)
+            logger.info(f"Pinned public key hash to {pubkey_hash_path}")
+
     def _load_or_create_signing_key(self) -> nacl.signing.SigningKey:
         """
         Load existing signing key or create a new one.
@@ -157,7 +184,9 @@ class SignedEventLogger(EventLogger):
 
         # Append to signature file
         try:
-            with open(self.signature_file_path, 'a') as f:
+            # SECURITY: Use os.open() with explicit 0o600 permissions
+            fd = os.open(self.signature_file_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(fd, 'a') as f:
                 f.write(json.dumps(signature_record) + '\n')
                 f.flush()
                 os.fsync(f.fileno())

@@ -357,11 +357,11 @@ class PolicyEngine:
         """Evaluate tool execution policy based on mode restrictions"""
 
         # SECURITY: Check tool_name against blocked/restricted lists
-        if request.tool_name:
+        if request.tool_name is not None:
             tool = request.tool_name.lower().strip()
-            if tool in self.BLOCKED_TOOLS:
+            if tool and tool in self.BLOCKED_TOOLS:
                 return PolicyDecision.DENY
-            if tool in self.RESTRICTED_TOOLS and mode < BoundaryMode.RESTRICTED:
+            if tool and tool in self.RESTRICTED_TOOLS and mode < BoundaryMode.RESTRICTED:
                 return PolicyDecision.REQUIRE_CEREMONY
 
         # COLDROOM: Minimal IO only

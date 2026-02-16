@@ -494,6 +494,8 @@ class NetworkEnforcer:
         self._run_iptables(['-N', self.BOUNDARY_INPUT_CHAIN], ignore_errors=True)
 
         # Insert jump to our chain at the beginning of OUTPUT
+        # SECURITY: _run_iptables raises NetworkEnforcementError on non-zero return,
+        # so failed chain jumps will propagate as exceptions. No additional check needed.
         result = subprocess.run(
             ['iptables', '-C', 'OUTPUT', '-j', self.BOUNDARY_CHAIN],
             capture_output=True

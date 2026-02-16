@@ -839,6 +839,12 @@ class SandboxManager:
             Sandbox instance
         """
         # Generate ID
+        # SECURITY: Validate sandbox name to prevent path traversal
+        import re
+        SANDBOX_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$')
+        if name:
+            if not SANDBOX_NAME_PATTERN.match(name):
+                raise ValueError(f"Invalid sandbox name: {name!r}")
         sandbox_id = name or f"sandbox-{uuid.uuid4().hex[:8]}"
 
         # Get profile

@@ -162,9 +162,11 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_genesis_hash(self, event_logger):
-        """Test that first event has genesis hash."""
+        """Test that first event has nonce-based genesis hash (not all zeros)."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
-        assert event.hash_chain == "0" * 64
+        # Genesis hash is now instance-specific (derived from random nonce)
+        assert event.hash_chain != "0" * 64
+        assert len(event.hash_chain) == 64  # Still a valid SHA-256 hex digest
 
     @pytest.mark.unit
     def test_verify_chain_empty_log(self, event_logger):
@@ -546,11 +548,12 @@ class TestEventLoggerCrashRecovery:
 
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         assert logger.get_event_count() == 0
-        assert logger.get_last_hash() == "0" * 64
+        # Genesis hash is now nonce-based, not all zeros
+        assert len(logger.get_last_hash()) == 64
 
         # Should be able to log normally
         event = logger.log_event(EventType.DAEMON_START, "Start")
-        assert event.hash_chain == "0" * 64
+        assert len(event.hash_chain) == 64
 
     @pytest.mark.security
     def test_corrupted_json_raises_on_corruption(self, temp_log_file):
@@ -794,10 +797,11 @@ class TestHashChainInvariants:
     security property the hash chain provides."""
 
     @pytest.mark.security
-    def test_invariant_genesis_hash_is_all_zeros(self, event_logger):
-        """INVARIANT: First event's hash_chain is always the genesis hash (64 zeros)."""
+    def test_invariant_genesis_hash_is_nonce_based(self, event_logger):
+        """INVARIANT: First event's hash_chain is the nonce-based genesis hash."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
-        assert event.hash_chain == "0" * 64
+        # Genesis hash is now derived from a random nonce, not all zeros
+        assert event.hash_chain != "0" * 64
         assert len(event.hash_chain) == 64
 
     @pytest.mark.security

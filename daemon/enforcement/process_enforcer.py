@@ -492,6 +492,17 @@ class ProcessEnforcer:
             ]
         }
 
+        # SECURITY: Block PROT_EXEC in mmap/mprotect to prevent code injection
+        # Bit 2 (value 4) = PROT_EXEC in the prot argument (arg index 2)
+        profile["syscalls"].append({
+            "names": ["mmap", "mprotect"],
+            "action": "SCMP_ACT_ERRNO",
+            "errnoRet": 1,
+            "args": [
+                {"index": 2, "value": 4, "op": "SCMP_CMP_MASKED_EQ", "valueTwo": 4}
+            ]
+        })
+
         return profile
 
     def _install_seccomp_profile(self, profile: Dict):

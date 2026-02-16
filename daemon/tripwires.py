@@ -324,10 +324,12 @@ class TripwireSystem:
                 if result:
                     violations_found.append(result)
 
-            # Record all violations (not just the first)
+            # Record all violations (not just the first) - without callbacks
             first_recorded = None
+            recorded_violations = []
             for v in violations_found:
-                recorded = self._record_violation(v, current_mode, env_state)
+                recorded = self._record_violation_no_callback(v, current_mode, env_state)
+                recorded_violations.append(recorded)
                 if first_recorded is None:
                     first_recorded = recorded
 
@@ -335,8 +337,18 @@ class TripwireSystem:
             self._previous_mode = current_mode
             self._previous_network_state = env_state.network
 
-            # Return the first recorded violation (highest priority by check order)
-            return first_recorded
+        # SECURITY: Invoke callbacks OUTSIDE self._lock to prevent deadlock
+        # if a callback calls methods that acquire self._lock
+        for violation in recorded_violations:
+            with self._callback_lock:
+                callbacks = list(self._callbacks.values())
+            for callback in callbacks:
+                try:
+                    callback(violation)
+                except Exception as e:
+                    logger.error(f"Error in tripwire callback: {e}")
+
+        return first_recorded
 
     def _check_network_in_airgap(self, mode: BoundaryMode,
                                  env_state: EnvironmentState) -> Optional[tuple]:
@@ -475,6 +487,25 @@ class TripwireSystem:
 
         return violation
 
+    def _record_violation_no_callback(self, violation_info: tuple,
+                         current_mode: BoundaryMode,
+                         env_state: EnvironmentState) -> TripwireViolation:
+        """Record a violation without invoking callbacks (caller handles callbacks)."""
+        violation_type, details = violation_info
+
+        violation = TripwireViolation(
+            violation_id=self._generate_violation_id(),
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            violation_type=violation_type,
+            details=details,
+            current_mode=current_mode,
+            environment_snapshot=env_state.to_dict(),
+            auto_lockdown=True
+        )
+
+        self._violations.append(violation)
+        return violation
+
     def trigger_violation(
         self,
         violation_type: ViolationType,
@@ -534,18 +565,18 @@ class TripwireSystem:
                 except Exception as e:
                     logger.error(f"Failed to log tripwire violation: {e}")
 
-            # Notify all callbacks (copy to avoid modification during iteration)
-            with self._callback_lock:
-                callbacks = list(self._callbacks.values())
-            for callback in callbacks:
-                try:
-                    callback(violation)
-                except Exception as e:
-                    logger.error(f"Error in tripwire callback: {e}")
-
             logger.critical(f"TRIPWIRE VIOLATION: {violation_type.value} - {details}")
 
-            return violation
+        # SECURITY: Invoke callbacks OUTSIDE self._lock to prevent deadlock
+        with self._callback_lock:
+            callbacks = list(self._callbacks.values())
+        for callback in callbacks:
+            try:
+                callback(violation)
+            except Exception as e:
+                logger.error(f"Error in tripwire callback: {e}")
+
+        return violation
 
     def _generate_violation_id(self) -> str:
         """Generate a unique violation ID"""
@@ -582,8 +613,9 @@ class TripwireSystem:
                 self._log_failed_attempt("clear_violations")
                 return (False, "Invalid authentication token")
 
-            # Reset failed attempts on successful auth
-            self._failed_attempts = 0
+            # NOTE: Do NOT reset _failed_attempts on success.
+            # Resetting would allow an attacker to alternate valid clear_violations
+            # calls with invalid disable attempts to avoid lockout.
 
             # Log what we're about to clear (for audit trail)
             violation_count = len(self._violations)
@@ -708,13 +740,19 @@ class LockdownManager:
     When a tripwire is triggered, the system enters LOCKDOWN mode.
     """
 
-    def __init__(self):
-        """Initialize lockdown manager"""
+    def __init__(self, token_verifier: Optional[Callable] = None):
+        """Initialize lockdown manager.
+
+        Args:
+            token_verifier: Optional callable that verifies auth tokens.
+                           Should accept a token string and return bool.
+        """
         self._lock = threading.Lock()
         self._in_lockdown = False
         self._lockdown_reason: Optional[str] = None
         self._lockdown_timestamp: Optional[str] = None
         self._lockdown_violation: Optional[TripwireViolation] = None
+        self._token_verifier = token_verifier
 
     def trigger_lockdown(self, violation: TripwireViolation):
         """
@@ -784,12 +822,15 @@ class LockdownManager:
                 logger.warning(f"Unauthorized lockdown release attempt by {operator}: no token")
                 return False
 
-            # Verify against stored token hash (use parent TripwireSystem's verify if available)
-            if hasattr(self, '_auth_token_hash') and self._auth_token_hash:
-                token_hash = hashlib.sha256(auth_token.encode()).hexdigest()
-                if not hmac.compare_digest(token_hash, self._auth_token_hash):
+            # Verify token using the configured verifier
+            if self._token_verifier:
+                if not self._token_verifier(auth_token):
                     logger.warning(f"Unauthorized lockdown release attempt by {operator}: invalid token")
                     return False
+            else:
+                # No verifier configured - reject any release attempt for security
+                logger.warning("No token verifier configured - lockdown release denied")
+                return False
 
             self._in_lockdown = False
             logger.info(f"Lockdown released by {operator}. Reason: {reason}")
