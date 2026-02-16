@@ -431,7 +431,7 @@ class BoundaryDaemon:
     """
 
     def __init__(self, log_dir: str = './logs', initial_mode: BoundaryMode = BoundaryMode.OPEN,
-                 skip_integrity_check: bool = False):
+                 skip_integrity_check: bool = False, dev_mode: bool = False):
         """
         Initialize the Boundary Daemon.
 
@@ -439,7 +439,9 @@ class BoundaryDaemon:
             log_dir: Directory for log files
             initial_mode: Starting boundary mode
             skip_integrity_check: Skip integrity verification (DANGEROUS - dev only)
+            dev_mode: Use relaxed integrity settings for development
         """
+        self._dev_mode = dev_mode
         # SECURITY: Verify daemon integrity BEFORE any other initialization
         # This prevents execution of tampered code
         self._integrity_protector = None
@@ -455,14 +457,16 @@ class BoundaryDaemon:
             logger.info(f"Using config directory: {config_dir}")
             logger.info(f"Manifest path: {manifest_path}")
             logger.info(f"Signing key path: {signing_key_path}")
+            if self._dev_mode:
+                integrity_failure_action = IntegrityAction.WARN_ONLY
+                integrity_allow_missing = True
+            else:
+                integrity_failure_action = IntegrityAction.BLOCK_STARTUP
+                integrity_allow_missing = False
             self._integrity_protector = DaemonIntegrityProtector(
                 config=IntegrityConfig(
-                    # In production, use restrictive settings:
-                    # failure_action=IntegrityAction.BLOCK_STARTUP,
-                    # allow_missing_manifest=False,
-                    # For development, allow missing manifest:
-                    failure_action=IntegrityAction.WARN_ONLY,
-                    allow_missing_manifest=True,
+                    failure_action=integrity_failure_action,
+                    allow_missing_manifest=integrity_allow_missing,
                     signing_key_path=signing_key_path,
                     manifest_path=manifest_path,
                 ),
@@ -1411,6 +1415,11 @@ class BoundaryDaemon:
                             f"Network enforcement failed, triggering lockdown: {e}",
                             metadata={'error': str(e)}
                         )
+                        self.policy_engine.transition_mode(
+                            BoundaryMode.LOCKDOWN,
+                            Operator.SYSTEM,
+                            f"Network enforcement failure (fail-closed): {e}"
+                        )
 
             # Apply USB enforcement for the new mode (Plan 1 Phase 2)
             if self.usb_enforcer and self.usb_enforcer.is_available:
@@ -1429,6 +1438,11 @@ class BoundaryDaemon:
                             f"USB enforcement failed, triggering lockdown: {e}",
                             metadata={'error': str(e)}
                         )
+                        self.policy_engine.transition_mode(
+                            BoundaryMode.LOCKDOWN,
+                            Operator.SYSTEM,
+                            f"USB enforcement failure (fail-closed): {e}"
+                        )
 
             # Apply process enforcement for the new mode (Plan 1 Phase 3)
             if self.process_enforcer and self.process_enforcer.is_available:
@@ -1446,6 +1460,11 @@ class BoundaryDaemon:
                             EventType.VIOLATION,
                             f"Process enforcement failed, triggering lockdown: {e}",
                             metadata={'error': str(e)}
+                        )
+                        self.policy_engine.transition_mode(
+                            BoundaryMode.LOCKDOWN,
+                            Operator.SYSTEM,
+                            f"Process enforcement failure (fail-closed): {e}"
                         )
 
             # Bind mode transition to TPM (Plan 2: TPM Integration)
@@ -1500,11 +1519,16 @@ class BoundaryDaemon:
         self.tripwire_system.register_callback(on_tripwire_violation)
 
     def _handle_violation(self, violation: TripwireViolation):
-        """Handle a tripwire violation"""
+        """Handle a tripwire violation by transitioning to LOCKDOWN"""
         logger.critical("*** SECURITY VIOLATION DETECTED ***")
         logger.critical(f"Type: {violation.violation_type.value}")
         logger.critical(f"Details: {violation.details}")
         logger.critical("System entering LOCKDOWN mode")
+        self.policy_engine.transition_mode(
+            BoundaryMode.LOCKDOWN,
+            Operator.SYSTEM,
+            f"Tripwire violation: {violation.violation_type.value} - {violation.details}"
+        )
 
     def _on_privilege_critical(self, issue):
         """
@@ -1631,19 +1655,25 @@ class BoundaryDaemon:
             return False, "Protection persistence not available"
 
         results = []
+        any_failed = False
 
         # Request cleanup for each enforcer
         if self.network_enforcer and self.network_enforcer.is_available:
             success, msg = self.network_enforcer.cleanup(token=token, force=force)
             results.append(f"Network: {msg}")
+            if not success:
+                any_failed = True
 
         if self.usb_enforcer and self.usb_enforcer.is_available:
             success, msg = self.usb_enforcer.cleanup(token=token, force=force)
             results.append(f"USB: {msg}")
+            if not success:
+                any_failed = True
 
-        self._cleanup_on_shutdown_requested = True
+        if not any_failed:
+            self._cleanup_on_shutdown_requested = True
 
-        return True, "\n".join(results)
+        return (not any_failed), "\n".join(results)
 
     def _on_time_jump(self, event: 'TimeJumpEvent'):
         """Handle detected time jump (clock manipulation).
@@ -3166,6 +3196,10 @@ class BoundaryDaemon:
         Returns:
             (success, message)
         """
+        # Check if mode transitions are frozen (e.g. due to clock manipulation)
+        # Exception: always allow transitions TO LOCKDOWN (fail-closed)
+        if self._mode_frozen_reason and new_mode != BoundaryMode.LOCKDOWN:
+            return (False, f"Mode transitions frozen: {self._mode_frozen_reason}")
         return self.policy_engine.transition_mode(new_mode, operator, reason)
 
     def reload_custom_policies(self) -> tuple[bool, str]:
@@ -3837,12 +3871,12 @@ def main():
 
     parser = argparse.ArgumentParser(description='Boundary Daemon - Agent Smith')
     parser.add_argument('--mode', type=str, default='open',
-                       choices=['open', 'restricted', 'trusted', 'airgap', 'coldroom'],
+                       choices=['open', 'restricted', 'trusted', 'airgap', 'coldroom', 'lockdown'],
                        help='Initial boundary mode')
     parser.add_argument('--log-dir', type=str, default='./logs',
                        help='Directory for log files')
     parser.add_argument('--dev-mode', action='store_true',
-                       help='Development mode - bypass cryptography requirement (NOT for production)')
+                       help='Development mode - relaxed integrity checks (NOT for production)')
 
     args = parser.parse_args()
 
@@ -3861,13 +3895,15 @@ def main():
         'restricted': BoundaryMode.RESTRICTED,
         'trusted': BoundaryMode.TRUSTED,
         'airgap': BoundaryMode.AIRGAP,
-        'coldroom': BoundaryMode.COLDROOM
+        'coldroom': BoundaryMode.COLDROOM,
+        'lockdown': BoundaryMode.LOCKDOWN,
     }
 
     initial_mode = mode_map[args.mode]
 
     # Create and start daemon
-    daemon = BoundaryDaemon(log_dir=args.log_dir, initial_mode=initial_mode)
+    daemon = BoundaryDaemon(log_dir=args.log_dir, initial_mode=initial_mode,
+                            dev_mode=args.dev_mode)
     daemon.start()
 
     # Keep running until interrupted

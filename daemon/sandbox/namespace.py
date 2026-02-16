@@ -207,12 +207,14 @@ class NamespaceManager:
             return False
 
     def _setup_mount_namespace(self, config: NamespaceConfig) -> None:
-        """Set up mount namespace (called after unshare)."""
+        """Set up mount namespace (called after unshare).
+        SECURITY: Mount failures raise RuntimeError to prevent running with
+        shared host filesystem (fail-closed)."""
         try:
             # Make all mounts private (don't propagate to host)
             subprocess.run(
                 ['mount', '--make-rprivate', '/'],
-                check=False,
+                check=True,
                 capture_output=True,
             )
 
@@ -221,7 +223,7 @@ class NamespaceManager:
                 tmp_dir = tempfile.mkdtemp(prefix='sandbox_tmp_')
                 subprocess.run(
                     ['mount', '--bind', tmp_dir, '/tmp'],
-                    check=False,
+                    check=True,
                     capture_output=True,
                 )
 
@@ -234,7 +236,7 @@ class NamespaceManager:
                 Path(container_path).mkdir(parents=True, exist_ok=True)
                 subprocess.run(
                     ['mount', '--bind', host_path, container_path],
-                    check=False,
+                    check=True,
                     capture_output=True,
                 )
 
@@ -242,7 +244,7 @@ class NamespaceManager:
             for path in config.readonly_mounts:
                 subprocess.run(
                     ['mount', '-o', 'remount,ro', path],
-                    check=False,
+                    check=True,
                     capture_output=True,
                 )
 
@@ -250,12 +252,14 @@ class NamespaceManager:
             if config.readonly_root:
                 subprocess.run(
                     ['mount', '-o', 'remount,ro', '/'],
-                    check=False,
+                    check=True,
                     capture_output=True,
                 )
 
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Mount operation failed (sandbox compromised): {e}")
         except Exception as e:
-            logger.error(f"Failed to setup mount namespace: {e}")
+            raise RuntimeError(f"Failed to setup mount namespace: {e}")
 
     def _setup_minimal_dev(self) -> None:
         """Create minimal /dev with only essential devices."""
@@ -432,8 +436,10 @@ class NamespaceManager:
         config = config or NamespaceConfig()
 
         if not self.can_create_namespaces():
-            logger.warning("Namespaces not available, running without isolation")
-            return function()
+            raise RuntimeError(
+                "Namespace isolation unavailable - refusing to run without isolation. "
+                "Ensure the kernel supports user namespaces or run with appropriate privileges."
+            )
 
         import json
 

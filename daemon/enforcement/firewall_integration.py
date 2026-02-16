@@ -86,8 +86,9 @@ class FirewallRule:
     comment: str = ""
     priority: int = 100    # Lower = higher priority
 
-    def to_iptables(self) -> List[str]:
-        """Generate iptables command(s) for this rule."""
+    def to_iptables(self) -> List[List[str]]:
+        """Generate iptables command arg lists for this rule.
+        Returns list of arg lists (NOT joined strings) to prevent command injection."""
         commands = []
 
         chain = "OUTPUT" if self.direction == RuleDirection.OUTBOUND else "INPUT"
@@ -126,7 +127,7 @@ class FirewallRule:
 
             cmd.extend(["-j", action_map[self.action]])
 
-            commands.append(" ".join(cmd))
+            commands.append(cmd)
 
         return commands
 
@@ -425,11 +426,13 @@ class FirewallManager:
         ]
 
         for rule in rules:
-            for cmd in rule.to_iptables():
-                # Replace chain name
-                cmd = cmd.replace("-A INPUT", f"-A {chain}")
-                cmd = cmd.replace("-A OUTPUT", f"-A {chain}")
-                lines.append(cmd)
+            for cmd_args in rule.to_iptables():
+                # Redirect to our custom chain
+                cmd_args = [chain if (a in ("INPUT", "OUTPUT") and i > 0 and cmd_args[i-1] == "-A") else a
+                            for i, a in enumerate(cmd_args)]
+                # Shell-escape each argument for script output
+                import shlex
+                lines.append(" ".join(shlex.quote(a) for a in cmd_args))
 
         lines.extend([
             "",
@@ -521,12 +524,13 @@ class FirewallManager:
 
         # Add rules
         for rule in rules:
-            for cmd in rule.to_iptables():
-                cmd = cmd.replace("-A INPUT", f"-A {chain}")
-                cmd = cmd.replace("-A OUTPUT", f"-A {chain}")
-                result = subprocess.run(cmd.split(), capture_output=True)
+            for cmd_args in rule.to_iptables():
+                # Redirect to our custom chain
+                cmd_args = [chain if (a in ("INPUT", "OUTPUT") and i > 0 and cmd_args[i-1] == "-A") else a
+                            for i, a in enumerate(cmd_args)]
+                result = subprocess.run(cmd_args, capture_output=True)
                 if result.returncode != 0:
-                    logger.warning(f"Rule failed: {cmd}: {result.stderr.decode()}")
+                    logger.warning(f"Rule failed: {cmd_args}: {result.stderr.decode()}")
 
         # Jump to chain
         subprocess.run(["iptables", "-I", "INPUT", "-j", chain], capture_output=True)
@@ -643,7 +647,7 @@ class FirewallManager:
         return self.apply_rules([rule])
 
     def allow_host(self, host: str) -> Tuple[bool, str]:
-        """Allow a specific host."""
+        """Allow a specific host (appends to existing rules, does not flush)."""
         self.config.allowed_hosts.add(host)
         self.config.blocked_hosts.discard(host)
 
@@ -656,7 +660,10 @@ class FirewallManager:
             priority=30,
         )
 
-        return self.apply_rules([rule])
+        # Append to existing rules rather than replacing all
+        existing = list(self._applied_rules) if self._applied_rules else []
+        existing.append(rule)
+        return self.apply_rules(existing)
 
     def _log_event(self, event_type: str, data: Dict[str, Any]):
         """Log firewall event to event logger and SIEM."""

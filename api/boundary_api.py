@@ -282,7 +282,9 @@ class BoundaryAPIServer:
             conn.sendall(json.dumps(response).encode('utf-8'))
 
         except Exception as e:
-            error_response = {'error': str(e)}
+            # SECURITY: Don't leak internal details to clients
+            logger.error(f"Unhandled error processing request: {e}", exc_info=True)
+            error_response = {'error': 'Internal server error'}
             try:
                 conn.sendall(json.dumps(error_response).encode('utf-8'))
             except (OSError, socket.error, BrokenPipeError) as send_err:
@@ -319,17 +321,13 @@ class BoundaryAPIServer:
         command = request.get('command')
         params = request.get('params', {})
 
-        # Commands that don't require authentication (read-only, safe to expose)
-        # These are used by the TUI dashboard for display purposes
+        # Commands that don't require authentication
+        # SECURITY: Only truly safe, non-sensitive commands should be here.
+        # Event logs, alerts, sandbox info, and token creation require auth.
         PUBLIC_COMMANDS = {
             'status',           # Daemon status (mode, uptime, etc.)
             'ping',             # Health check
             'version',          # Version info
-            'get_events',       # Event log (read-only)
-            'get_alerts',       # Active alerts (read-only)
-            'get_sandboxes',    # Sandbox status (read-only)
-            'get_siem_status',  # SIEM shipping status (read-only)
-            'create_tui_token', # Auto-create limited TUI token (one-time setup)
         }
 
         # Skip authentication for public commands

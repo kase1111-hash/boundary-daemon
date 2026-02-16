@@ -495,42 +495,51 @@ class ProcessEnforcer:
 
     def _install_seccomp_profile(self, profile: Dict):
         """
-        Install seccomp profile securely.
+        Install and APPLY seccomp profile.
 
-        SECURITY: Uses SecureProfileManager for:
-        - HMAC integrity verification
-        - Restrictive file permissions (0o600)
-        - Optional immutable flag (chattr +i)
-        - Tamper detection on load
+        SECURITY: Writes profile to disk for audit/persistence, then applies
+        the BPF filter via SeccompFilter to actually constrain syscalls.
         """
         if not self._has_root:
+            logger.warning("Seccomp enforcement requires root privileges - skipping")
             return
 
         profile_name = profile.get('name', 'boundary')
 
-        # Use secure profile manager if available
+        # Write profile to disk for audit/persistence
         if self._profile_manager:
             success, msg = self._profile_manager.install_profile(profile, profile_name)
             if success:
                 logger.debug(f"Installed secure seccomp profile: {profile_name}")
             else:
                 logger.warning(f"Failed to install secure profile: {msg}")
-            return
+        else:
+            # Fallback: legacy insecure method (with warning)
+            logger.warning(f"Installing profile {profile_name} WITHOUT integrity protection!")
+            try:
+                profile_path = os.path.join(
+                    self.SECCOMP_PROFILE_DIR,
+                    f"{profile_name}.json"
+                )
+                with open(profile_path, 'w') as f:
+                    json.dump(profile, f, indent=2)
+                os.chmod(profile_path, 0o600)
+                logger.debug(f"Installed seccomp profile (legacy): {profile_path}")
+            except Exception as e:
+                logger.warning(f"Failed to install seccomp profile: {e}")
 
-        # Fallback: legacy insecure method (with warning)
-        logger.warning(f"Installing profile {profile_name} WITHOUT integrity protection!")
+        # Actually apply the seccomp filter to constrain syscalls
         try:
-            profile_path = os.path.join(
-                self.SECCOMP_PROFILE_DIR,
-                f"{profile_name}.json"
-            )
-            with open(profile_path, 'w') as f:
-                json.dump(profile, f, indent=2)
-            # Use more restrictive permissions even in legacy mode
-            os.chmod(profile_path, 0o600)
-            logger.debug(f"Installed seccomp profile (legacy): {profile_path}")
+            from ..sandbox.seccomp_filter import SeccompFilter
+            seccomp = SeccompFilter()
+            seccomp.load_profile(profile)
+            seccomp.apply()
+            logger.info(f"Seccomp filter applied: {profile_name}")
+        except ImportError:
+            logger.warning("SeccompFilter not available - syscall filtering not applied")
         except Exception as e:
-            logger.warning(f"Failed to install seccomp profile: {e}")
+            logger.error(f"Failed to apply seccomp filter: {e}")
+            raise  # Fail-closed: enforcement failure should trigger lockdown
 
     def _remove_seccomp_profile(self, name: str):
         """Remove a seccomp profile securely"""

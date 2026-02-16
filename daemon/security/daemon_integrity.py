@@ -792,24 +792,17 @@ class DaemonIntegrityProtector:
             else:
                 return False, "Manifest missing and allow_missing_manifest is False"
 
-        # Handle invalid signature (common in dev when signing key changes)
+        # Handle invalid signature -- NEVER auto-regenerate.
+        # SECURITY: A signature mismatch is evidence of tampering. Regenerating
+        # the manifest would self-heal around the attack, defeating the purpose.
         if result.status == IntegrityStatus.SIGNATURE_INVALID:
-            if self.config.allow_missing_manifest:
-                logger.warning(
-                    "Manifest signature invalid (signing key changed) - regenerating for development."
-                )
-                # Regenerate manifest with current signing key
-                try:
-                    self._manifest = None  # Clear old manifest
-                    self.create_manifest(daemon_version="dev")
-                    self.save_manifest()
-                    logger.info("Regenerated development manifest with new signing key")
-                except (IOError, OSError, PermissionError, ValueError) as e:
-                    # File I/O errors or invalid configuration
-                    logger.warning(f"Could not regenerate manifest: {e}")
-                return True, "Running with regenerated manifest (development mode)"
-            else:
-                return False, "Manifest signature invalid"
+            logger.critical(
+                "SECURITY: Manifest signature invalid - possible tampering detected. "
+                "Do NOT ignore this in production."
+            )
+            if self.config.failure_action == IntegrityAction.WARN_ONLY:
+                return True, "WARNING: Manifest signature invalid (possible tampering)"
+            return False, "Manifest signature invalid - possible tampering"
 
         action = self.config.failure_action
 

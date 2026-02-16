@@ -228,9 +228,16 @@ class NetworkEnforcer:
         """Get the active firewall backend"""
         return self._backend
 
+    # Valid interface name pattern (Linux: alphanumeric + dash/underscore, max 15 chars)
+    _IFACE_PATTERN = __import__('re').compile(r'^[a-zA-Z][a-zA-Z0-9_-]{0,14}$')
+
     def set_vpn_interfaces(self, interfaces: List[str]):
-        """Configure trusted VPN interfaces for TRUSTED mode"""
+        """Configure trusted VPN interfaces for TRUSTED mode.
+        SECURITY: Interface names are validated to prevent nftables/iptables injection."""
         with self._lock:
+            for iface in interfaces:
+                if not self._IFACE_PATTERN.match(iface):
+                    raise ValueError(f"Invalid interface name: {iface!r}")
             self._vpn_interfaces = interfaces.copy()
             logger.info(f"VPN interfaces set to: {interfaces}")
 
@@ -410,7 +417,8 @@ class NetworkEnforcer:
         logger.info("Network enforcement: TRUSTED mode - VPN only")
 
     def _apply_airgap_mode(self):
-        """AIRGAP mode: Block ALL network except loopback"""
+        """AIRGAP mode: Block ALL network except loopback.
+        SECURITY: No ESTABLISHED/RELATED rule — existing connections are terminated."""
         if self._backend == FirewallBackend.IPTABLES:
             self._iptables_setup_chain()
 
@@ -420,13 +428,7 @@ class NetworkEnforcer:
                 '-o', 'lo', '-j', 'ACCEPT'
             ])
 
-            # Allow established connections (for graceful close)
-            self._run_iptables([
-                '-A', self.BOUNDARY_CHAIN,
-                '-m', 'state', '--state', 'ESTABLISHED,RELATED',
-                '-j', 'ACCEPT'
-            ])
-
+            # NO ESTABLISHED rule: force-close existing connections
             # Log and drop everything else
             self._run_iptables([
                 '-A', self.BOUNDARY_CHAIN,
@@ -440,7 +442,6 @@ class NetworkEnforcer:
             self._nftables_setup_table()
             self._run_nft(f'''
                 add rule {self.NFT_TABLE} {self.NFT_CHAIN} oifname "lo" accept
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} ct state established,related accept
                 add rule {self.NFT_TABLE} {self.NFT_CHAIN} log prefix "[AIRGAP-VIOLATION] " level warn drop
             ''')
 
@@ -479,16 +480,20 @@ class NetworkEnforcer:
 
     # ========== iptables helpers ==========
 
+    BOUNDARY_INPUT_CHAIN = 'BOUNDARY_INPUT'
+
     def _iptables_setup_chain(self):
-        """Set up the boundary chain in iptables"""
-        # Flush existing chain if it exists
+        """Set up the boundary chains in iptables (OUTPUT and INPUT)"""
+        # Flush existing chains if they exist
         self._iptables_flush_boundary_chain()
 
-        # Create chain
+        # Create OUTPUT chain
         self._run_iptables(['-N', self.BOUNDARY_CHAIN], ignore_errors=True)
 
+        # Create INPUT chain
+        self._run_iptables(['-N', self.BOUNDARY_INPUT_CHAIN], ignore_errors=True)
+
         # Insert jump to our chain at the beginning of OUTPUT
-        # Check if jump already exists
         result = subprocess.run(
             ['iptables', '-C', 'OUTPUT', '-j', self.BOUNDARY_CHAIN],
             capture_output=True
@@ -496,16 +501,27 @@ class NetworkEnforcer:
         if result.returncode != 0:
             self._run_iptables(['-I', 'OUTPUT', '1', '-j', self.BOUNDARY_CHAIN])
 
+        # Insert jump to our chain at the beginning of INPUT
+        result = subprocess.run(
+            ['iptables', '-C', 'INPUT', '-j', self.BOUNDARY_INPUT_CHAIN],
+            capture_output=True
+        )
+        if result.returncode != 0:
+            self._run_iptables(['-I', 'INPUT', '1', '-j', self.BOUNDARY_INPUT_CHAIN])
+
     def _iptables_flush_boundary_chain(self):
-        """Flush and optionally delete the boundary chain"""
-        # Flush the chain
-        self._run_iptables(['-F', self.BOUNDARY_CHAIN], ignore_errors=True)
-
-        # Remove the jump rule from OUTPUT
+        """Flush and optionally delete the boundary chains (OUTPUT and INPUT)"""
+        # Remove jump rules first to avoid traffic hitting empty chains
         self._run_iptables(['-D', 'OUTPUT', '-j', self.BOUNDARY_CHAIN], ignore_errors=True)
+        self._run_iptables(['-D', 'INPUT', '-j', self.BOUNDARY_INPUT_CHAIN], ignore_errors=True)
 
-        # Delete the chain
+        # Flush the chains
+        self._run_iptables(['-F', self.BOUNDARY_CHAIN], ignore_errors=True)
+        self._run_iptables(['-F', self.BOUNDARY_INPUT_CHAIN], ignore_errors=True)
+
+        # Delete the chains
         self._run_iptables(['-X', self.BOUNDARY_CHAIN], ignore_errors=True)
+        self._run_iptables(['-X', self.BOUNDARY_INPUT_CHAIN], ignore_errors=True)
 
     def _run_iptables(self, args: List[str], ignore_errors: bool = False) -> subprocess.CompletedProcess:
         """Run an iptables command"""

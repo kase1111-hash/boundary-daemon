@@ -120,43 +120,51 @@ class SignedEventLogger(EventLogger):
         Returns:
             The logged event
         """
-        # Log the event using parent class
-        event = super().log_event(event_type, details, metadata)
-
-        # Sign the event
-        self._sign_event(event)
-
+        # Hold sig_lock across both log write and signature write
+        # to prevent race where events and sigs get out of sync
+        with self._sig_lock:
+            event = super().log_event(event_type, details, metadata)
+            self._sign_event_unlocked(event)
         return event
 
     def _sign_event(self, event: BoundaryEvent):
         """
-        Sign an event and append signature to signature file.
+        Sign an event and append signature to signature file (thread-safe).
 
         Args:
             event: The event to sign
         """
         with self._sig_lock:
-            # Create signature of the event JSON
-            event_data = event.to_json().encode()
-            signed = self.signing_key.sign(event_data)
+            self._sign_event_unlocked(event)
 
-            # Create signature record
-            signature_record = {
-                'event_id': event.event_id,
-                'signature': signed.signature.hex(),
-                'public_key': self.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()
-            }
+    def _sign_event_unlocked(self, event: BoundaryEvent):
+        """
+        Sign an event (caller must hold _sig_lock).
 
-            # Append to signature file
-            try:
-                with open(self.signature_file_path, 'a') as f:
-                    f.write(json.dumps(signature_record) + '\n')
-                    f.flush()
-                    os.fsync(f.fileno())
-            except (IOError, OSError, PermissionError) as e:
-                # Signature write failure is critical - must not lose signatures
-                log_security_error(e, "write_signature", signature_file=self.signature_file_path)
-                raise
+        Args:
+            event: The event to sign
+        """
+        # Create signature of the event JSON
+        event_data = event.to_json().encode()
+        signed = self.signing_key.sign(event_data)
+
+        # Create signature record
+        signature_record = {
+            'event_id': event.event_id,
+            'signature': signed.signature.hex(),
+            'public_key': self.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()
+        }
+
+        # Append to signature file
+        try:
+            with open(self.signature_file_path, 'a') as f:
+                f.write(json.dumps(signature_record) + '\n')
+                f.flush()
+                os.fsync(f.fileno())
+        except (IOError, OSError, PermissionError) as e:
+            # Signature write failure is critical - must not lose signatures
+            log_security_error(e, "write_signature", signature_file=self.signature_file_path)
+            raise
 
     def verify_signatures(self) -> Tuple[bool, Optional[str]]:
         """
@@ -206,14 +214,15 @@ class SignedEventLogger(EventLogger):
                     hash_chain=event_data['hash_chain']
                 )
 
-                # Verify signature
-                try:
-                    verify_key = nacl.signing.VerifyKey(
-                        sig_record['public_key'],
-                        encoder=nacl.encoding.HexEncoder
-                    )
+                # Verify the signature record's public key matches our known-good key
+                expected_pubkey = self.verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()
+                if sig_record['public_key'] != expected_pubkey:
+                    return (False, f"Public key mismatch at line {i+1}: expected {expected_pubkey}, "
+                            f"got {sig_record['public_key']} (possible key substitution attack)")
 
-                    verify_key.verify(
+                # Verify signature using our known-good verify key
+                try:
+                    self.verify_key.verify(
                         event.to_json().encode(),
                         bytes.fromhex(sig_record['signature'])
                     )

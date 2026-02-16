@@ -719,11 +719,20 @@ class TestViolationSuspiciousProcess:
         assert result is not None
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
-    def test_shell_escapes_at_threshold_does_not_trigger(self):
-        """Shell escapes == 10 should NOT trigger (> 10 required)."""
+    def test_shell_escapes_at_threshold_triggers(self):
+        """Shell escapes == 10 should trigger in OPEN mode (>= 10 threshold)."""
         ts = TripwireSystem()
 
         env = _make_env_state(shell_escapes_detected=10)
+        result = ts.check_violations(BoundaryMode.OPEN, env)
+        assert result is not None
+        assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
+
+    def test_shell_escapes_below_threshold_does_not_trigger(self):
+        """Shell escapes below threshold should NOT trigger."""
+        ts = TripwireSystem()
+
+        env = _make_env_state(shell_escapes_detected=9)
         result = ts.check_violations(BoundaryMode.OPEN, env)
         assert result is None
 
@@ -736,21 +745,23 @@ class TestViolationSuspiciousProcess:
         assert result is not None
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
-    def test_suspicious_processes_in_open_does_not_trigger(self):
-        """Suspicious processes in OPEN mode should NOT trigger."""
+    def test_suspicious_processes_in_open_triggers(self):
+        """Suspicious processes should trigger in ALL modes (including OPEN)."""
         ts = TripwireSystem()
 
         env = _make_env_state(suspicious_processes=["sudo"])
         result = ts.check_violations(BoundaryMode.OPEN, env)
-        assert result is None
+        assert result is not None
+        assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
-    def test_suspicious_processes_in_restricted_does_not_trigger(self):
-        """Suspicious processes in RESTRICTED (< TRUSTED) should NOT trigger."""
+    def test_suspicious_processes_in_restricted_triggers(self):
+        """Suspicious processes should trigger in ALL modes (including RESTRICTED)."""
         ts = TripwireSystem()
 
         env = _make_env_state(suspicious_processes=["su"])
         result = ts.check_violations(BoundaryMode.RESTRICTED, env)
-        assert result is None
+        assert result is not None
+        assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
 
 # ===========================================================================
@@ -789,14 +800,15 @@ class TestViolationHardwareTrust:
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
         assert result is None
 
-    def test_low_trust_in_trusted_does_not_trigger(self):
-        """LOW hardware trust in TRUSTED (< AIRGAP) should NOT trigger."""
+    def test_low_trust_in_trusted_triggers(self):
+        """LOW hardware trust in TRUSTED mode should trigger (expanded check)."""
         from daemon.state_monitor import HardwareTrust
         ts = TripwireSystem()
 
         env = _make_env_state(hardware_trust=HardwareTrust.LOW)
         result = ts.check_violations(BoundaryMode.TRUSTED, env)
-        assert result is None
+        assert result is not None
+        assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
 
 
 # ===========================================================================
@@ -1046,8 +1058,9 @@ class TestTripwireLifecycle:
         ts = TripwireSystem()
         assert ts.check_daemon_health() is True
 
-    def test_successful_auth_resets_failed_counter(self):
-        """Successful disable should reset the failed attempt counter."""
+    def test_successful_auth_does_not_reset_failed_counter(self):
+        """Successful disable should NOT reset the failed attempt counter.
+        Resetting would allow alternating valid/invalid attempts to bypass lockout."""
         ts = TripwireSystem()
         ts.disable("bad-1")
         ts.disable("bad-2")
@@ -1056,7 +1069,8 @@ class TestTripwireLifecycle:
         token = ts._generate_auth_token()
         success, _ = ts.disable(token, reason="legit")
         assert success is True
-        assert ts._failed_attempts == 0
+        # Counter must NOT be reset -- prevents lockout bypass
+        assert ts._failed_attempts == 2
 
     def test_violation_stores_environment_snapshot(self):
         """Violations should store the environment snapshot for forensics."""

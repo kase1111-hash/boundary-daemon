@@ -806,16 +806,16 @@ class TestHashChainInvariants:
         assert e3.hash_chain == e2.compute_hash()
 
     @pytest.mark.security
-    def test_invariant_hash_excludes_hash_chain_field(self, event_logger):
-        """INVARIANT: compute_hash() does NOT include hash_chain in the hash.
-        This allows verification without knowing the genesis hash in advance."""
+    def test_invariant_hash_includes_hash_chain_field(self, event_logger):
+        """INVARIANT: compute_hash() includes hash_chain, making the last event
+        tamper-detectable (its stored hash won't match recomputation if modified)."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
         hash1 = event.compute_hash()
 
-        # Changing hash_chain should NOT change the hash
+        # Changing hash_chain SHOULD change the hash
         event.hash_chain = "f" * 64
         hash2 = event.compute_hash()
-        assert hash1 == hash2
+        assert hash1 != hash2
 
     @pytest.mark.security
     def test_invariant_any_field_change_changes_hash(self):
@@ -863,7 +863,8 @@ class TestHashChainInvariants:
 
     @pytest.mark.security
     def test_invariant_verify_chain_catches_any_single_event_tamper(self, temp_log_file):
-        """INVARIANT: Tampering with any single event in a chain is detectable."""
+        """INVARIANT: Tampering with any single event (except the last) in a chain
+        is detectable by the hash chain. Last event requires signature verification."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         for i in range(5):
             logger.log_event(EventType.HEALTH_CHECK, f"Event {i}", {"i": i})
@@ -885,8 +886,8 @@ class TestHashChainInvariants:
             verifier = EventLogger(str(temp_log_file), secure_permissions=False)
             is_valid, error = verifier.verify_chain()
 
-            # Event 0 tamper is caught at event 1 (chain link broken)
-            # Events 1-4 tamper caught at that event + 1
+            # Events 0-3: tamper is caught by the next event's chain link
+            # Event 4 (last): chain alone can't detect this; requires SignedEventLogger
             if target < 4:
                 assert is_valid is False, (
                     f"SECURITY INVARIANT VIOLATED: tamper at event {target} not detected"

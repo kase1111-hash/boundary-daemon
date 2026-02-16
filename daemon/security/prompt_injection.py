@@ -777,7 +777,7 @@ class PromptInjectionDetector:
             r'ignore\s+instructions',
             r'system\s*:',
             r'you\s+are\s+now',
-            r'DAN',
+            r'dan',
             r'jailbreak',
         ]
 
@@ -954,9 +954,11 @@ class PromptInjectionDetector:
                 return True
         return False
 
-    def subscribe(self, callback: Callable[[DetectionResult], None]) -> None:
-        """Subscribe to detection events"""
-        self._callbacks.append(callback)
+    def subscribe(self, callback: Callable[[DetectionResult], None]) -> int:
+        """Subscribe to detection events. Returns callback ID for unsubscribe."""
+        callback_id = id(callback)
+        self._callbacks[callback_id] = callback
+        return callback_id
 
     def get_pattern_count(self) -> int:
         """Get the number of loaded patterns"""
@@ -995,6 +997,15 @@ def get_prompt_injection_detector(
             policy_engine=policy_engine,
             sensitivity=sensitivity,
         )
+    else:
+        # Update existing instance with new configuration if provided
+        if event_logger is not None:
+            _detector_instance._event_logger = event_logger
+        if policy_engine is not None:
+            _detector_instance._policy_engine = policy_engine
+        if sensitivity != "medium":
+            _detector_instance.sensitivity = sensitivity
+            _detector_instance._adjust_sensitivity()
 
     return _detector_instance
 
