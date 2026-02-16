@@ -11,7 +11,7 @@ import subprocess
 import threading
 import time
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional, Set
 from enum import Enum
 from datetime import datetime
@@ -124,7 +124,7 @@ class HardwareTrust(Enum):
 @dataclass
 class EnvironmentState:
     """Complete environment state snapshot"""
-    timestamp: str
+    timestamp: str = field(compare=False)  # Exclude from __eq__ to avoid false change detection
     network: NetworkState
     hardware_trust: HardwareTrust
 
@@ -702,10 +702,14 @@ class StateMonitor:
             net_if_addrs = psutil.net_if_addrs()
             net_if_stats = psutil.net_if_stats()
 
+            # Virtual/container interface prefixes to exclude from physical network detection
+            VIRTUAL_IFACE_PREFIXES = ('docker', 'br-', 'virbr', 'veth', 'lo', 'lxc',
+                                       'flannel', 'cni', 'podman', 'cali')
+
             for iface, addrs in net_if_addrs.items():
                 if iface in net_if_stats and net_if_stats[iface].isup:
-                    # Skip loopback
-                    if iface != 'lo' and not iface.startswith('lo'):
+                    # Skip loopback and virtual/container interfaces
+                    if not any(iface.startswith(p) for p in VIRTUAL_IFACE_PREFIXES):
                         interfaces.append(iface)
 
                         # Detect interface type
@@ -718,21 +722,27 @@ class StateMonitor:
         except Exception as e:
             logger.error(f"Error checking network interfaces: {e}")
 
-        # Test for internet connectivity
+        # Test for internet connectivity using a per-socket timeout
+        # (avoids mutating process-global socket.setdefaulttimeout)
         try:
-            # Try to resolve a common domain
-            # Note: socket.getaddrinfo doesn't accept timeout parameter
-            # Use setdefaulttimeout temporarily for DNS lookup timeout
-            old_timeout = socket.getdefaulttimeout()
-            socket.setdefaulttimeout(2.0)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            try:
+                s.connect(('8.8.8.8', 53))
+                has_internet = True
+                dns_available = True
+            finally:
+                s.close()
+        except (socket.error, socket.timeout, OSError):
+            pass
+
+        # Fallback: try DNS resolution if TCP connect failed
+        if not dns_available:
             try:
                 socket.getaddrinfo('google.com', 80)
                 dns_available = True
-                has_internet = True
-            finally:
-                socket.setdefaulttimeout(old_timeout)
-        except (socket.gaierror, socket.timeout, OSError):
-            pass
+            except (socket.gaierror, socket.timeout, OSError):
+                pass
 
         # Determine overall network state
         state = NetworkState.ONLINE if (interfaces or has_internet) else NetworkState.OFFLINE
@@ -1503,7 +1513,7 @@ class StateMonitor:
     def _check_human_presence(self) -> Dict:
         """Check for human presence signals"""
         keyboard_active = False
-        screen_unlocked = True  # Assume unlocked if we can't detect
+        screen_unlocked = False  # Fail-closed: assume locked until proven otherwise
         last_activity = None
 
         # Check for recent keyboard/mouse activity via idle time

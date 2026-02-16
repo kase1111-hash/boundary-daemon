@@ -680,19 +680,37 @@ class USBEnforcer:
                 logger.debug(f"Authorized USB device: {device.path}")
 
     def _deauthorize_storage_devices(self):
-        """De-authorize all USB mass storage devices"""
+        """De-authorize all USB mass storage devices (including composite devices
+        that have a storage interface)."""
         for device in self._enumerate_usb_devices():
-            if device.device_class == USBDeviceClass.MASS_STORAGE.value:
-                if device.authorized:
-                    self._deauthorize_device(device.path)
+            is_storage = device.device_class == USBDeviceClass.MASS_STORAGE.value
+            # Also check interface classes for composite devices (device_class=0)
+            if not is_storage and device.device_class == 0:
+                # Check if any interface is mass storage (class 0x08)
+                iface_path = os.path.join(device.path, '*/bInterfaceClass')
+                import glob as g
+                for iface_file in g.glob(iface_path):
+                    try:
+                        with open(iface_file, 'r') as f:
+                            if f.read().strip() == '08':
+                                is_storage = True
+                                break
+                    except Exception:
+                        pass
+
+            if is_storage and device.authorized:
+                success = self._deauthorize_device(device.path)
+                if not success:
+                    logger.error(f"Failed to de-authorize USB storage: {device.path}")
+                else:
                     logger.info(f"De-authorized USB storage: {device.path} ({device.name or 'unknown'})")
-                    self._log_enforcement(
-                        action="USB_DEVICE_BLOCKED",
-                        device=device.path,
-                        name=device.name,
-                        vendor_id=device.vendor_id,
-                        product_id=device.product_id
-                    )
+                self._log_enforcement(
+                    action="USB_DEVICE_BLOCKED",
+                    device=device.path,
+                    name=device.name,
+                    vendor_id=device.vendor_id,
+                    product_id=device.product_id
+                )
 
     def _deauthorize_non_essential_devices(self):
         """De-authorize all non-essential USB devices (COLDROOM)"""
@@ -713,19 +731,19 @@ class USBEnforcer:
                 )
 
     def _deauthorize_all_new_devices(self):
-        """De-authorize all USB devices not in baseline (LOCKDOWN)"""
+        """De-authorize ALL USB devices in LOCKDOWN (including baseline).
+        SECURITY: LOCKDOWN means no USB at all — baseline devices are not exempt."""
         for device in self._enumerate_usb_devices():
-            # Skip baseline devices (were present at daemon start)
-            if device.path in self._baseline_devices:
-                continue
-
-            # Skip USB hubs (needed for enumeration)
+            # Only skip USB hubs (needed for enumeration)
             if device.device_class == USBDeviceClass.HUB.value:
                 continue
 
             if device.authorized:
-                self._deauthorize_device(device.path)
-                logger.info(f"LOCKDOWN: De-authorized new USB: {device.path}")
+                success = self._deauthorize_device(device.path)
+                if not success:
+                    logger.error(f"LOCKDOWN: Failed to de-authorize USB: {device.path}")
+                else:
+                    logger.info(f"LOCKDOWN: De-authorized USB: {device.path}")
                 self._log_enforcement(
                     action="USB_LOCKDOWN_BLOCK",
                     device=device.path,

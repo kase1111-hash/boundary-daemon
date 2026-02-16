@@ -458,7 +458,7 @@ class TokenManager:
             name="bootstrap-admin",
             capabilities={'admin'},
             created_by="system",
-            expires_in_days=None,  # Never expires
+            expires_in_days=1,  # 24-hour bootstrap window
         )
 
         # Write bootstrap token to an ENCRYPTED file for initial setup
@@ -490,21 +490,33 @@ class TokenManager:
         """
         Fallback for writing bootstrap token when encryption is unavailable.
         Writes with strong security warnings.
+        SECURITY: Uses os.open with O_CREAT|O_WRONLY|O_EXCL to set permissions
+        atomically, preventing TOCTOU race (CWE-362).
         """
-        with open(bootstrap_file, 'w') as f:
-            f.write("# SECURITY WARNING: PLAINTEXT TOKEN FILE\n")
-            f.write("#\n")
-            f.write("# Boundary Daemon Bootstrap Token\n")
-            f.write(f"# Created: {datetime.utcnow().isoformat()}\n")
-            f.write("#\n")
-            f.write("# !!! DELETE THIS FILE AFTER RETRIEVING THE TOKEN !!!\n")
-            f.write("# !!! DO NOT COMMIT THIS FILE TO VERSION CONTROL !!!\n")
-            f.write("# !!! STORE THE TOKEN IN A SECRETS MANAGER !!!\n")
-            f.write("#\n")
-            f.write("# This token has full admin access. Use it to create other tokens.\n")
-            f.write("#\n")
-            f.write(f"{token}\n")
-        os.chmod(bootstrap_file, 0o600)
+        import stat
+        fd = os.open(
+            str(bootstrap_file),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            stat.S_IRUSR | stat.S_IWUSR  # 0o600
+        )
+        try:
+            with os.fdopen(fd, 'w') as f:
+                f.write("# SECURITY WARNING: PLAINTEXT TOKEN FILE\n")
+                f.write("#\n")
+                f.write("# Boundary Daemon Bootstrap Token\n")
+                f.write(f"# Created: {datetime.utcnow().isoformat()}\n")
+                f.write("#\n")
+                f.write("# !!! DELETE THIS FILE AFTER RETRIEVING THE TOKEN !!!\n")
+                f.write("# !!! DO NOT COMMIT THIS FILE TO VERSION CONTROL !!!\n")
+                f.write("# !!! STORE THE TOKEN IN A SECRETS MANAGER !!!\n")
+                f.write("#\n")
+                f.write("# This token has full admin access. Use it to create other tokens.\n")
+                f.write("# This token expires after 24 hours.\n")
+                f.write("#\n")
+                f.write(f"{token}\n")
+        except Exception:
+            os.close(fd)
+            raise
 
         logger.warning(f"Bootstrap token created as PLAINTEXT: {bootstrap_file}")
         logger.warning("Delete this file after retrieving the token!")
@@ -932,6 +944,7 @@ class TokenManager:
                         token.revoked = True
                         token.metadata['auto_expired'] = True
                         token.metadata['expired_at'] = now.isoformat()
+                        to_remove.append(token_hash)
 
             if to_remove:
                 self._save_tokens()

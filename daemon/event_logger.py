@@ -86,14 +86,14 @@ class BoundaryEvent:
         return json.dumps(self.to_dict(), sort_keys=True)
 
     def compute_hash(self) -> str:
-        """Compute SHA-256 hash of this event"""
-        # Hash the event data (excluding hash_chain to allow verification)
+        """Compute SHA-256 hash of this event (includes hash_chain for tamper detection)"""
         data = {
             'event_id': self.event_id,
             'timestamp': self.timestamp,
             'event_type': self.event_type.value,
             'details': self.details,
-            'metadata': self.metadata
+            'metadata': self.metadata,
+            'hash_chain': self.hash_chain,
         }
         json_str = json.dumps(data, sort_keys=True)
         return hashlib.sha256(json_str.encode()).hexdigest()
@@ -157,7 +157,7 @@ class EventLogger:
                             hash_chain=event_data['hash_chain']
                         )
                         self._last_hash = event.compute_hash()
-                        self._event_count = len(lines)
+                        self._event_count = sum(1 for l in lines if l.strip())
         except Exception as e:
             logger.warning(f"Error loading existing log: {e}")
             # Continue with genesis hash
@@ -196,21 +196,29 @@ class EventLogger:
     def _append_to_log(self, event: BoundaryEvent):
         """Append event to log file with secure permissions"""
         try:
-            # Check if file exists before writing
-            file_existed = os.path.exists(self.log_file_path)
-
-            with open(self.log_file_path, 'a') as f:
-                f.write(event.to_json() + '\n')
-                f.flush()
-                os.fsync(f.fileno())  # Ensure written to disk
-
-            # Set secure permissions on new files
-            if not file_existed and self._secure_permissions:
+            if self._secure_permissions and not self._file_created:
+                # Atomic file creation with correct permissions (no TOCTOU)
                 try:
-                    os.chmod(self.log_file_path, LOG_FILE_PERMS)
-                    logger.debug(f"Set secure permissions on log file: {oct(LOG_FILE_PERMS)}")
-                except Exception as e:
-                    logger.warning(f"Could not set secure file permissions: {e}")
+                    fd = os.open(self.log_file_path,
+                                 os.O_CREAT | os.O_WRONLY | os.O_APPEND,
+                                 LOG_FILE_PERMS)
+                    with os.fdopen(fd, 'a') as f:
+                        f.write(event.to_json() + '\n')
+                        f.flush()
+                        os.fsync(f.fileno())
+                    self._file_created = True
+                except FileExistsError:
+                    # File already exists, just append
+                    self._file_created = True
+                    with open(self.log_file_path, 'a') as f:
+                        f.write(event.to_json() + '\n')
+                        f.flush()
+                        os.fsync(f.fileno())
+            else:
+                with open(self.log_file_path, 'a') as f:
+                    f.write(event.to_json() + '\n')
+                    f.flush()
+                    os.fsync(f.fileno())
 
         except Exception as e:
             logger.critical(f"Failed to write to event log: {e}")
@@ -265,7 +273,7 @@ class EventLogger:
                     hash_chain=event_data['hash_chain']
                 )
 
-                # Verify hash chain
+                # Verify hash chain link
                 if event.hash_chain != expected_hash:
                     return (False, f"Hash chain broken at event {i}: expected {expected_hash}, got {event.hash_chain}")
 
@@ -282,11 +290,13 @@ class EventLogger:
         Get the most recent events.
 
         Args:
-            count: Number of events to retrieve
+            count: Number of events to retrieve (must be > 0)
 
         Returns:
             List of recent events (newest first)
         """
+        if count <= 0:
+            return []
         if not os.path.exists(self.log_file_path):
             return []
 
@@ -417,12 +427,12 @@ class EventLogger:
         Returns:
             (success, message)
         """
-        with self._lock:
-            if not os.path.exists(self.log_file_path):
-                return (False, "Log file does not exist")
+        if not os.path.exists(self.log_file_path):
+            return (False, "Log file does not exist")
 
+        with self._lock:
             try:
-                # Log final event
+                # Use log_event path to maintain chain correctly
                 final_event = BoundaryEvent(
                     event_id=self._generate_event_id(),
                     timestamp=datetime.utcnow().isoformat() + "Z",
@@ -435,11 +445,9 @@ class EventLogger:
                     },
                     hash_chain=self._last_hash,
                 )
-
-                with open(self.log_file_path, 'a') as f:
-                    f.write(final_event.to_json() + '\n')
-                    f.flush()
-                    os.fsync(f.fileno())
+                self._append_to_log(final_event)
+                self._last_hash = final_event.compute_hash()
+                self._event_count += 1
 
                 # Set read-only permissions
                 os.chmod(self.log_file_path, 0o400)
@@ -472,7 +480,7 @@ class EventLogger:
                 checkpoint = {
                     'sealed_at': datetime.utcnow().isoformat() + "Z",
                     'log_path': self.log_file_path,
-                    'event_count': self._event_count + 1,
+                    'event_count': self._event_count,
                     'final_chain_hash': final_event.compute_hash(),
                     'file_hash': file_hash,
                     'is_immutable': is_immutable,
@@ -482,7 +490,7 @@ class EventLogger:
                     json.dump(checkpoint, f, indent=2)
                 os.chmod(checkpoint_path, 0o400)
 
-                msg = f"Log sealed: {self._event_count + 1} events, hash {file_hash[:16]}..."
+                msg = f"Log sealed: {self._event_count} events, hash {file_hash[:16]}..."
                 if is_immutable:
                     msg += " (immutable)"
 

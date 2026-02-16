@@ -108,6 +108,7 @@ class PolicyEngine:
         self._next_callback_id = 0
         self._callback_lock = threading.Lock()  # Protect callback modifications
         self._custom_policies = None  # Optional PolicySet for custom rules
+        self._baseline_usb_devices = None  # Baseline USB device set for change detection
 
     def register_transition_callback(self, callback: callable) -> int:
         """
@@ -160,12 +161,14 @@ class PolicyEngine:
         if real_errors:
             msgs = '; '.join(f"{e.rule_name}: {e.message}" for e in real_errors)
             return (False, f"Validation failed: {msgs}")
-        self._custom_policies = policy_set
+        with self._state_lock:
+            self._custom_policies = policy_set
         return (True, f"Loaded {len(policy_set.rules)} custom rules")
 
     def clear_custom_policies(self):
         """Remove all custom policy rules."""
-        self._custom_policies = None
+        with self._state_lock:
+            self._custom_policies = None
 
     def get_custom_policies(self):
         """Get the currently loaded custom PolicySet, or None."""
@@ -207,21 +210,28 @@ class PolicyEngine:
             if old_mode == BoundaryMode.LOCKDOWN and operator != Operator.HUMAN:
                 return (False, "Cannot exit LOCKDOWN mode without human intervention")
 
-            # Log the transition
+            # Prevent mode downgrades without human operator
+            # (auto-escalation to LOCKDOWN is always OK)
+            if new_mode < old_mode and new_mode != BoundaryMode.LOCKDOWN and operator != Operator.HUMAN:
+                return (False, f"Cannot downgrade from {old_mode.name} to {new_mode.name} without human operator")
+
+            # Apply the transition
             self._boundary_state.mode = new_mode
             self._boundary_state.last_transition = datetime.utcnow().isoformat() + "Z"
             self._boundary_state.operator = operator
 
-            # Notify callbacks (copy to avoid modification during iteration)
+            # Snapshot callbacks under lock
             with self._callback_lock:
                 callbacks = list(self._transition_callbacks.values())
-            for callback in callbacks:
-                try:
-                    callback(old_mode, new_mode, operator, reason)
-                except Exception as e:
-                    logger.error(f"Error in transition callback: {e}")
 
-            return (True, f"Transitioned from {old_mode.name} to {new_mode.name}")
+        # Fire callbacks OUTSIDE _state_lock to prevent deadlock
+        for callback in callbacks:
+            try:
+                callback(old_mode, new_mode, operator, reason)
+            except Exception as e:
+                logger.error(f"Error in transition callback: {e}")
+
+        return (True, f"Transitioned from {old_mode.name} to {new_mode.name}")
 
     def update_environment(self, env_state: EnvironmentState):
         """
@@ -259,14 +269,17 @@ class PolicyEngine:
             if current_mode == BoundaryMode.LOCKDOWN:
                 return PolicyDecision.DENY
 
+            # Normalize request type
+            req_type = request.request_type.lower().strip() if request.request_type else ''
+
             # Base matrix evaluation
-            if request.request_type == 'recall':
+            if req_type == 'recall':
                 base = self._evaluate_recall_policy(request, current_mode, env_state)
-            elif request.request_type == 'tool':
+            elif req_type == 'tool':
                 base = self._evaluate_tool_policy(request, current_mode, env_state)
-            elif request.request_type == 'model':
+            elif req_type == 'model':
                 base = self._evaluate_model_policy(request, current_mode, env_state)
-            elif request.request_type == 'io':
+            elif req_type == 'io':
                 base = self._evaluate_io_policy(request, current_mode, env_state)
             else:
                 # Unknown request type: fail closed
@@ -395,7 +408,7 @@ class PolicyEngine:
 
         # COLDROOM: Minimal IO (keyboard/display only)
         if mode == BoundaryMode.COLDROOM:
-            if request.requires_filesystem:
+            if request.requires_filesystem or request.requires_network or request.requires_usb:
                 return PolicyDecision.DENY
             return PolicyDecision.ALLOW
 
@@ -434,9 +447,18 @@ class PolicyEngine:
             return (True, None)
 
     def _get_usb_changes(self, env_state: EnvironmentState) -> Tuple[set, set]:
-        """Helper to detect USB changes (would need baseline storage)"""
-        # This is a simplified version; real implementation would track baseline
-        return (set(), set())
+        """Detect USB device changes against baseline.
+
+        Returns:
+            (added_devices, removed_devices) as sets
+        """
+        current_devices = set(env_state.usb_devices) if env_state.usb_devices else set()
+        if self._baseline_usb_devices is None:
+            self._baseline_usb_devices = current_devices
+            return (set(), set())
+        added = current_devices - self._baseline_usb_devices
+        removed = self._baseline_usb_devices - current_devices
+        return (added, removed)
 
     def get_minimum_mode_for_memory(self, memory_class: MemoryClass) -> BoundaryMode:
         """Get the minimum boundary mode required for a memory class"""

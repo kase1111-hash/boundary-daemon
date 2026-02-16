@@ -414,10 +414,11 @@ class AppendOnlyStorage:
 
         with self._lock:
             try:
-                # Write to WAL first (crash recovery)
+                # Write to WAL first (crash recovery) with fsync for durability
                 if self._wal_fd:
                     self._wal_fd.write(event_json + '\n')
                     self._wal_fd.flush()
+                    os.fsync(self._wal_fd.fileno())
 
                 # Write to main log
                 with open(self.config.log_path, 'a') as f:
@@ -438,6 +439,8 @@ class AppendOnlyStorage:
                 if self._wal_fd:
                     self._wal_fd.seek(0)
                     self._wal_fd.truncate()
+                    self._wal_fd.flush()
+                    os.fsync(self._wal_fd.fileno())
 
                 return True, "Event appended"
 
@@ -456,9 +459,13 @@ class AppendOnlyStorage:
             timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
             hostname = socket.gethostname()
 
-            # Truncate event if too long for syslog
+            # Truncate event if too long for UDP syslog; warn about data loss
             max_msg_len = 1024
             if len(event_json) > max_msg_len:
+                logger.warning(
+                    f"Syslog event truncated from {len(event_json)} to {max_msg_len} bytes "
+                    f"(event may be invalid JSON at remote)"
+                )
                 event_json = event_json[:max_msg_len - 3] + "..."
 
             message = f"<{priority}>1 {timestamp} {hostname} {config.app_name} - - - {event_json}"
@@ -475,8 +482,23 @@ class AppendOnlyStorage:
 
         except Exception as e:
             self._stats['remote_failed'] += 1
+            logger.warning(f"Failed to send event to remote syslog: {e}")
+            # Queue for retry
+            if not hasattr(self, '_pending_remote'):
+                self._pending_remote = []
+            self._pending_remote.append(event_json)
             # Try to reconnect
             self._connect_remote_syslog()
+            # Drain retry queue on reconnect
+            if self._remote_socket and hasattr(self, '_pending_remote'):
+                retry_queue = self._pending_remote[:]
+                self._pending_remote.clear()
+                for pending in retry_queue:
+                    try:
+                        self._send_to_remote(pending)
+                    except Exception:
+                        self._pending_remote.append(pending)
+                        break
 
     # === Checkpointing ===
 
@@ -583,9 +605,10 @@ class AppendOnlyStorage:
             return False, "Checkpoint hash mismatch - data modified"
 
         # Verify signature if present
-        if checkpoint.signature and self._signing_key:
+        if checkpoint.signature:
+            if not self._signing_key:
+                return False, "Checkpoint has signature but signing key unavailable - cannot verify"
             try:
-
                 public_key = self._signing_key.public_key()
                 public_key.verify(
                     bytes.fromhex(checkpoint.signature),

@@ -482,12 +482,20 @@ class Sandbox:
                 stderr=stderr_pipe,
             )
 
-            # Add process to cgroup
+            # Add process to cgroup IMMEDIATELY after creation, before it can
+            # consume unbounded resources. The process is already started but
+            # this minimizes the window without cgroup limits.
             if self._cgroup_path and self._process.pid:
-                self._cgroup_manager.add_process(
-                    self._cgroup_path,
-                    self._process.pid,
-                )
+                try:
+                    self._cgroup_manager.add_process(
+                        self._cgroup_path,
+                        self._process.pid,
+                    )
+                except Exception as e:
+                    # If we can't add to cgroup, kill the process (fail-closed)
+                    logger.error(f"Failed to add process to cgroup: {e}")
+                    self._process.kill()
+                    raise RuntimeError(f"Sandbox cgroup enforcement failed: {e}")
 
             # Start monitor thread
             self._stop_monitor.clear()
@@ -610,6 +618,26 @@ class Sandbox:
 
         return False
 
+    @staticmethod
+    def _profile_strictness(profile: 'SandboxProfile') -> int:
+        """Compute a strictness score for a profile (higher = stricter)."""
+        score = 0
+        if profile.readonly_filesystem:
+            score += 1
+        if profile.network_disabled:
+            score += 1
+        if profile.seccomp_enabled:
+            score += 1
+        if profile.no_new_privileges:
+            score += 1
+        if profile.drop_capabilities:
+            score += len(profile.drop_capabilities)
+        if profile.denied_paths:
+            score += len(profile.denied_paths)
+        if profile.namespace_flags != NamespaceFlags.NONE:
+            score += 1
+        return score
+
     def tighten_profile(self, new_profile: 'SandboxProfile', reason: str = "") -> bool:
         """
         Tighten the sandbox profile to a stricter level.
@@ -629,6 +657,14 @@ class Sandbox:
             True if the profile was changed
         """
         old_profile = self._profile
+
+        # Reject loosening: new profile must be at least as strict
+        if self._profile_strictness(new_profile) < self._profile_strictness(old_profile):
+            logger.warning(
+                f"Rejecting profile change {old_profile.name} -> {new_profile.name}: "
+                f"new profile is less strict"
+            )
+            return False
 
         if self._state == SandboxState.RUNNING:
             frozen = self.pause()

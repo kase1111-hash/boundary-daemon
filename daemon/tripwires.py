@@ -231,8 +231,9 @@ class TripwireSystem:
                 self._log_failed_attempt("disable")
                 return (False, "Invalid authentication token")
 
-            # Reset failed attempts on successful auth
-            self._failed_attempts = 0
+            # NOTE: Do NOT reset _failed_attempts on success.
+            # Resetting would allow an attacker to alternate valid/invalid
+            # attempts indefinitely without triggering lockout.
 
             # Perform the disable
             self._enabled = False
@@ -288,10 +289,10 @@ class TripwireSystem:
         Returns:
             TripwireViolation if violation detected, None otherwise
         """
-        if not self._enabled:
-            return None
-
         with self._lock:
+            if not self._enabled:
+                return None
+
             # Initialize baselines on first check
             first_check = False
             if self._baseline_usb_devices is None:
@@ -301,36 +302,34 @@ class TripwireSystem:
                 first_check = True
                 # Don't return early - still check for obvious violations!
 
-            # Check for network coming online in AIRGAP+ mode
-            violation = self._check_network_in_airgap(current_mode, env_state)
-            if violation:
-                return self._record_violation(violation, current_mode, env_state)
+            # Check all violation types and collect all that fire
+            checks = [
+                self._check_network_in_airgap,
+                self._check_usb_in_coldroom,
+                self._check_external_model_violations,
+                self._check_suspicious_processes,
+                self._check_hardware_trust,
+            ]
 
-            # Check for USB insertion in COLDROOM mode
-            violation = self._check_usb_in_coldroom(current_mode, env_state)
-            if violation:
-                return self._record_violation(violation, current_mode, env_state)
+            violations_found = []
+            for check in checks:
+                result = check(current_mode, env_state)
+                if result:
+                    violations_found.append(result)
 
-            # Check for external model violations
-            violation = self._check_external_model_violations(current_mode, env_state)
-            if violation:
-                return self._record_violation(violation, current_mode, env_state)
-
-            # Check for suspicious processes
-            violation = self._check_suspicious_processes(current_mode, env_state)
-            if violation:
-                return self._record_violation(violation, current_mode, env_state)
-
-            # Check for hardware trust degradation
-            violation = self._check_hardware_trust(current_mode, env_state)
-            if violation:
-                return self._record_violation(violation, current_mode, env_state)
+            # Record all violations (not just the first)
+            first_recorded = None
+            for v in violations_found:
+                recorded = self._record_violation(v, current_mode, env_state)
+                if first_recorded is None:
+                    first_recorded = recorded
 
             # Update state for next check
             self._previous_mode = current_mode
             self._previous_network_state = env_state.network
 
-            return None
+            # Return the first recorded violation (highest priority by check order)
+            return first_recorded
 
     def _check_network_in_airgap(self, mode: BoundaryMode,
                                  env_state: EnvironmentState) -> Optional[tuple]:
@@ -357,20 +356,23 @@ class TripwireSystem:
 
     def _check_usb_in_coldroom(self, mode: BoundaryMode,
                                env_state: EnvironmentState) -> Optional[tuple]:
-        """Check for USB insertion in COLDROOM mode"""
+        """Check for USB insertion or removal in COLDROOM mode"""
         if mode >= BoundaryMode.COLDROOM:
-            # Check for new USB devices
             if self._baseline_usb_devices is not None:
+                # Check for new USB devices (insertion)
                 new_devices = env_state.usb_devices - self._baseline_usb_devices
                 if new_devices:
                     return (
                         ViolationType.USB_IN_COLDROOM,
                         f"USB device(s) inserted in {mode.name} mode: {new_devices}"
                     )
-
-            # Also check for new block devices (could be USB storage)
-            # This would require tracking block device baseline too
-            pass
+                # Check for removed USB devices (potential exfiltration)
+                removed_devices = self._baseline_usb_devices - env_state.usb_devices
+                if removed_devices:
+                    return (
+                        ViolationType.USB_IN_COLDROOM,
+                        f"USB device(s) removed in {mode.name} mode (possible exfiltration): {removed_devices}"
+                    )
 
         return None
 
@@ -391,15 +393,21 @@ class TripwireSystem:
     def _check_suspicious_processes(self, mode: BoundaryMode,
                                    env_state: EnvironmentState) -> Optional[tuple]:
         """Check for suspicious process activity"""
-        # High threshold for shell escapes
-        if env_state.shell_escapes_detected > 10:
+        # Mode-sensitive shell escape threshold
+        if mode >= BoundaryMode.AIRGAP:
+            shell_threshold = 3  # Strict in high-security modes
+        else:
+            shell_threshold = 10
+
+        if env_state.shell_escapes_detected >= shell_threshold:
             return (
                 ViolationType.SUSPICIOUS_PROCESS,
-                f"Excessive shell escape attempts detected: {env_state.shell_escapes_detected}"
+                f"Excessive shell escape attempts detected: {env_state.shell_escapes_detected} "
+                f"(threshold: {shell_threshold} in {mode.name} mode)"
             )
 
-        # Check for privilege escalation in restricted modes
-        if mode >= BoundaryMode.TRUSTED and env_state.suspicious_processes:
+        # Check for suspicious processes in all modes (not just TRUSTED+)
+        if env_state.suspicious_processes:
             return (
                 ViolationType.SUSPICIOUS_PROCESS,
                 f"Suspicious processes detected in {mode.name} mode: "
@@ -411,9 +419,18 @@ class TripwireSystem:
     def _check_hardware_trust(self, mode: BoundaryMode,
                              env_state: EnvironmentState) -> Optional[tuple]:
         """Check for hardware trust degradation"""
-        # In high-security modes, require high hardware trust
-        if mode >= BoundaryMode.AIRGAP:
-            from .state_monitor import HardwareTrust
+        from .state_monitor import HardwareTrust
+
+        # COLDROOM: require HIGH trust (MEDIUM is insufficient)
+        if mode >= BoundaryMode.COLDROOM:
+            if env_state.hardware_trust in (HardwareTrust.LOW, HardwareTrust.MEDIUM):
+                return (
+                    ViolationType.HARDWARE_TRUST_DEGRADED,
+                    f"Hardware trust {env_state.hardware_trust.value} insufficient for {mode.name} mode (requires HIGH)"
+                )
+
+        # TRUSTED+: reject LOW trust
+        elif mode >= BoundaryMode.TRUSTED:
             if env_state.hardware_trust == HardwareTrust.LOW:
                 return (
                     ViolationType.HARDWARE_TRUST_DEGRADED,
@@ -475,11 +492,11 @@ class TripwireSystem:
         Returns:
             TripwireViolation if recorded, None if tripwires disabled
         """
-        if not self._enabled:
-            logger.warning(f"Tripwire disabled - violation not recorded: {violation_type.value}")
-            return None
-
         with self._lock:
+            if not self._enabled:
+                logger.warning(f"Tripwire disabled - violation not recorded: {violation_type.value}")
+                return None
+
             violation = TripwireViolation(
                 violation_id=self._generate_violation_id(),
                 timestamp=datetime.utcnow().isoformat() + "Z",
@@ -739,13 +756,14 @@ class LockdownManager:
                 } if self._lockdown_violation else None
             }
 
-    def release_lockdown(self, operator: str, reason: str) -> bool:
+    def release_lockdown(self, operator: str, reason: str, auth_token: str = "") -> bool:
         """
-        Release lockdown mode (requires human authorization).
+        Release lockdown mode (requires human authorization with valid token).
 
         Args:
             operator: Who is releasing lockdown
             reason: Reason for release
+            auth_token: Authentication token for authorization
 
         Returns:
             True if successful
@@ -754,9 +772,20 @@ class LockdownManager:
             if not self._in_lockdown:
                 return False
 
+            # Require authentication token
+            if not auth_token:
+                logger.warning(f"Unauthorized lockdown release attempt by {operator}: no token")
+                return False
+
+            # Verify against stored token hash (use parent TripwireSystem's verify if available)
+            if hasattr(self, '_auth_token_hash') and self._auth_token_hash:
+                token_hash = hashlib.sha256(auth_token.encode()).hexdigest()
+                if not hmac.compare_digest(token_hash, self._auth_token_hash):
+                    logger.warning(f"Unauthorized lockdown release attempt by {operator}: invalid token")
+                    return False
+
             self._in_lockdown = False
-            print(f"\nLockdown released by {operator}")
-            print(f"Reason: {reason}\n")
+            logger.info(f"Lockdown released by {operator}. Reason: {reason}")
             return True
 
 
