@@ -436,12 +436,25 @@ class SeccompFilter:
         # Load architecture (offset 4 in seccomp_data)
         instructions.append(bpf_stmt(BPF_LD | BPF_W | BPF_ABS, 4))
 
-        # Verify architecture (jump to kill if wrong)
-        arch_check = bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, self._arch, 1, 0)
-        instructions.append(arch_check)
-
-        # Kill if wrong arch
-        instructions.append(bpf_stmt(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS))
+        # SECURITY: On x86_64, also block i386 syscalls (int 0x80 bypass)
+        # A 32-bit process or 32-bit syscall on a 64-bit system uses i386 arch
+        # with different syscall numbers that wouldn't match our x86_64 rules.
+        if self._arch == AUDIT_ARCH_X86_64:
+            # Check if arch is x86_64 - jump over i386 check to syscall rules
+            # BPF jumps: jt=2 skips i386 check + 2 kill stmts to reach syscall load
+            # jf=0 falls through to i386 check
+            instructions.append(bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_X86_64, 2, 0))
+            # Check if arch is i386 - if so, KILL (block all 32-bit syscalls)
+            instructions.append(bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_I386, 0, 1))
+            instructions.append(bpf_stmt(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS))
+            # Unknown arch: KILL
+            instructions.append(bpf_stmt(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS))
+        else:
+            # For other architectures, just verify exact match
+            arch_check = bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, self._arch, 1, 0)
+            instructions.append(arch_check)
+            # Kill if wrong arch
+            instructions.append(bpf_stmt(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS))
 
         # Load syscall number (offset 0 in seccomp_data)
         instructions.append(bpf_stmt(BPF_LD | BPF_W | BPF_ABS, 0))
@@ -706,9 +719,10 @@ class SeccompProfiles:
             # No new processes allowed - return ultra-restrictive
             return SeccompProfile(
                 name="lockdown",
-                description="No syscalls allowed (lockdown mode)",
+                description="Minimal syscalls for clean exit (lockdown mode)",
                 default_action=SeccompAction.KILL,
-                allowed_syscalls={'exit', 'exit_group'},
+                allowed_syscalls={'exit', 'exit_group', 'rt_sigreturn', 'rt_sigaction',
+                                  'rt_sigprocmask', 'set_tid_address', 'write'},
             )
         elif mode >= 4:  # COLDROOM
             return SeccompProfiles.untrusted()

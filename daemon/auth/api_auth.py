@@ -20,7 +20,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -166,8 +166,14 @@ class APIToken:
         if self.revoked:
             return False, "Token has been revoked"
 
-        if self.expires_at and datetime.utcnow() > self.expires_at:
-            return False, "Token has expired"
+        if self.expires_at:
+            now = datetime.now(timezone.utc)
+            expires = self.expires_at
+            # Handle comparison with naive datetimes (legacy tokens)
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if now > expires:
+                return False, "Token has expired"
 
         return True, "Token is valid"
 
@@ -388,7 +394,7 @@ class TokenManager:
             # ImportError: event_logger module unavailable
             # AttributeError: log_event method missing
             # IOError: log file write failure
-            logger.debug(f"Rate limit event logging failed: {e}")
+            logger.warning(f"SECURITY: Rate limit event logging failed: {e}")
 
     def _generate_token(self) -> str:
         """Generate a secure random token."""
@@ -420,7 +426,7 @@ class TokenManager:
         try:
             data = {
                 'version': 1,
-                'updated_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.now(timezone.utc).isoformat(),
                 'tokens': [t.to_dict() for t in self._tokens.values()],
             }
 
@@ -504,7 +510,7 @@ class TokenManager:
                 f.write("# SECURITY WARNING: PLAINTEXT TOKEN FILE\n")
                 f.write("#\n")
                 f.write("# Boundary Daemon Bootstrap Token\n")
-                f.write(f"# Created: {datetime.utcnow().isoformat()}\n")
+                f.write(f"# Created: {datetime.now(timezone.utc).isoformat()}\n")
                 f.write("#\n")
                 f.write("# !!! DELETE THIS FILE AFTER RETRIEVING THE TOKEN !!!\n")
                 f.write("# !!! DO NOT COMMIT THIS FILE TO VERSION CONTROL !!!\n")
@@ -564,7 +570,7 @@ class TokenManager:
             # Calculate expiration
             expires_at = None
             if expires_in_days is not None:
-                expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
+                expires_at = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
 
             # Create token object
             token = APIToken(
@@ -572,7 +578,7 @@ class TokenManager:
                 token_hash=token_hash,
                 name=name,
                 capabilities=parsed_caps,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
                 expires_at=expires_at,
                 created_by=created_by,
                 metadata=metadata or {},
@@ -605,20 +611,23 @@ class TokenManager:
         token_hash = self._hash_token(raw_token)
 
         with self._lock:
-            # Check global rate limit first (before token lookup)
-            is_global_allowed, global_reason = self._check_global_rate_limit()
-            if not is_global_allowed:
-                return False, None, global_reason
-
             token = self._tokens.get(token_hash)
 
             if not token:
                 return False, None, "Token not found"
 
-            # Check validity
+            # Check validity BEFORE rate limiting
+            # SECURITY: Rate limit checks should not modify state until
+            # we confirm the token is valid (prevents TOCTOU between
+            # rate limiting and token validation)
             is_valid, reason = token.is_valid()
             if not is_valid:
                 return False, token, reason
+
+            # Now check rate limits (token is confirmed valid)
+            is_global_allowed, global_reason = self._check_global_rate_limit()
+            if not is_global_allowed:
+                return False, token, global_reason
 
             # Check per-token rate limit
             is_allowed, rate_reason = self._check_rate_limit(token.token_id)
@@ -626,7 +635,7 @@ class TokenManager:
                 return False, token, rate_reason
 
             # Update usage stats
-            token.last_used = datetime.utcnow()
+            token.last_used = datetime.now(timezone.utc)
             token.use_count += 1
             self._save_tokens()
 
@@ -888,7 +897,7 @@ class TokenManager:
 
             target.revoked = True
             target.metadata['revoked_by'] = revoked_by
-            target.metadata['revoked_at'] = datetime.utcnow().isoformat()
+            target.metadata['revoked_at'] = datetime.now(timezone.utc).isoformat()
 
             self._save_tokens()
 
@@ -934,7 +943,7 @@ class TokenManager:
     def cleanup_expired(self) -> int:
         """Remove expired tokens from storage. Returns count removed."""
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             to_remove = []
 
             for token_hash, token in self._tokens.items():

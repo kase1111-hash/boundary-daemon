@@ -901,12 +901,17 @@ class TestModelPolicyGaps:
         assert decision == PolicyDecision.DENY
 
     @pytest.mark.unit
-    def test_model_in_trusted_offline(self, mock_env_state):
-        """TRUSTED offline should allow model access (offline is safe)."""
+    def test_model_in_trusted_offline_denied(self, mock_env_state):
+        """TRUSTED offline should DENY model access (can't reach external models offline).
+
+        SECURITY: External model access requires network connectivity.
+        Offline state cannot reach external models regardless of trust level.
+        Only VPN-connected TRUSTED mode should allow external model access.
+        """
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(request_type='model')
         decision = engine.evaluate_policy(request, mock_env_state)
-        assert decision == PolicyDecision.ALLOW
+        assert decision == PolicyDecision.DENY
 
     @pytest.mark.unit
     def test_model_in_coldroom(self, mock_env_state):

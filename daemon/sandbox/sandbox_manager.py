@@ -360,8 +360,12 @@ class Sandbox:
 
         # Need cgroup path for cgroup-based firewall rules
         if not self._cgroup_path:
-            logger.warning("No cgroup path, firewall rules may not be sandbox-specific")
-            return
+            # SECURITY: Fail-closed - if cgroups are unavailable, network
+            # isolation cannot be guaranteed. Raise instead of silently skipping.
+            raise RuntimeError(
+                "Cannot apply sandbox firewall rules without cgroup path. "
+                "Network isolation for this sandbox is not available."
+            )
 
         success, msg = self._sandbox_firewall.setup_sandbox_rules(
             sandbox_id=self.sandbox_id,
@@ -835,6 +839,12 @@ class SandboxManager:
             Sandbox instance
         """
         # Generate ID
+        # SECURITY: Validate sandbox name to prevent path traversal
+        import re
+        SANDBOX_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$')
+        if name:
+            if not SANDBOX_NAME_PATTERN.match(name):
+                raise ValueError(f"Invalid sandbox name: {name!r}")
         sandbox_id = name or f"sandbox-{uuid.uuid4().hex[:8]}"
 
         # Get profile

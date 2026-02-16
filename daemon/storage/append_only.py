@@ -153,6 +153,7 @@ class AppendOnlyStorage:
         self._last_hash = "0" * 64
         self._last_checkpoint: Optional[IntegrityCheckpoint] = None
         self._signing_key = None
+        self._pending_remote: list = []
 
         # Statistics
         self._stats = {
@@ -179,6 +180,9 @@ class AppendOnlyStorage:
 
                 # Load existing state
                 self._load_state()
+
+                # Recover any pending WAL entries from a crash
+                self._recover_wal()
 
                 # Initialize WAL
                 self._init_wal()
@@ -266,6 +270,35 @@ class AppendOnlyStorage:
             self._wal_fd = open(self.config.wal_path, 'a')
         except Exception as e:
             logger.warning(f"Could not open WAL: {e}")
+
+    def _recover_wal(self):
+        """Replay any pending WAL entries after crash recovery."""
+        wal_path = Path(self.config.wal_path)
+        if not wal_path.exists():
+            return
+
+        try:
+            with open(wal_path, 'r') as f:
+                pending = f.read().strip()
+            if not pending:
+                return
+
+            lines = pending.splitlines()
+            logger.warning(f"WAL recovery: found {len(lines)} pending events")
+            log_path = self.config.log_path
+            for line in lines:
+                if line.strip():
+                    with open(log_path, 'a') as f:
+                        f.write(line.strip() + '\n')
+                        f.flush()
+                        os.fsync(f.fileno())
+
+            # Clear WAL after successful recovery
+            with open(wal_path, 'w') as f:
+                f.truncate()
+            logger.info("WAL recovery complete")
+        except Exception as e:
+            logger.error(f"WAL recovery failed: {e}")
 
     def _apply_chattr_protection(self) -> bool:
         """Apply chattr +a protection to log file."""
@@ -459,38 +492,35 @@ class AppendOnlyStorage:
             timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
             hostname = socket.gethostname()
 
-            # Truncate event if too long for UDP syslog; warn about data loss
-            max_msg_len = 1024
-            if len(event_json) > max_msg_len:
-                logger.warning(
-                    f"Syslog event truncated from {len(event_json)} to {max_msg_len} bytes "
-                    f"(event may be invalid JSON at remote)"
-                )
-                event_json = event_json[:max_msg_len - 3] + "..."
+            # Split large events into numbered chunks to avoid syslog truncation
+            max_payload = 900  # Leave room for syslog header
+            if len(event_json) > max_payload:
+                chunks = [event_json[i:i+max_payload] for i in range(0, len(event_json), max_payload)]
+                try:
+                    event_id = json.loads(event_json).get('event_id', '')
+                except (json.JSONDecodeError, KeyError):
+                    event_id = ''
+                for idx, chunk in enumerate(chunks):
+                    chunk_msg = json.dumps({
+                        'chunk': idx + 1,
+                        'total': len(chunks),
+                        'event_id': event_id,
+                        'data': chunk
+                    })
+                    self._send_syslog_message(chunk_msg, config, priority, timestamp, hostname)
+                return
 
-            message = f"<{priority}>1 {timestamp} {hostname} {config.app_name} - - - {event_json}"
-
-            if config.protocol == "udp":
-                self._remote_socket.sendto(
-                    message.encode('utf-8'),
-                    (config.host, config.port)
-                )
-            else:
-                self._remote_socket.send(message.encode('utf-8') + b'\n')
-
-            self._stats['remote_sent'] += 1
+            self._send_syslog_message(event_json, config, priority, timestamp, hostname)
 
         except Exception as e:
             self._stats['remote_failed'] += 1
             logger.warning(f"Failed to send event to remote syslog: {e}")
             # Queue for retry
-            if not hasattr(self, '_pending_remote'):
-                self._pending_remote = []
             self._pending_remote.append(event_json)
             # Try to reconnect
             self._connect_remote_syslog()
             # Drain retry queue on reconnect
-            if self._remote_socket and hasattr(self, '_pending_remote'):
+            if self._remote_socket and self._pending_remote:
                 retry_queue = self._pending_remote[:]
                 self._pending_remote.clear()
                 for pending in retry_queue:
@@ -499,6 +529,20 @@ class AppendOnlyStorage:
                     except Exception:
                         self._pending_remote.append(pending)
                         break
+
+    def _send_syslog_message(self, payload: str, config, priority: int, timestamp: str, hostname: str):
+        """Send a single syslog message."""
+        message = f"<{priority}>1 {timestamp} {hostname} {config.app_name} - - - {payload}"
+
+        if config.protocol == "udp":
+            self._remote_socket.sendto(
+                message.encode('utf-8'),
+                (config.host, config.port)
+            )
+        else:
+            self._remote_socket.send(message.encode('utf-8') + b'\n')
+
+        self._stats['remote_sent'] += 1
 
     # === Checkpointing ===
 
@@ -604,18 +648,22 @@ class AppendOnlyStorage:
         if computed_hash != checkpoint.checkpoint_hash:
             return False, "Checkpoint hash mismatch - data modified"
 
-        # Verify signature if present
-        if checkpoint.signature:
-            if not self._signing_key:
-                return False, "Checkpoint has signature but signing key unavailable - cannot verify"
-            try:
-                public_key = self._signing_key.public_key()
-                public_key.verify(
-                    bytes.fromhex(checkpoint.signature),
-                    checkpoint.checkpoint_hash.encode(),
-                )
-            except Exception as e:
-                return False, f"Signature verification failed: {e}"
+        # Verify signature if present or required
+        if not checkpoint.signature:
+            if self._signing_key:
+                return False, "Checkpoint missing required signature (signing key is configured)"
+            return True, "Checkpoint valid (unsigned, no signing key configured)"
+
+        if not self._signing_key:
+            return False, "Checkpoint has signature but signing key unavailable - cannot verify"
+        try:
+            public_key = self._signing_key.public_key()
+            public_key.verify(
+                bytes.fromhex(checkpoint.signature),
+                checkpoint.checkpoint_hash.encode(),
+            )
+        except Exception as e:
+            return False, f"Signature verification failed: {e}"
 
         return True, "Checkpoint valid"
 

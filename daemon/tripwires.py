@@ -113,11 +113,12 @@ class TripwireSystem:
         Returns:
             New auth token if current token is valid, None otherwise
         """
-        if not self._verify_token(current_token):
-            self._log_failed_attempt("get_new_auth_token")
-            return None
+        with self._lock:
+            if not self._verify_token(current_token):
+                self._log_failed_attempt("get_new_auth_token")
+                return None
 
-        return self._generate_auth_token()
+            return self._generate_auth_token()
 
     def _verify_token(self, token: str) -> bool:
         """Verify an authentication token."""
@@ -129,20 +130,26 @@ class TripwireSystem:
         return hmac.compare_digest(token_hash, self._auth_token_hash)
 
     def _log_failed_attempt(self, operation: str):
-        """Log and track a failed authorization attempt."""
+        """Log and track a failed authorization attempt.
+
+        SECURITY: Must be called while holding self._lock to prevent
+        lost increments from concurrent access to _failed_attempts.
+        All callers (get_new_auth_token, disable, clear_violations) hold the lock.
+        """
         self._failed_attempts += 1
+        current_attempts = self._failed_attempts
         attempt = {
             'timestamp': datetime.utcnow().isoformat() + "Z",
             'operation': operation,
-            'attempt_number': self._failed_attempts,
+            'attempt_number': current_attempts,
         }
         self._disable_attempts.append(attempt)
 
         logger.warning(f"SECURITY: Failed tripwire auth attempt for {operation} "
-                      f"(attempt {self._failed_attempts}/{self._max_disable_attempts})")
+                      f"(attempt {current_attempts}/{self._max_disable_attempts})")
 
-        # Lock after too many failed attempts
-        if self._failed_attempts >= self._max_disable_attempts:
+        # Lock after too many failed attempts (already holding self._lock)
+        if current_attempts >= self._max_disable_attempts:
             self._locked = True
             logger.critical("SECURITY: Tripwire system LOCKED due to excessive failed auth attempts")
 
@@ -155,12 +162,12 @@ class TripwireSystem:
                         data={
                             'event': 'tripwire_locked',
                             'reason': 'excessive_failed_auth_attempts',
-                            'attempts': self._failed_attempts,
+                            'attempts': current_attempts,
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"SECURITY: Failed to log tripwire lock event: {e}")
 
     def register_callback(self, callback: Callable) -> int:
         """
@@ -252,8 +259,8 @@ class TripwireSystem:
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"SECURITY: Failed to log tripwire disable event: {e}")
 
             return (True, "Tripwire monitoring disabled")
 
@@ -317,10 +324,12 @@ class TripwireSystem:
                 if result:
                     violations_found.append(result)
 
-            # Record all violations (not just the first)
+            # Record all violations (not just the first) - without callbacks
             first_recorded = None
+            recorded_violations = []
             for v in violations_found:
-                recorded = self._record_violation(v, current_mode, env_state)
+                recorded = self._record_violation_no_callback(v, current_mode, env_state)
+                recorded_violations.append(recorded)
                 if first_recorded is None:
                     first_recorded = recorded
 
@@ -328,8 +337,18 @@ class TripwireSystem:
             self._previous_mode = current_mode
             self._previous_network_state = env_state.network
 
-            # Return the first recorded violation (highest priority by check order)
-            return first_recorded
+        # SECURITY: Invoke callbacks OUTSIDE self._lock to prevent deadlock
+        # if a callback calls methods that acquire self._lock
+        for violation in recorded_violations:
+            with self._callback_lock:
+                callbacks = list(self._callbacks.values())
+            for callback in callbacks:
+                try:
+                    callback(violation)
+                except Exception as e:
+                    logger.error(f"Error in tripwire callback: {e}")
+
+        return first_recorded
 
     def _check_network_in_airgap(self, mode: BoundaryMode,
                                  env_state: EnvironmentState) -> Optional[tuple]:
@@ -468,6 +487,25 @@ class TripwireSystem:
 
         return violation
 
+    def _record_violation_no_callback(self, violation_info: tuple,
+                         current_mode: BoundaryMode,
+                         env_state: EnvironmentState) -> TripwireViolation:
+        """Record a violation without invoking callbacks (caller handles callbacks)."""
+        violation_type, details = violation_info
+
+        violation = TripwireViolation(
+            violation_id=self._generate_violation_id(),
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            violation_type=violation_type,
+            details=details,
+            current_mode=current_mode,
+            environment_snapshot=env_state.to_dict(),
+            auto_lockdown=True
+        )
+
+        self._violations.append(violation)
+        return violation
+
     def trigger_violation(
         self,
         violation_type: ViolationType,
@@ -527,18 +565,18 @@ class TripwireSystem:
                 except Exception as e:
                     logger.error(f"Failed to log tripwire violation: {e}")
 
-            # Notify all callbacks (copy to avoid modification during iteration)
-            with self._callback_lock:
-                callbacks = list(self._callbacks.values())
-            for callback in callbacks:
-                try:
-                    callback(violation)
-                except Exception as e:
-                    logger.error(f"Error in tripwire callback: {e}")
-
             logger.critical(f"TRIPWIRE VIOLATION: {violation_type.value} - {details}")
 
-            return violation
+        # SECURITY: Invoke callbacks OUTSIDE self._lock to prevent deadlock
+        with self._callback_lock:
+            callbacks = list(self._callbacks.values())
+        for callback in callbacks:
+            try:
+                callback(violation)
+            except Exception as e:
+                logger.error(f"Error in tripwire callback: {e}")
+
+        return violation
 
     def _generate_violation_id(self) -> str:
         """Generate a unique violation ID"""
@@ -575,8 +613,9 @@ class TripwireSystem:
                 self._log_failed_attempt("clear_violations")
                 return (False, "Invalid authentication token")
 
-            # Reset failed attempts on successful auth
-            self._failed_attempts = 0
+            # NOTE: Do NOT reset _failed_attempts on success.
+            # Resetting would allow an attacker to alternate valid clear_violations
+            # calls with invalid disable attempts to avoid lockout.
 
             # Log what we're about to clear (for audit trail)
             violation_count = len(self._violations)
@@ -596,8 +635,8 @@ class TripwireSystem:
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"SECURITY: Failed to log violations cleared event: {e}")
 
             logger.warning(f"SECURITY: Clearing {violation_count} tripwire violations. "
                           f"Reason: {reason}")
@@ -701,13 +740,19 @@ class LockdownManager:
     When a tripwire is triggered, the system enters LOCKDOWN mode.
     """
 
-    def __init__(self):
-        """Initialize lockdown manager"""
+    def __init__(self, token_verifier: Optional[Callable] = None):
+        """Initialize lockdown manager.
+
+        Args:
+            token_verifier: Optional callable that verifies auth tokens.
+                           Should accept a token string and return bool.
+        """
         self._lock = threading.Lock()
         self._in_lockdown = False
         self._lockdown_reason: Optional[str] = None
         self._lockdown_timestamp: Optional[str] = None
         self._lockdown_violation: Optional[TripwireViolation] = None
+        self._token_verifier = token_verifier
 
     def trigger_lockdown(self, violation: TripwireViolation):
         """
@@ -777,12 +822,15 @@ class LockdownManager:
                 logger.warning(f"Unauthorized lockdown release attempt by {operator}: no token")
                 return False
 
-            # Verify against stored token hash (use parent TripwireSystem's verify if available)
-            if hasattr(self, '_auth_token_hash') and self._auth_token_hash:
-                token_hash = hashlib.sha256(auth_token.encode()).hexdigest()
-                if not hmac.compare_digest(token_hash, self._auth_token_hash):
+            # Verify token using the configured verifier
+            if self._token_verifier:
+                if not self._token_verifier(auth_token):
                     logger.warning(f"Unauthorized lockdown release attempt by {operator}: invalid token")
                     return False
+            else:
+                # No verifier configured - reject any release attempt for security
+                logger.warning("No token verifier configured - lockdown release denied")
+                return False
 
             self._in_lockdown = False
             logger.info(f"Lockdown released by {operator}. Reason: {reason}")

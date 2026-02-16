@@ -117,7 +117,13 @@ class EventLogger:
         """
         self.log_file_path = log_file_path
         self._lock = threading.Lock()
-        self._last_hash: str = "0" * 64  # Genesis hash (all zeros)
+        # SECURITY: Use instance-specific genesis hash to prevent cross-instance
+        # hash chain correlation (predictable "0"*64 is identical across all instances)
+        import secrets
+        self._instance_nonce = secrets.token_hex(16)
+        self._last_hash: str = hashlib.sha256(
+            f"genesis:{self._instance_nonce}".encode()
+        ).hexdigest()
         self._event_count = 0
         self._secure_permissions = secure_permissions
         self._file_created = False
@@ -159,8 +165,14 @@ class EventLogger:
                         self._last_hash = event.compute_hash()
                         self._event_count = sum(1 for l in lines if l.strip())
         except Exception as e:
-            logger.warning(f"Error loading existing log: {e}")
-            # Continue with genesis hash
+            # SECURITY: A corrupted log file could mean tampering.
+            # Do NOT silently fork the hash chain with a fresh genesis hash.
+            # Raise to prevent the logger from starting with a broken chain.
+            raise RuntimeError(
+                f"Failed to load existing log {self.log_file_path}: {e}. "
+                f"Hash chain integrity cannot be guaranteed. "
+                f"Investigate for possible tampering before proceeding."
+            )
 
     def log_event(self, event_type: EventType, details: str, metadata: Optional[Dict] = None) -> BoundaryEvent:
         """
@@ -256,7 +268,10 @@ class EventLogger:
             if not lines:
                 return (True, None)
 
-            expected_hash = "0" * 64  # Genesis hash
+            # Genesis hash: accept either legacy "0"*64 or nonce-based hash
+            # For verification, we derive the genesis hash from the first event's chain link
+            # (the first event's hash_chain field IS the genesis hash)
+            expected_hash = None  # Will be set from first event
 
             for i, line in enumerate(lines):
                 line = line.strip()
@@ -274,7 +289,10 @@ class EventLogger:
                 )
 
                 # Verify hash chain link
-                if event.hash_chain != expected_hash:
+                if expected_hash is None:
+                    # First event - accept its hash_chain as the genesis hash
+                    expected_hash = event.hash_chain
+                elif event.hash_chain != expected_hash:
                     return (False, f"Hash chain broken at event {i}: expected {expected_hash}, got {event.hash_chain}")
 
                 # Update expected hash for next event

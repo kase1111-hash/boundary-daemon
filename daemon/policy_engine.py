@@ -149,6 +149,9 @@ class PolicyEngine:
         Custom rules can only tighten decisions, never loosen them.
         The PolicySet is validated before loading; invalid policies are rejected.
 
+        SECURITY: Validation and installation are atomic under _state_lock
+        to prevent race conditions where evaluate_policy sees inconsistent state.
+
         Args:
             policy_set: A PolicySet instance from daemon.policy_language
 
@@ -156,12 +159,12 @@ class PolicyEngine:
             (success, message)
         """
         from .policy_language import validate_policy_set
-        errors = validate_policy_set(policy_set)
-        real_errors = [e for e in errors if e.severity == 'error']
-        if real_errors:
-            msgs = '; '.join(f"{e.rule_name}: {e.message}" for e in real_errors)
-            return (False, f"Validation failed: {msgs}")
         with self._state_lock:
+            errors = validate_policy_set(policy_set)
+            real_errors = [e for e in errors if e.severity == 'error']
+            if real_errors:
+                msgs = '; '.join(f"{e.rule_name}: {e.message}" for e in real_errors)
+                return (False, f"Validation failed: {msgs}")
             self._custom_policies = policy_set
         return (True, f"Loaded {len(policy_set.rules)} custom rules")
 
@@ -336,10 +339,30 @@ class PolicyEngine:
         else:
             return PolicyDecision.DENY
 
+    # Tools that are always blocked regardless of mode
+    BLOCKED_TOOLS = frozenset({
+        'raw_shell', 'arbitrary_exec', 'kernel_module_load',
+        'ptrace_attach', 'debug_attach',
+    })
+
+    # Tools that require RESTRICTED mode or higher
+    RESTRICTED_TOOLS = frozenset({
+        'file_write', 'file_delete', 'process_spawn',
+        'network_connect', 'usb_mount',
+    })
+
     def _evaluate_tool_policy(self, request: PolicyRequest,
                              mode: BoundaryMode,
                              env_state: EnvironmentState) -> PolicyDecision:
         """Evaluate tool execution policy based on mode restrictions"""
+
+        # SECURITY: Check tool_name against blocked/restricted lists
+        if request.tool_name is not None:
+            tool = request.tool_name.lower().strip()
+            if tool and tool in self.BLOCKED_TOOLS:
+                return PolicyDecision.DENY
+            if tool and tool in self.RESTRICTED_TOOLS and mode < BoundaryMode.RESTRICTED:
+                return PolicyDecision.REQUIRE_CEREMONY
 
         # COLDROOM: Minimal IO only
         if mode == BoundaryMode.COLDROOM:
@@ -387,11 +410,13 @@ class PolicyEngine:
         if mode >= BoundaryMode.AIRGAP:
             return PolicyDecision.DENY
 
-        # TRUSTED: External models only if offline/VPN
+        # TRUSTED: External models only if VPN active
+        # SECURITY: Offline state cannot reach external models, so deny.
+        # Only allow when connected via VPN (trusted LAN).
         if mode == BoundaryMode.TRUSTED:
-            if env_state.network == NetworkState.ONLINE and not env_state.vpn_active:
-                return PolicyDecision.DENY
-            return PolicyDecision.ALLOW
+            if env_state.network == NetworkState.ONLINE and env_state.vpn_active:
+                return PolicyDecision.ALLOW
+            return PolicyDecision.DENY
 
         # RESTRICTED and OPEN: Allow with network
         if mode <= BoundaryMode.RESTRICTED:

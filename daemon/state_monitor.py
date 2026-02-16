@@ -214,6 +214,7 @@ class StateMonitor:
         self._thread: Optional[threading.Thread] = None
         self._current_state: Optional[EnvironmentState] = None
         self._state_lock = threading.Lock()
+        self._state_seq = 0  # Monotonic sequence number for state snapshots
         self._callbacks: Dict[int, callable] = {}  # Use dict for O(1) unregister
         self._next_callback_id = 0
         self._callback_lock = threading.Lock()  # Protect callback modifications
@@ -257,36 +258,44 @@ class StateMonitor:
         return self.monitoring_config
 
     def set_monitoring_config(self, config: MonitoringConfig):
-        """Set the monitoring configuration"""
-        self.monitoring_config = config
+        """Set the monitoring configuration (thread-safe)"""
+        with self._state_lock:
+            self.monitoring_config = config
 
     def set_monitor_lora(self, enabled: bool):
         """Enable or disable LoRa/LoRaWAN monitoring"""
-        self.monitoring_config.monitor_lora = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_lora = enabled
 
     def set_monitor_thread(self, enabled: bool):
         """Enable or disable Thread/Matter monitoring"""
-        self.monitoring_config.monitor_thread = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_thread = enabled
 
     def set_monitor_cellular_security(self, enabled: bool):
         """Enable or disable cellular security (IMSI catcher) monitoring"""
-        self.monitoring_config.monitor_cellular_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_cellular_security = enabled
 
     def set_monitor_wimax(self, enabled: bool):
         """Enable or disable WiMAX monitoring"""
-        self.monitoring_config.monitor_wimax = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_wimax = enabled
 
     def set_monitor_irda(self, enabled: bool):
         """Enable or disable IrDA monitoring"""
-        self.monitoring_config.monitor_irda = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_irda = enabled
 
     def set_monitor_ant_plus(self, enabled: bool):
         """Enable or disable ANT+ monitoring"""
-        self.monitoring_config.monitor_ant_plus = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_ant_plus = enabled
 
     def set_monitor_dns_security(self, enabled: bool):
         """Enable or disable DNS security monitoring"""
-        self.monitoring_config.monitor_dns_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_dns_security = enabled
 
     def _get_dns_security_monitor(self):
         """Get or create DNS security monitor (lazy initialization)"""
@@ -300,7 +309,8 @@ class StateMonitor:
 
     def set_monitor_arp_security(self, enabled: bool):
         """Enable or disable ARP security monitoring"""
-        self.monitoring_config.monitor_arp_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_arp_security = enabled
 
     def _get_arp_security_monitor(self):
         """Get or create ARP security monitor (lazy initialization)"""
@@ -314,7 +324,8 @@ class StateMonitor:
 
     def set_monitor_wifi_security(self, enabled: bool):
         """Enable or disable WiFi security monitoring"""
-        self.monitoring_config.monitor_wifi_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_wifi_security = enabled
 
     def _get_wifi_security_monitor(self):
         """Get or create WiFi security monitor (lazy initialization)"""
@@ -328,7 +339,8 @@ class StateMonitor:
 
     def set_monitor_threat_intel(self, enabled: bool):
         """Enable or disable threat intelligence monitoring"""
-        self.monitoring_config.monitor_threat_intel = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_threat_intel = enabled
 
     def _get_threat_intel_monitor(self):
         """Get or create threat intelligence monitor (lazy initialization)"""
@@ -342,7 +354,8 @@ class StateMonitor:
 
     def set_monitor_file_integrity(self, enabled: bool):
         """Enable or disable file integrity monitoring"""
-        self.monitoring_config.monitor_file_integrity = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_file_integrity = enabled
 
     def _get_file_integrity_monitor(self):
         """Get or create file integrity monitor (lazy initialization)"""
@@ -356,7 +369,8 @@ class StateMonitor:
 
     def set_monitor_traffic_anomaly(self, enabled: bool):
         """Enable or disable traffic anomaly monitoring"""
-        self.monitoring_config.monitor_traffic_anomaly = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_traffic_anomaly = enabled
 
     def _get_traffic_anomaly_monitor(self):
         """Get or create traffic anomaly monitor (lazy initialization)"""
@@ -370,7 +384,8 @@ class StateMonitor:
 
     def set_monitor_process_security(self, enabled: bool):
         """Enable or disable process security monitoring"""
-        self.monitoring_config.monitor_process_security = enabled
+        with self._state_lock:
+            self.monitoring_config.monitor_process_security = enabled
 
     def _get_process_security_monitor(self):
         """Get or create process security monitor (lazy initialization)"""
@@ -446,7 +461,11 @@ class StateMonitor:
                 with self._state_lock:
                     old_state = self._current_state
                     self._current_state = new_state
+                    self._state_seq += 1
 
+                # NOTE: TOCTOU between state sampling and callback invocation is inherent
+                # in polling-based monitoring. Callbacks receive a snapshot that may be
+                # stale by the time they execute. Use _state_seq to detect stale state.
                 # Notify callbacks of state change
                 if old_state != new_state:
                     # Copy callbacks to avoid modification during iteration

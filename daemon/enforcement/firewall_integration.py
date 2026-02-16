@@ -85,6 +85,7 @@ class FirewallRule:
     port_range: Optional[Tuple[int, int]] = None
     comment: str = ""
     priority: int = 100    # Lower = higher priority
+    _conntrack: bool = False  # Use conntrack module for state matching
 
     def to_iptables(self) -> List[List[str]]:
         """Generate iptables command arg lists for this rule.
@@ -106,6 +107,10 @@ class FirewallRule:
 
         for chain in chains:
             cmd = ["iptables", "-A", chain]
+
+            # SECURITY: Add conntrack state matching when requested
+            if self._conntrack:
+                cmd.extend(["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED"])
 
             if self.protocol != "all":
                 cmd.extend(["-p", self.protocol])
@@ -290,13 +295,16 @@ class FirewallManager:
                 priority=10,
             ))
 
-        # Always allow established connections
+        # Allow established connections with proper conntrack
+        # SECURITY: Use conntrack module to properly track connection state.
+        # Without conntrack, "established" matching is unreliable.
         rules.append(FirewallRule(
             name="allow_established",
             action=RuleAction.ACCEPT,
             direction=RuleDirection.BOTH,
-            comment="Allow established connections",
+            comment="Allow established connections (conntrack)",
             priority=20,
+            _conntrack=True,  # Signal to_iptables to add conntrack module
         ))
 
         # Allowed hosts bypass

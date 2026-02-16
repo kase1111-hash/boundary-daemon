@@ -12,6 +12,7 @@ Provides file integrity monitoring capabilities including:
 import os
 import stat
 import hashlib
+import hmac
 import threading
 import json
 import re
@@ -110,9 +111,10 @@ class FileInfo:
     ctime: float
     category: FileCategory
     exists: bool = True
+    link_target: Optional[str] = None
 
     def to_dict(self) -> Dict:
-        return {
+        result = {
             'path': self.path,
             'hash': self.hash,
             'size': self.size,
@@ -124,6 +126,9 @@ class FileInfo:
             'category': self.category.value,
             'exists': self.exists
         }
+        if self.link_target is not None:
+            result['link_target'] = self.link_target
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'FileInfo':
@@ -137,7 +142,8 @@ class FileInfo:
             mtime=data['mtime'],
             ctime=data['ctime'],
             category=FileCategory(data['category']),
-            exists=data.get('exists', True)
+            exists=data.get('exists', True),
+            link_target=data.get('link_target')
         )
 
 
@@ -260,9 +266,11 @@ class FileIntegrityMonitor:
             if not os.path.exists(path):
                 return None
 
+            link_target = None
             if os.path.islink(path):
                 # For symlinks, get info about the link itself
                 stat_info = os.lstat(path)
+                link_target = os.readlink(path)
             else:
                 stat_info = os.stat(path)
 
@@ -284,7 +292,8 @@ class FileIntegrityMonitor:
                 mtime=stat_info.st_mtime,
                 ctime=stat_info.st_ctime,
                 category=category,
-                exists=True
+                exists=True,
+                link_target=link_target
             )
 
         except (OSError, PermissionError, IOError) as e:
@@ -496,7 +505,7 @@ class FileIntegrityMonitor:
 
         # Check hash
         if self.config.monitor_hash and baseline.hash and current.hash:
-            if baseline.hash != current.hash:
+            if not hmac.compare_digest(baseline.hash, current.hash):
                 alert_type = FileIntegrityAlert.HASH_MISMATCH
 
                 # Check if it's a binary

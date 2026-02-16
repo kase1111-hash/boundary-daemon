@@ -229,6 +229,7 @@ class ProcessEnforcer:
         self._active_containers: Set[str] = set()
         self._watchdog_thread: Optional[threading.Thread] = None
         self._watchdog_running = False
+        self._saved_iptables_rules: Optional[str] = None  # For emergency lockdown restoration
 
         # Verify capabilities (cross-platform)
         if IS_WINDOWS:
@@ -490,6 +491,17 @@ class ProcessEnforcer:
                 }
             ]
         }
+
+        # SECURITY: Block PROT_EXEC in mmap/mprotect to prevent code injection
+        # Bit 2 (value 4) = PROT_EXEC in the prot argument (arg index 2)
+        profile["syscalls"].append({
+            "names": ["mmap", "mprotect"],
+            "action": "SCMP_ACT_ERRNO",
+            "errnoRet": 1,
+            "args": [
+                {"index": 2, "value": 4, "op": "SCMP_CMP_MASKED_EQ", "valueTwo": 4}
+            ]
+        })
 
         return profile
 
@@ -853,11 +865,24 @@ class ProcessEnforcer:
         logger.critical("Watchdog triggering emergency lockdown!")
 
         # Block all network at iptables level (Linux only)
+        # SECURITY: Save current policies for restoration during cleanup
         if not IS_WINDOWS:
             try:
-                subprocess.run(['iptables', '-P', 'INPUT', 'DROP'], timeout=5)
-                subprocess.run(['iptables', '-P', 'OUTPUT', 'DROP'], timeout=5)
-                subprocess.run(['iptables', '-P', 'FORWARD', 'DROP'], timeout=5)
+                # Save current iptables rules for restoration
+                save_result = subprocess.run(
+                    ['iptables-save'], capture_output=True, text=True, timeout=5
+                )
+                if save_result.returncode == 0:
+                    self._saved_iptables_rules = save_result.stdout
+                    logger.info("Saved iptables rules for restoration")
+                else:
+                    logger.warning("Could not save iptables rules before lockdown")
+
+                result_in = subprocess.run(['iptables', '-P', 'INPUT', 'DROP'], timeout=5, capture_output=True)
+                result_out = subprocess.run(['iptables', '-P', 'OUTPUT', 'DROP'], timeout=5, capture_output=True)
+                result_fwd = subprocess.run(['iptables', '-P', 'FORWARD', 'DROP'], timeout=5, capture_output=True)
+                if result_in.returncode != 0 or result_out.returncode != 0 or result_fwd.returncode != 0:
+                    logger.error("One or more iptables policy commands failed during emergency lockdown")
             except Exception as e:
                 logger.error(f"Failed to set iptables policy: {e}")
         else:
@@ -1017,9 +1042,29 @@ class ProcessEnforcer:
 
         return status
 
+    def _restore_network_rules(self):
+        """Restore iptables rules saved before emergency lockdown."""
+        if not IS_WINDOWS and self._saved_iptables_rules:
+            try:
+                result = subprocess.run(
+                    ['iptables-restore'],
+                    input=self._saved_iptables_rules,
+                    text=True, capture_output=True, timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info("Restored iptables rules from pre-lockdown state")
+                    self._saved_iptables_rules = None
+                else:
+                    logger.error(f"Failed to restore iptables rules: {result.stderr}")
+            except Exception as e:
+                logger.error(f"Error restoring iptables rules: {e}")
+
     def cleanup(self):
         """Cleanup on daemon shutdown"""
         with self._lock:
+            # Restore network rules if emergency lockdown was triggered
+            self._restore_network_rules()
+
             # Stop watchdog
             self._stop_watchdog()
 
@@ -1143,14 +1188,32 @@ class ExternalWatchdog:
         logger.critical("TRIGGERING SYSTEM LOCKDOWN")
 
         # Block all network
-        subprocess.run(['iptables', '-P', 'INPUT', 'DROP'], capture_output=True)
-        subprocess.run(['iptables', '-P', 'OUTPUT', 'DROP'], capture_output=True)
+        # SECURITY: Check return codes and log failures instead of silently ignoring
+        lockdown_failed = False
+        try:
+            r_in = subprocess.run(['iptables', '-P', 'INPUT', 'DROP'], capture_output=True, timeout=5)
+            r_out = subprocess.run(['iptables', '-P', 'OUTPUT', 'DROP'], capture_output=True, timeout=5)
+            if r_in.returncode != 0:
+                logger.error(f"LOCKDOWN FAILED: iptables INPUT DROP failed: {r_in.stderr.decode()}")
+                lockdown_failed = True
+            if r_out.returncode != 0:
+                logger.error(f"LOCKDOWN FAILED: iptables OUTPUT DROP failed: {r_out.stderr.decode()}")
+                lockdown_failed = True
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            logger.error(f"LOCKDOWN FAILED: iptables not available: {e}")
+            lockdown_failed = True
+
+        if lockdown_failed:
+            logger.critical("SECURITY: System lockdown INCOMPLETE - network may not be isolated")
 
         # Log to syslog
-        subprocess.run([
-            'logger', '-p', 'auth.crit',
-            'BOUNDARY-WATCHDOG: System lockdown triggered - daemon failure detected'
-        ], capture_output=True)
+        try:
+            subprocess.run([
+                'logger', '-p', 'auth.crit',
+                'BOUNDARY-WATCHDOG: System lockdown triggered - daemon failure detected'
+            ], capture_output=True, timeout=5)
+        except Exception as e:
+            logger.error(f"Failed to log to syslog: {e}")
 
         # Could also: reboot, halt, etc. based on policy
 

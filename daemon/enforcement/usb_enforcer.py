@@ -648,8 +648,8 @@ class USBEnforcer:
                         )
                         return False
                 except Exception as e:
-                    logger.warning(f"Could not verify sysfs write to {validated_path}: {e}")
-                    # Still return True since write didn't raise - verification is best-effort
+                    logger.error(f"SECURITY: Sysfs write verification failed for {validated_path}: {e}")
+                    return False  # Fail-closed: unverifiable write is a security failure
 
             logger.debug(f"Successfully wrote '{value}' to {validated_path}")
             return True

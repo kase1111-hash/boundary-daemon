@@ -162,9 +162,11 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_genesis_hash(self, event_logger):
-        """Test that first event has genesis hash."""
+        """Test that first event has nonce-based genesis hash (not all zeros)."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
-        assert event.hash_chain == "0" * 64
+        # Genesis hash is now instance-specific (derived from random nonce)
+        assert event.hash_chain != "0" * 64
+        assert len(event.hash_chain) == 64  # Still a valid SHA-256 hex digest
 
     @pytest.mark.unit
     def test_verify_chain_empty_log(self, event_logger):
@@ -516,8 +518,12 @@ class TestEventLoggerCrashRecovery:
     """Tests for event logger resilience to crashes and corruption."""
 
     @pytest.mark.security
-    def test_truncated_last_line_recovery(self, temp_log_file):
-        """Logger should recover when last line is truncated (crash mid-write)."""
+    def test_truncated_last_line_raises_on_corruption(self, temp_log_file):
+        """Logger should raise RuntimeError when log is corrupted (potential tampering).
+
+        SECURITY: A corrupted log file must NOT silently fork the hash chain.
+        The operator must investigate before proceeding.
+        """
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         logger.log_event(EventType.MODE_CHANGE, "Change")
@@ -529,11 +535,9 @@ class TestEventLoggerCrashRecovery:
             f.write(lines[0])
             f.write(lines[1][:len(lines[1]) // 2])  # Truncated JSON
 
-        # New logger should recover (fall back to genesis hash on error)
-        logger2 = EventLogger(str(temp_log_file), secure_permissions=False)
-        # Should not raise - falls back gracefully
-        event = logger2.log_event(EventType.INFO, "After crash")
-        assert event is not None
+        # SECURITY: Must raise on corrupted log to prevent silent chain fork
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(temp_log_file), secure_permissions=False)
 
     @pytest.mark.security
     def test_empty_file_recovery(self, temp_log_file):
@@ -544,21 +548,25 @@ class TestEventLoggerCrashRecovery:
 
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         assert logger.get_event_count() == 0
-        assert logger.get_last_hash() == "0" * 64
+        # Genesis hash is now nonce-based, not all zeros
+        assert len(logger.get_last_hash()) == 64
 
         # Should be able to log normally
         event = logger.log_event(EventType.DAEMON_START, "Start")
-        assert event.hash_chain == "0" * 64
+        assert len(event.hash_chain) == 64
 
     @pytest.mark.security
-    def test_corrupted_json_recovery(self, temp_log_file):
-        """Logger should recover from completely corrupted JSON in log file."""
+    def test_corrupted_json_raises_on_corruption(self, temp_log_file):
+        """Logger should raise RuntimeError on corrupted JSON (potential tampering).
+
+        SECURITY: Corrupted logs must never silently start a new hash chain.
+        """
         with open(temp_log_file, 'w') as f:
             f.write("this is not json at all\n")
 
-        # Should fall back to genesis hash
-        logger = EventLogger(str(temp_log_file), secure_permissions=False)
-        assert logger.get_last_hash() == "0" * 64
+        # SECURITY: Must raise on corrupted log
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(temp_log_file), secure_permissions=False)
 
     @pytest.mark.security
     def test_verify_chain_with_blank_lines(self, temp_log_file):
@@ -789,10 +797,11 @@ class TestHashChainInvariants:
     security property the hash chain provides."""
 
     @pytest.mark.security
-    def test_invariant_genesis_hash_is_all_zeros(self, event_logger):
-        """INVARIANT: First event's hash_chain is always the genesis hash (64 zeros)."""
+    def test_invariant_genesis_hash_is_nonce_based(self, event_logger):
+        """INVARIANT: First event's hash_chain is the nonce-based genesis hash."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
-        assert event.hash_chain == "0" * 64
+        # Genesis hash is now derived from a random nonce, not all zeros
+        assert event.hash_chain != "0" * 64
         assert len(event.hash_chain) == 64
 
     @pytest.mark.security
