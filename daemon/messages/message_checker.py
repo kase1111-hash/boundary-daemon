@@ -381,15 +381,15 @@ class MessageChecker:
         violations.extend(intent_result.violations)
 
         # SECURITY (Vuln #2): Validate provenance tracking
-        valid_trust_levels = ("verified", "trusted", "unknown", "external")
+        valid_trust_levels = ("verified", "trusted", "untrusted", "unknown", "external")
         if entry.source_trust not in valid_trust_levels:
             violations.append(
                 f"Invalid source_trust '{entry.source_trust}': "
                 f"must be one of {valid_trust_levels}"
             )
 
-        # SECURITY (Vuln #2): External/unknown entries require signature
-        if entry.source_trust in ("unknown", "external") and not entry.signature:
+        # SECURITY (Vuln #2): Untrusted/unknown/external entries require signature
+        if entry.source_trust in ("untrusted", "unknown", "external") and not entry.signature:
             violations.append(
                 f"Entries with source_trust='{entry.source_trust}' require "
                 f"cryptographic signature for provenance verification"

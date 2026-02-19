@@ -78,9 +78,10 @@ class TestFeatureDetection(unittest.TestCase):
     def test_linux_features_detected(self):
         """On Linux, platform-specific features should be detected."""
         if FEATURES_AVAILABLE:
-            # These should at least be detectable (may or may not be available)
-            self.assertIn('ENFORCEMENT', dir(FEATURES))
-            self.assertIn('WATCHDOG', dir(FEATURES))
+            # Features are accessed via get_info/get_all, not as direct attributes
+            all_features = FEATURES.get_all()
+            self.assertIsInstance(all_features, dict)
+            self.assertGreater(len(all_features), 0)
 
     def test_feature_status_report(self):
         """Feature status report should be generatable."""
@@ -123,56 +124,56 @@ class TestNetworkEnforcement(unittest.TestCase):
     @requires_root
     @requires_linux
     @requires_iptables
-    def test_block_ip_creates_rule(self):
-        """Blocking an IP should create an iptables rule."""
+    def test_enforce_airgap_mode_creates_rules(self):
+        """Enforcing AIRGAP mode should create iptables rules."""
+        from daemon.policy_engine import BoundaryMode
+
         enforcer = self.NetworkEnforcer()
 
-        # Use a test IP that won't affect real traffic
-        test_ip = "192.0.2.1"  # TEST-NET-1, reserved for documentation
+        if not enforcer.is_available:
+            self.skipTest("Network enforcement not available (no working firewall backend)")
 
         try:
-            # Block the IP
-            result = enforcer.block_ip(test_ip)
-            self.assertTrue(result, "block_ip should return True")
+            # Enforce AIRGAP mode (blocks all network except loopback)
+            success, msg = enforcer.enforce_mode(BoundaryMode.AIRGAP, reason="test")
+            self.assertTrue(success, f"enforce_mode should succeed: {msg}")
 
-            # Verify rule exists
-            output = subprocess.check_output(
-                ['iptables', '-L', 'OUTPUT', '-n'],
-                text=True
-            )
-            self.assertIn(test_ip, output, "IP should appear in iptables rules")
+            # Verify rules were applied
+            status = enforcer.get_status()
+            self.assertTrue(status['rules_applied'], "Rules should be applied")
+            self.assertEqual(status['current_mode'], 'AIRGAP')
 
         finally:
-            # Clean up - unblock the IP
+            # Clean up
             try:
-                enforcer.unblock_ip(test_ip)
+                enforcer.cleanup(force=True)
             except Exception:
                 pass
 
     @requires_root
     @requires_linux
     @requires_iptables
-    def test_block_port_creates_rule(self):
-        """Blocking a port should create an iptables rule."""
+    def test_enforce_lockdown_mode_creates_rules(self):
+        """Enforcing LOCKDOWN mode should create iptables rules that block all traffic."""
+        from daemon.policy_engine import BoundaryMode
+
         enforcer = self.NetworkEnforcer()
 
-        # Use a high port number unlikely to be in use
-        test_port = 59999
+        if not enforcer.is_available:
+            self.skipTest("Network enforcement not available (no working firewall backend)")
 
         try:
-            result = enforcer.block_port(test_port)
-            self.assertTrue(result, "block_port should return True")
+            success, msg = enforcer.enforce_mode(BoundaryMode.LOCKDOWN, reason="test")
+            self.assertTrue(success, f"enforce_mode should succeed: {msg}")
 
-            # Verify rule exists
-            output = subprocess.check_output(
-                ['iptables', '-L', 'OUTPUT', '-n'],
-                text=True
-            )
-            self.assertIn(str(test_port), output, "Port should appear in iptables rules")
+            # Verify rules were applied
+            status = enforcer.get_status()
+            self.assertTrue(status['rules_applied'], "Rules should be applied")
+            self.assertEqual(status['current_mode'], 'LOCKDOWN')
 
         finally:
             try:
-                enforcer.unblock_port(test_port)
+                enforcer.cleanup(force=True)
             except Exception:
                 pass
 
@@ -229,7 +230,7 @@ class TestUSBEnforcement(unittest.TestCase):
         try:
             from daemon.enforcement import USBEnforcer
             enforcer = USBEnforcer()
-            devices = enforcer.list_devices()
+            devices = enforcer.get_connected_devices()
             self.assertIsInstance(devices, list)
         except (ImportError, PermissionError):
             # Acceptable - may not have permission to list
@@ -273,9 +274,12 @@ class TestProcessEnforcement(unittest.TestCase):
         try:
             from daemon.enforcement import ProcessEnforcer
             enforcer = ProcessEnforcer()
-            has_seccomp = enforcer.check_seccomp_available()
-            # Should return a boolean
-            self.assertIsInstance(has_seccomp, bool)
+            # is_available property checks seccomp and container runtime
+            is_avail = enforcer.is_available
+            self.assertIsInstance(is_avail, bool)
+            # get_status returns detailed enforcement status
+            status = enforcer.get_status()
+            self.assertIsInstance(status, dict)
         except ImportError:
             pass
 
@@ -299,11 +303,12 @@ class TestPrivilegeManager(unittest.TestCase):
             from daemon.privilege_manager import PrivilegeManager, EnforcementModule
             pm = PrivilegeManager()
 
-            # Check network module status
-            status = pm.check_module(EnforcementModule.NETWORK)
-            self.assertIsInstance(status, dict)
-            self.assertIn('available', status)
-            self.assertIn('reason', status)
+            # Register network module and check overall status
+            pm.register_module(EnforcementModule.NETWORK, is_available=True, reason="test")
+            status = pm.get_status()
+            self.assertIsNotNone(status)
+            self.assertIsInstance(status.modules_available, dict)
+            self.assertIn('network', status.modules_available)
 
         except ImportError:
             self.skipTest("PrivilegeManager not available")
@@ -327,13 +332,21 @@ class TestEnforcementEndToEnd(unittest.TestCase):
 
             enforcer = NetworkEnforcer()
 
+            if not enforcer.is_available:
+                self.skipTest("Network enforcement not available (no working firewall backend)")
+
             # In AIRGAP mode, network should be restricted
             # This test verifies the enforcer responds to mode changes
-            enforcer.set_mode(BoundaryMode.AIRGAP)
+            success, msg = enforcer.enforce_mode(BoundaryMode.AIRGAP, reason="test")
+            self.assertTrue(success, f"enforce_mode should succeed: {msg}")
 
             # Verify some network restriction is in place
             status = enforcer.get_status()
             self.assertIsNotNone(status)
+            self.assertEqual(status['current_mode'], 'AIRGAP')
+
+            # Cleanup
+            enforcer.cleanup(force=True)
 
         except ImportError as e:
             self.skipTest(f"Required modules not available: {e}")
@@ -347,17 +360,27 @@ class TestEnforcementEndToEnd(unittest.TestCase):
 
         try:
             from daemon.enforcement import ProtectionPersistenceManager
+            from daemon.enforcement.protection_persistence import (
+                ProtectionType, PersistenceReason
+            )
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 persistence = ProtectionPersistenceManager(state_dir=tmpdir)
 
-                # Save some state
-                persistence.save_state({'test': True, 'mode': 'airgap'})
+                # Persist a protection
+                success, msg = persistence.persist_protection(
+                    protection_type=ProtectionType.NETWORK_FIREWALL,
+                    mode='AIRGAP',
+                    reason=PersistenceReason.MODE_CHANGE,
+                )
+                self.assertTrue(success, f"persist_protection should succeed: {msg}")
 
-                # Load it back
-                state = persistence.load_state()
-                self.assertEqual(state.get('test'), True)
-                self.assertEqual(state.get('mode'), 'airgap')
+                # Load it back via should_reapply_protection
+                protection = persistence.should_reapply_protection(
+                    ProtectionType.NETWORK_FIREWALL
+                )
+                self.assertIsNotNone(protection, "Protection should be reapplyable")
+                self.assertEqual(protection.mode, 'AIRGAP')
 
         except ImportError as e:
             self.skipTest(f"ProtectionPersistenceManager not available: {e}")
@@ -372,19 +395,23 @@ class TestEnforcementMocking(unittest.TestCase):
             self.skipTest("Requires Linux for mock testing")
 
         try:
-            from daemon.enforcement.network_enforcer import NetworkEnforcer
+            from daemon.enforcement.network_enforcer import (
+                NetworkEnforcer, FirewallBackend
+            )
+            from daemon.policy_engine import BoundaryMode
 
             with patch('subprocess.run') as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
 
                 enforcer = NetworkEnforcer()
-                enforcer._has_iptables = True
-                enforcer._is_root = True
+                enforcer._backend = FirewallBackend.IPTABLES
+                enforcer._has_root = True
+                enforcer._enforcement_degraded = False
 
-                # Block should call iptables
-                enforcer.block_ip("192.0.2.1")
+                # enforce_mode should call iptables via subprocess
+                enforcer.enforce_mode(BoundaryMode.AIRGAP, reason="test")
 
-                # Verify subprocess was called
+                # Verify subprocess was called (for iptables commands)
                 self.assertTrue(mock_run.called)
 
         except ImportError:
@@ -398,10 +425,12 @@ class TestEnforcementMocking(unittest.TestCase):
         try:
             from daemon.enforcement.network_enforcer import NetworkEnforcer
 
-            with patch.object(NetworkEnforcer, '_check_root', return_value=False):
+            with patch('os.geteuid', return_value=65534):
                 enforcer = NetworkEnforcer()
                 # Should indicate enforcement is not active
-                self.assertFalse(enforcer._is_root)
+                self.assertFalse(enforcer._has_root)
+                # is_available should also be False
+                self.assertFalse(enforcer.is_available)
 
         except ImportError:
             self.skipTest("NetworkEnforcer not available")
