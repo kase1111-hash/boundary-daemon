@@ -73,10 +73,12 @@ class BoundaryEvent:
     details: str
     metadata: Dict
     hash_chain: str  # Hash of previous event
+    # SECURITY (Audit 3.1.1): Capture decision reasoning for forensic reconstruction
+    reasoning_chain: Optional[Dict] = None
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization"""
-        return {
+        d = {
             'event_id': self.event_id,
             'timestamp': self.timestamp,
             'event_type': self.event_type.value,
@@ -84,6 +86,9 @@ class BoundaryEvent:
             'metadata': self.metadata,
             'hash_chain': self.hash_chain
         }
+        if self.reasoning_chain:
+            d['reasoning_chain'] = self.reasoning_chain
+        return d
 
     def to_json(self) -> str:
         """Convert to JSON string"""
@@ -178,7 +183,9 @@ class EventLogger:
                 f"Investigate for possible tampering before proceeding."
             )
 
-    def log_event(self, event_type: EventType, details: str, metadata: Optional[Dict] = None) -> BoundaryEvent:
+    def log_event(self, event_type: EventType, details: str,
+                  metadata: Optional[Dict] = None,
+                  reasoning_chain: Optional[Dict] = None) -> BoundaryEvent:
         """
         Log a boundary event.
 
@@ -186,6 +193,8 @@ class EventLogger:
             event_type: Type of event
             details: Human-readable details
             metadata: Additional structured data
+            reasoning_chain: Optional decision reasoning for forensic reconstruction
+                             (e.g. policy_rule, conditions_evaluated, condition_results)
 
         Returns:
             The logged event
@@ -197,7 +206,8 @@ class EventLogger:
                 event_type=event_type,
                 details=details,
                 metadata=metadata or {},
-                hash_chain=self._last_hash
+                hash_chain=self._last_hash,
+                reasoning_chain=reasoning_chain,
             )
 
             # Write to log file (append-only)

@@ -112,7 +112,7 @@ class LDAPMapper:
         mapper = LDAPMapper(LDAPConfig(
             server_url="ldap://ldap.example.com",
             bind_dn="cn=service,dc=example,dc=com",
-            bind_password="secret",
+            bind_password="<LDAP_BIND_PASSWORD>",
             base_dn="dc=example,dc=com",
         ))
 
@@ -423,7 +423,7 @@ if __name__ == '__main__':
         server_type=LDAPServerType.OPENLDAP,
         server_url="ldap://localhost:389",
         bind_dn="cn=admin,dc=example,dc=com",
-        bind_password="secret",
+        bind_password="<LDAP_BIND_PASSWORD>",
         base_dn="dc=example,dc=com",
     )
 

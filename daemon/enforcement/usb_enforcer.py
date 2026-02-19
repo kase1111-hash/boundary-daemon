@@ -140,8 +140,32 @@ class USBEnforcer:
             if not self._has_udev:
                 logger.warning("udevadm not found. USB enforcement requires udev.")
 
+        # SECURITY (Audit 1.2.2): Track enforcement degradation for fail-closed checks
+        self._enforcement_degraded = (not self._has_root or (not IS_WINDOWS and not self._has_udev))
+
         # Capture baseline USB devices at startup
         self._capture_baseline()
+
+    def check_enforcement_capability(self, mode: str) -> Tuple[bool, str]:
+        """
+        Check if enforcement is available for the requested mode.
+
+        Modes >= TRUSTED require actual USB enforcement capability.
+        Returns (is_capable, error_message). When not capable, callers should
+        refuse to enter the requested mode (fail-closed).
+
+        SECURITY (Audit 1.2.2): Prevents silent degradation to monitoring-only
+        for high-security modes.
+        """
+        HIGH_SECURITY_MODES = {"TRUSTED", "AIRGAP", "COLDROOM", "LOCKDOWN"}
+        if mode in HIGH_SECURITY_MODES and self._enforcement_degraded:
+            msg = (f"Mode {mode} requires kernel-level USB enforcement "
+                   f"but enforcement is unavailable (root={self._has_root}, "
+                   f"udev={getattr(self, '_has_udev', False)}). Refusing to "
+                   f"operate in monitoring-only mode for high-security modes.")
+            logger.error(msg)
+            return (False, msg)
+        return (True, "")
 
     def set_persistence_manager(self, manager):
         """Set the protection persistence manager."""

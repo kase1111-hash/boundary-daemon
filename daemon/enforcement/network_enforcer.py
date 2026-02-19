@@ -143,6 +143,30 @@ class NetworkEnforcer:
             else:
                 logger.warning("Not running as root. Network enforcement requires CAP_NET_ADMIN.")
 
+        # SECURITY (Audit 1.2.2): Track enforcement degradation for fail-closed checks
+        self._enforcement_degraded = (self._backend == FirewallBackend.NONE or not self._has_root)
+
+    def check_enforcement_capability(self, mode: str) -> Tuple[bool, str]:
+        """
+        Check if enforcement is available for the requested mode.
+
+        Modes >= TRUSTED require actual kernel-level enforcement capability.
+        Returns (is_capable, error_message). When not capable, callers should
+        refuse to enter the requested mode (fail-closed).
+
+        SECURITY (Audit 1.2.2): Prevents silent degradation to monitoring-only
+        for high-security modes.
+        """
+        HIGH_SECURITY_MODES = {"TRUSTED", "AIRGAP", "COLDROOM", "LOCKDOWN"}
+        if mode in HIGH_SECURITY_MODES and self._enforcement_degraded:
+            msg = (f"Mode {mode} requires kernel-level network enforcement "
+                   f"but enforcement is unavailable (root={self._has_root}, "
+                   f"backend={self._backend}). Refusing to operate in "
+                   f"monitoring-only mode for high-security modes.")
+            logger.error(msg)
+            return (False, msg)
+        return (True, "")
+
     def set_persistence_manager(self, manager):
         """Set the protection persistence manager."""
         self._persistence_manager = manager
