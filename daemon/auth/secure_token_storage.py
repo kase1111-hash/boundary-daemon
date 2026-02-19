@@ -503,8 +503,15 @@ class SecureTokenStorage:
 
             # Check if encrypted
             if not content.startswith(self.ENCRYPTED_HEADER.encode()):
-                # Might be a plaintext token file
-                return self._read_plaintext_token_file(content)
+                # SECURITY (Vuln #5): Plaintext token files are rejected.
+                # Previously this fell through to _read_plaintext_token_file()
+                # which silently accepted unencrypted credentials.
+                logger.error(
+                    f"SECURITY: Token file {file_path} is NOT encrypted. "
+                    f"Plaintext token files are no longer accepted (Vuln #5). "
+                    f"Re-encrypt with: authctl encrypt {file_path}"
+                )
+                return (None, {}, "Plaintext token file rejected - must be encrypted")
 
             # Find the encrypted data (after header comments)
             lines = content.split(b"\n")
@@ -528,33 +535,18 @@ class SecureTokenStorage:
             return (None, {}, str(e))
 
     def _read_plaintext_token_file(self, content: bytes) -> Tuple[Optional[str], Dict, str]:
-        """Handle reading legacy plaintext token files with a warning."""
-        logger.warning("SECURITY: Reading plaintext token file - consider re-encrypting")
+        """DEPRECATED: Plaintext token files are no longer accepted.
 
-        try:
-            lines = content.decode().strip().split('\n')
-            token = None
-            metadata = {}
-
-            for line in lines:
-                line = line.strip()
-                if line.startswith('#'):
-                    # Parse metadata from comments
-                    if ':' in line:
-                        key, value = line[1:].split(':', 1)
-                        metadata[key.strip().lower()] = value.strip()
-                elif line and line.startswith('bd_'):
-                    # Token line
-                    token = line
-                    break
-
-            if not token:
-                return (None, metadata, "No token found in file")
-
-            return (token, metadata, "WARNING: Read from plaintext file - consider encrypting")
-
-        except Exception as e:
-            return (None, {}, f"Failed to parse plaintext token file: {e}")
+        SECURITY (Vuln #5): This method now rejects all plaintext tokens.
+        Previously it would read unencrypted credentials with only a warning,
+        creating a credential leakage risk. Callers should encrypt tokens
+        using encrypt_bootstrap_token() or authctl encrypt.
+        """
+        logger.error(
+            "SECURITY: Plaintext token file rejected (deprecated - Vuln #5). "
+            "Re-encrypt with: authctl encrypt <path>"
+        )
+        return (None, {}, "Plaintext token files are no longer accepted")
 
     def encrypt_bootstrap_token(
         self,
@@ -581,30 +573,36 @@ class SecureTokenStorage:
 
     @staticmethod
     def print_env_var_warning():
-        """Print security warning about environment variable token storage."""
+        """Print security notice about deprecated environment variable token storage."""
         warning = """
 ================================================================================
-  SECURITY WARNING: Environment Variable Token Storage
+  SECURITY NOTICE: Environment Variable Token Storage REMOVED (Vuln #5)
 ================================================================================
 
-  Storing tokens in environment variables (BOUNDARY_API_TOKEN) has risks:
+  BOUNDARY_API_TOKEN and BOUNDARY_SIEM_TOKEN environment variables are NO
+  LONGER ACCEPTED as credential sources. This is a breaking security change.
 
-  1. Process listing: Other users may see via 'ps auxe' or /proc
-  2. Log leakage: May appear in shell history, debug logs, crash dumps
-  3. Child process inheritance: Tokens passed to all child processes
-  4. Memory persistence: Stays in process memory until exit
+  WHY: Environment variables are visible via /proc/pid/environ, leaked in
+  shell history, crash dumps, and inherited by all child processes.
 
-  SAFER ALTERNATIVES:
+  MIGRATION:
 
-  1. Token file (encrypted):
+  1. Token file (encrypted - recommended):
      authctl create --name "my-token" --encrypt --output token.enc
      boundaryctl --token-file token.enc status
 
   2. Token file (restricted permissions):
+     echo "your-token" > ~/.boundary_token
      chmod 600 ~/.boundary_token
      boundaryctl --token-file ~/.boundary_token status
 
-  3. For production:
+  3. For SIEM tokens, use BOUNDARY_SIEM_TOKEN_FILE pointing to a
+     file with 0o600 permissions:
+     echo "siem-token" > /etc/boundary-daemon/siem_token
+     chmod 600 /etc/boundary-daemon/siem_token
+     export BOUNDARY_SIEM_TOKEN_FILE=/etc/boundary-daemon/siem_token
+
+  4. For production:
      - Use a secrets manager (HashiCorp Vault, AWS Secrets Manager, etc.)
      - Rotate tokens regularly
      - Use short-lived tokens where possible

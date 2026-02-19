@@ -515,13 +515,40 @@ class SecurityIntegrationChecker:
         self,
         socket_path: Optional[str] = None,
         token: Optional[str] = None,
+        token_file: Optional[str] = None,
         timeout: float = 5.0,
     ):
         self.socket_path = socket_path or self._get_socket_path()
-        self.token = token or os.environ.get('BOUNDARY_API_TOKEN')
         self.timeout = timeout
         self.repositories = REPOSITORIES.copy()
         self.checks = create_security_checks()
+
+        # SECURITY (Vuln #5): Resolve token from parameter or file only.
+        # Env var BOUNDARY_API_TOKEN is no longer accepted (visible via
+        # /proc/pid/environ, shell history, crash dumps, child processes).
+        self.token = token
+        if not self.token and token_file:
+            try:
+                st = os.stat(token_file)
+                if st.st_mode & 0o077:
+                    logger.error(
+                        f"SECURITY: Refusing token file {token_file} "
+                        f"with mode {oct(st.st_mode)} - must be 0o600"
+                    )
+                else:
+                    with open(token_file, 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith('#'):
+                                self.token = line
+                                break
+            except (IOError, OSError) as e:
+                logger.warning(f"Could not read token file: {e}")
+        if not self.token and os.environ.get('BOUNDARY_API_TOKEN'):
+            logger.error(
+                "SECURITY: BOUNDARY_API_TOKEN env var is set but will NOT "
+                "be used (deprecated). Use --token or --token-file instead."
+            )
 
     def _get_socket_path(self) -> str:
         """Get boundary daemon socket path."""

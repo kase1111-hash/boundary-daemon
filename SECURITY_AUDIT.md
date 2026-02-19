@@ -786,7 +786,7 @@ auto-generated or copy-paste patterns.
 ### Remaining Open Items (Require Follow-Up)
 
 1. ~~**Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading~~ **FIXED**
-2. **Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support
+2. ~~**Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support~~ **FIXED**
 3. **Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks
 4. **Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator
 5. **Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events
@@ -810,9 +810,40 @@ auto-generated or copy-paste patterns.
 - `features.py` now enforces a frozen allowlist of importable module paths,
   preventing configuration injection attacks that could load arbitrary modules.
 
+### Fix: Credential Leakage - Remove Plaintext Token & Env Var Fallbacks (Vuln #5)
+
+**Files changed:**
+- `daemon/boundary_daemon.py` - `_read_secret_file()`: Removed env var fallback;
+  now logs deprecation error if env var is set but refuses to use it
+- `api/boundary_api.py` - `_resolve_token()`: Removed `BOUNDARY_API_TOKEN` env var
+  fallback; added file permission check (0o600) before reading token files
+- `integrations/security_integration_check.py` - `SecurityIntegrationChecker.__init__()`:
+  Removed env var fallback; added `token_file` parameter with permission check
+- `boundary-tui/boundary_tui/client.py` - `_resolve_token()`: Removed env var as
+  highest-priority source; `_save_tui_token()`: Now creates files with 0o600 via
+  `os.open()` to avoid TOCTOU race; bootstrap file reading now checks permissions
+- `daemon/auth/secure_token_storage.py` - `read_encrypted_token_file()`: Rejects
+  plaintext token files (previously silently accepted); `_read_plaintext_token_file()`:
+  Now always returns error; `print_env_var_warning()`: Updated to explain removal
+
+**What was fixed:**
+- Environment variables (`BOUNDARY_API_TOKEN`, `BOUNDARY_SIEM_TOKEN`) were accepted
+  as credential sources across 4 files. These are visible via `/proc/pid/environ`,
+  leaked in shell history, crash dumps, and inherited by all child processes.
+  Now: env vars are rejected with clear migration instructions.
+- Plaintext token files were silently accepted by `secure_token_storage.py` when
+  the encrypted header was missing. Now: plaintext tokens are rejected with
+  instructions to re-encrypt.
+- TUI token files were saved without permission restrictions. Now: created
+  atomically with 0o600 via `os.open()`, and existing files are skipped if
+  permissions are too permissive.
+
+**Breaking change:** Users relying on `BOUNDARY_API_TOKEN` env var must migrate
+to file-based tokens with `chmod 600` permissions.
+
 ---
 
-**Report Version:** 3.1
+**Report Version:** 3.2
 **Classification:** CONFIDENTIAL
 **Distribution:** Security Team Only
 **Last Updated:** 2026-02-19

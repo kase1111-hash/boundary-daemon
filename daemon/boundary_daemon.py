@@ -1759,28 +1759,40 @@ class BoundaryDaemon:
     @staticmethod
     def _read_secret_file(file_path: str, fallback_env: str = '') -> Optional[str]:
         """
-        Read a secret from a file, falling back to env var with a warning.
+        Read a secret from a file with strict permission checks.
 
-        SECURITY: Secrets should be in files with restricted permissions (0o600),
-        not environment variables (visible via /proc/pid/environ).
+        SECURITY (Vuln #5): Environment variable fallback has been REMOVED.
+        Env vars are visible via /proc/pid/environ on Linux, leaked in crash
+        dumps, and inherited by child processes. Use file-based secrets only
+        with 0o600 permissions.
+
+        Args:
+            file_path: Path to secret file (must have mode 0o600)
+            fallback_env: DEPRECATED - logged and ignored for backward compat
         """
         if file_path:
             try:
                 st = os.stat(file_path)
-                # Warn if file is group/world readable
+                # Reject if file is group/world readable
                 if st.st_mode & 0o077:
-                    logger.error(f"SECURITY: Refusing to use secret file {file_path} with mode {oct(st.st_mode)}")
-                    return None  # Do not use insecure secret
+                    logger.error(
+                        f"SECURITY: Refusing to use secret file {file_path} "
+                        f"with mode {oct(st.st_mode)} - must be 0o600 or stricter"
+                    )
+                    return None
                 with open(file_path, 'r') as f:
                     return f.read().strip()
             except (OSError, IOError) as e:
                 logger.warning(f"Failed to read secret file {file_path}: {e}")
+
+        # SECURITY (Vuln #5): env var fallback removed - log deprecation notice
         if fallback_env:
-            val = os.environ.get(fallback_env, None)
-            if val:
-                logger.warning(f"SECURITY: Reading secret from env var {fallback_env} "
-                             f"(use {fallback_env}_FILE for file-based secrets)")
-            return val
+            if os.environ.get(fallback_env):
+                logger.error(
+                    f"SECURITY: Environment variable {fallback_env} is set but will "
+                    f"NOT be used (deprecated - Vuln #5). Store the secret in a file "
+                    f"with 0o600 permissions and use {fallback_env}_FILE to point to it."
+                )
         return None
 
     def _on_sandbox_event(self, event_type: str, data: dict):
