@@ -156,14 +156,17 @@ class TestSecurityStackE2E:
         """Test RAG injection detector catches poisoned documents."""
         from daemon.security import (
             RAG_INJECTION_AVAILABLE,
-            get_rag_injection_detector,
+            configure_rag_detector,
             RetrievedDocument,
         )
 
         if not RAG_INJECTION_AVAILABLE:
             pytest.skip("RAG injection module not available")
 
-        detector = get_rag_injection_detector()
+        # Configure detector with trusted sources for this test
+        detector = configure_rag_detector(
+            trusted_sources={"internal_kb", "official_docs"},
+        )
 
         # Test with poisoned documents (using patterns RAG detector catches)
         documents = [
@@ -335,7 +338,7 @@ class TestSecurityStackE2E:
             get_prompt_injection_detector,
             get_tool_validator,
             get_response_guardrails,
-            get_rag_injection_detector,
+            configure_rag_detector,
             configure_attestation_system,
             RetrievedDocument,
             AgentCapability,
@@ -374,7 +377,10 @@ class TestSecurityStackE2E:
         assert input_result.is_safe, "Safe input should pass injection check"
 
         # Step 2: Retrieve documents (RAG)
-        rag_detector = get_rag_injection_detector()
+        # Configure with trusted sources so clean docs from known sources pass
+        rag_detector = configure_rag_detector(
+            trusted_sources={"official_docs", "internal_kb"},
+        )
         documents = [
             RetrievedDocument(
                 document_id="python-docs",

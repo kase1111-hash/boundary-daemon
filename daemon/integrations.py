@@ -293,13 +293,18 @@ class MessageGate:
         if not self.checker:
             return (False, "Message checker not available", None)
 
+        # Entries submitted through the daemon API are already authenticated,
+        # so set source_trust="trusted". External entries without signatures
+        # remain "untrusted" by default and require signature verification.
+        trust = "trusted" if signature or self.daemon else "untrusted"
         entry = NatLangChainEntry(
             author=author,
             intent=intent,
             timestamp=timestamp,
             signature=signature,
             previous_hash=previous_hash,
-            metadata=metadata or {}
+            metadata=metadata or {},
+            source_trust=trust,
         )
 
         result = self.checker.check_natlangchain_entry(entry)

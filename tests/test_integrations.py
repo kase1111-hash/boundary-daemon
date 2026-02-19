@@ -497,10 +497,15 @@ class TestMessageGateWithChecker:
             authority_level=1,
         )
         assert permitted is True
-        call_args = mock_daemon.event_logger.log_event.call_args
-        assert call_args[1]['metadata']['source'] == 'agent_os'
-        assert call_args[1]['metadata']['sender'] == 'planner-agent'
-        assert call_args[1]['metadata']['recipient'] == 'executor-agent'
+        # Find the MESSAGE_CHECK log call (not the CHANNEL_OPENED call)
+        message_check_call = None
+        for call in mock_daemon.event_logger.log_event.call_args_list:
+            if call[1].get('metadata', {}).get('source') == 'agent_os':
+                message_check_call = call
+                break
+        assert message_check_call is not None, "Expected a log_event call with source='agent_os'"
+        assert message_check_call[1]['metadata']['sender'] == 'planner-agent'
+        assert message_check_call[1]['metadata']['recipient'] == 'executor-agent'
 
     def test_check_agentos_dangerous_content(self, mock_daemon):
         """Agent-OS message with dangerous content should be blocked."""
