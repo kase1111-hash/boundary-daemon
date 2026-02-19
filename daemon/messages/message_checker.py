@@ -51,7 +51,8 @@ class NatLangChainEntry:
     previous_hash: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     # SECURITY (Vuln #2): Provenance tracking fields
-    source_trust: str = "unknown"  # "verified", "trusted", "unknown", "external"
+    # SECURITY (Audit 2.1.1): Default to "untrusted" (deny-by-default)
+    source_trust: str = "untrusted"  # "verified", "trusted", "untrusted", "external"
     ingestion_context: Optional[str] = None  # How this entry was ingested
 
     def compute_hash(self) -> str:
@@ -197,6 +198,17 @@ class MessageChecker:
         r'\b(prompt|system_prompt|user_prompt)\b',
     ]
 
+    # SECURITY (Audit 2.3.1): Constitutional NO_CREDENTIAL_TRANSMISSION rule
+    # Agents must NEVER transmit credentials between agents
+    CREDENTIAL_TRANSMISSION_PATTERNS = [
+        r'(?:api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*\S{8,}',
+        r'(?:Bearer|Basic)\s+[A-Za-z0-9+/=_-]{20,}',
+        r'-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----',
+        r'AKIA[0-9A-Z]{16}',
+        r'ghp_[0-9a-zA-Z]{36}',
+        r'sk-[0-9a-zA-Z]{32,}',
+    ]
+
     # Destructive action patterns that require human-in-the-loop confirmation
     # regardless of authority level (Vuln #4: Bot-to-Bot Social Engineering)
     DESTRUCTIVE_ACTION_PATTERNS = [
@@ -224,6 +236,10 @@ class MessageChecker:
         self._destructive_compiled = [
             re.compile(pattern, re.IGNORECASE)
             for pattern in self.DESTRUCTIVE_ACTION_PATTERNS
+        ]
+        self._credential_compiled = [
+            re.compile(pattern, re.IGNORECASE)
+            for pattern in self.CREDENTIAL_TRANSMISSION_PATTERNS
         ]
 
     def _compile_patterns(self):
@@ -440,11 +456,18 @@ class MessageChecker:
         if not message.content:
             violations.append("Missing content field")
 
-        # SECURITY (Vuln #8): Verify agent identity via attestation token
-        # Authority levels >= 2 require cryptographic proof of identity
+        # SECURITY (Vuln #8, Audit 2.1.2): Verify agent identity via attestation token
+        # Authority levels >= 2 REQUIRE cryptographic proof of identity
+        # Attestation system is MANDATORY, not optional
         attestation_token = message.metadata.get('attestation_token')
         if message.authority_level >= 2:
-            if self._attestation_system and attestation_token:
+            if not self._attestation_system:
+                violations.append(
+                    f"No attestation system configured. Authority level "
+                    f"{message.authority_level} messages REQUIRE cryptographic "
+                    f"identity verification (attestation system is mandatory)"
+                )
+            elif attestation_token:
                 result = self._attestation_system.verify_token(attestation_token)
                 if not result.is_valid:
                     violations.append(
@@ -458,7 +481,7 @@ class MessageChecker:
                         f"does not match sender '{message.sender_agent}' - "
                         f"possible identity spoofing"
                     )
-            elif self._attestation_system:
+            else:
                 violations.append(
                     f"No attestation token provided for authority level "
                     f"{message.authority_level}. Agent identity verification "
@@ -478,6 +501,16 @@ class MessageChecker:
                     f"Destructive action(s) ({', '.join(destructive_actions)}) require "
                     f"completed ceremony approval (metadata.ceremony_completed=True)"
                 )
+
+        # SECURITY (Audit 2.3.1): Constitutional NO_CREDENTIAL_TRANSMISSION rule
+        for pattern in self._credential_compiled:
+            if pattern.search(message.content):
+                violations.append(
+                    "CONSTITUTIONAL VIOLATION: Credential pattern detected in message content. "
+                    "Agents must NEVER transmit credentials between agents. "
+                    "Recommend immediate LOCKDOWN investigation."
+                )
+                break
 
         # Check content
         content_result = self.check_message(

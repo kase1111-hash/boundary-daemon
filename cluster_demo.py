@@ -5,7 +5,9 @@ Simulates multiple daemon instances coordinating via a shared coordinator.
 """
 
 import sys
+import os
 import time
+import tempfile
 import argparse
 from daemon.distributed.cluster_manager import ClusterManager, ClusterSyncPolicy
 from daemon.distributed.coordinators import FileCoordinator
@@ -38,7 +40,11 @@ class MockDaemon:
         self.tripwire_system = self.MockTripwireSystem()
 
 
-def simulate_cluster(num_nodes: int = 3, data_dir: str = '/tmp/boundary-cluster'):
+# SECURITY (Audit A.2): Use secure temp directory instead of predictable /tmp path
+_DEFAULT_DATA_DIR = os.path.join(tempfile.gettempdir(), f'boundary-cluster-{os.getuid()}')
+
+
+def simulate_cluster(num_nodes: int = 3, data_dir: str = _DEFAULT_DATA_DIR):
     """
     Simulate a cluster of boundary daemons.
 
@@ -165,8 +171,8 @@ Examples:
 
     parser.add_argument('--nodes', type=int, default=3,
                        help='Number of nodes to simulate (default: 3)')
-    parser.add_argument('--data-dir', type=str, default='/tmp/boundary-cluster',
-                       help='Directory for cluster state (default: /tmp/boundary-cluster)')
+    parser.add_argument('--data-dir', type=str, default=_DEFAULT_DATA_DIR,
+                       help='Directory for cluster state')
 
     args = parser.parse_args()
 

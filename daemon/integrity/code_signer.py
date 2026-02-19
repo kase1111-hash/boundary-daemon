@@ -71,15 +71,21 @@ class ModuleHash:
     sha256: str                  # SHA-256 hash (hex)
     size: int                    # File size in bytes
     modified: str                # Last modified timestamp (ISO format)
+    # SECURITY (Audit 2.4.1): Per-module capability declarations
+    # e.g. ["file_read", "network_local", "process_spawn"]
+    capabilities: Optional[List[str]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        d = {
             'path': self.path,
             'sha256': self.sha256,
             'size': self.size,
             'modified': self.modified,
         }
+        if self.capabilities is not None:
+            d['capabilities'] = self.capabilities
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ModuleHash':
@@ -89,6 +95,7 @@ class ModuleHash:
             sha256=data['sha256'],
             size=data['size'],
             modified=data['modified'],
+            capabilities=data.get('capabilities'),
         )
 
 

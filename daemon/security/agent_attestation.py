@@ -241,9 +241,14 @@ class AgentAttestationSystem:
     MAX_TOKEN_VALIDITY = timedelta(days=7)
 
     # Maximum delegation chain depth
-    MAX_CHAIN_DEPTH = 5
+    # SECURITY (Audit 3.5.1): Reduced from 5 to 3 to limit hierarchy depth
+    MAX_CHAIN_DEPTH = 3
 
     # Capability inheritance rules (what capabilities can delegate what)
+    # SECURITY (Audit 3.5.1): AGENT_DELEGATE removed from AGENT_SUPERVISE to prevent
+    # autonomous hierarchy formation where agents create unbounded authority chains
+    # SECURITY (Audit 3.5.2): SYSTEM_ADMIN uses explicit enumeration instead of
+    # blanket grant to prevent single-point-of-compromise
     DELEGATION_RULES: Dict[AgentCapability, Set[AgentCapability]] = {
         AgentCapability.AGENT_DELEGATE: {
             AgentCapability.FILE_READ,
@@ -257,10 +262,15 @@ class AgentAttestationSystem:
             AgentCapability.NETWORK_LOCAL,
             AgentCapability.TOOL_INVOKE,
             AgentCapability.TOOL_CHAIN,
-            AgentCapability.AGENT_DELEGATE,
         },
         AgentCapability.SYSTEM_ADMIN: {
-            cap for cap in AgentCapability  # All capabilities
+            AgentCapability.FILE_READ,
+            AgentCapability.FILE_WRITE,
+            AgentCapability.NETWORK_OUTBOUND,
+            AgentCapability.NETWORK_LOCAL,
+            AgentCapability.TOOL_INVOKE,
+            AgentCapability.TOOL_CHAIN,
+            AgentCapability.AGENT_SUPERVISE,
         },
     }
 
@@ -290,6 +300,12 @@ class AgentAttestationSystem:
 
         # Trust anchors (issuers we trust)
         self._trust_anchors: Set[str] = {self.ROOT_ISSUER_ID}
+
+        # SECURITY (Audit 3.2.2): Nonce replay detection
+        # Maps nonce -> (token_id, first_seen_time) to allow re-verification
+        # of the same token while detecting cross-token nonce reuse
+        self._used_nonces: Dict[str, Tuple[str, datetime]] = {}
+        self._nonce_window = timedelta(hours=2)
 
         # Mode-based capability restrictions
         self._mode_restrictions = self._get_mode_restrictions()
@@ -451,6 +467,17 @@ class AgentAttestationSystem:
                 logger.error(f"Maximum delegation chain depth exceeded: {chain_depth}")
                 return None
 
+            # SECURITY (Audit 3.5.1): Block AGENT_DELEGATE in delegated tokens
+            # Delegation of delegation authority requires human ceremony approval
+            if capabilities and AgentCapability.AGENT_DELEGATE in capabilities:
+                ceremony_approved = (constraints or {}).get('ceremony_approved_delegation', False)
+                if not ceremony_approved:
+                    logger.error(
+                        "AGENT_DELEGATE capability cannot be delegated without "
+                        "human ceremony approval (constraint: ceremony_approved_delegation=True)"
+                    )
+                    return None
+
             # Delegated capabilities must be subset of parent's delegatable capabilities
             parent_identity = self._identities.get(parent_token.agent_id)
             if parent_identity:
@@ -605,6 +632,24 @@ class AgentAttestationSystem:
                 verification_time=now,
                 details={"error": "Invalid token signature"},
             )
+
+        # SECURITY (Audit 3.2.2): Replay detection via nonce uniqueness
+        # Allow re-verification of the same token (same token_id) but reject
+        # different tokens that reuse the same nonce (replay attack)
+        existing = self._used_nonces.get(token_obj.nonce)
+        if existing is not None and existing[0] != token_obj.token_id:
+            return AttestationResult(
+                status=AttestationStatus.INVALID_SIGNATURE,
+                agent_identity=None,
+                token=token_obj,
+                verified_capabilities=set(),
+                trust_level=TrustLevel.UNTRUSTED,
+                chain_depth=0,
+                verification_time=now,
+                details={"error": "Token nonce already used by different token (replay detected)"},
+            )
+        self._used_nonces[token_obj.nonce] = (token_obj.token_id, now)
+        self._prune_expired_nonces(now)
 
         # Verify issuer
         if token_obj.issuer_id not in self._trust_anchors:
@@ -861,6 +906,13 @@ class AgentAttestationSystem:
         self._mode = mode
         self._mode_restrictions = self._get_mode_restrictions()
         logger.info(f"Attestation system mode set to: {mode}")
+
+    def _prune_expired_nonces(self, now: datetime) -> None:
+        """Remove expired nonces outside the replay detection window."""
+        cutoff = now - self._nonce_window
+        expired = [n for n, (_, t) in self._used_nonces.items() if t < cutoff]
+        for n in expired:
+            del self._used_nonces[n]
 
     def _sign_data(self, data: Dict[str, Any]) -> str:
         """Sign data using HMAC-SHA256."""

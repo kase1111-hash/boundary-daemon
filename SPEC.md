@@ -1792,7 +1792,7 @@ def init_prometheus_metrics(daemon, port: int = 9464):
 enabled = true
 port = 9464
 bind_addr = "127.0.0.1"
-auth_token = "boundary_secure_token"
+auth_token = "<YOUR_GENERATED_TOKEN_HERE>"
 namespace = "boundary_"
 ```
 

@@ -37,9 +37,11 @@ Before=boundary-watchdog.service
 [Service]
 Type=notify
 
-# Run as root for kernel enforcement capabilities
-User=root
-Group=root
+# SECURITY (Audit 1.2.1): Run as dedicated service user instead of root
+# Create user: useradd -r -s /usr/sbin/nologin -d /var/lib/boundary-daemon boundary-daemon
+# Required capabilities are granted via AmbientCapabilities below
+User=boundary-daemon
+Group=boundary-daemon
 
 # Working directory
 WorkingDirectory=/opt/boundary-daemon
@@ -95,7 +97,8 @@ Environment="BOUNDARY_HARDWARE_WATCHDOG=1"
 Environment="BOUNDARY_WATCHDOG_TIMEOUT=60"
 
 # Security hardening
-NoNewPrivileges=no
+# SECURITY (Audit 1.2.1): Prevent privilege escalation
+NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -116,13 +119,16 @@ LogsDirectoryMode=0700
 StateDirectory=boundary-daemon
 StateDirectoryMode=0700
 
-# Capabilities needed for enforcement
+# SECURITY (Audit 1.2.1): Minimal capability set
 # CAP_NET_ADMIN: iptables/nftables rules
-# CAP_SYS_ADMIN: seccomp, namespaces, mount operations
 # CAP_KILL: process termination in lockdown
-# CAP_DAC_OVERRIDE: read /proc for monitoring
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID
-AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_KILL CAP_DAC_OVERRIDE
+# CAP_DAC_OVERRIDE: read /proc for monitoring, write udev rules
+# CAP_CHOWN: set ownership on log/state files
+# CAP_SYS_PTRACE: required for process monitoring only
+# NOTE: CAP_SYS_ADMIN removed - only add if seccomp/namespace enforcement is required
+# and document the specific justification
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_KILL CAP_DAC_OVERRIDE CAP_CHOWN CAP_SYS_PTRACE
+AmbientCapabilities=CAP_NET_ADMIN CAP_KILL CAP_DAC_OVERRIDE CAP_CHOWN
 
 # Resource limits
 LimitNOFILE=65536

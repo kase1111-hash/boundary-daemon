@@ -234,6 +234,27 @@ class BoundaryAPIServer:
                     except socket.timeout:
                         continue
 
+                    # SECURITY (Audit A.1): Verify connecting client UID on Unix sockets
+                    if HAS_UNIX_SOCKETS and not IS_WINDOWS:
+                        try:
+                            import struct
+                            SO_PEERCRED = 17  # Linux-specific
+                            cred = conn.getsockopt(
+                                socket.SOL_SOCKET, SO_PEERCRED,
+                                struct.calcsize('3i')
+                            )
+                            pid, uid, gid = struct.unpack('3i', cred)
+                            allowed_uids = {0, os.getuid()}
+                            if uid not in allowed_uids:
+                                logger.warning(
+                                    f"Rejected API connection from unauthorized "
+                                    f"UID {uid} (PID {pid})"
+                                )
+                                conn.close()
+                                continue
+                        except (OSError, struct.error) as e:
+                            logger.debug(f"Peer credential check unavailable: {e}")
+
                     # Handle request in a new thread
                     client_thread = threading.Thread(
                         target=self._handle_client,
