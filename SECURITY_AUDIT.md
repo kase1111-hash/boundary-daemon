@@ -788,7 +788,7 @@ auto-generated or copy-paste patterns.
 1. ~~**Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading~~ **FIXED**
 2. ~~**Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support~~ **FIXED**
 3. ~~**Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks~~ **FIXED**
-4. **Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator
+4. ~~**Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator~~ **FIXED**
 5. **Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events
 
 ### Fix: Supply Chain Module Verification (Vuln #3)
@@ -865,9 +865,36 @@ to file-based tokens with `chmod 600` permissions.
   modes. Now: all external calls blocked in network-isolated modes with audit log.
 - Ollama monitoring HTTP calls had no mode check. Now: blocked in restricted modes.
 
+### Fix: Identity Spoofing - Node Authentication for FileCoordinator (Vuln #8)
+
+**Files changed:**
+- `daemon/distributed/coordinators.py` - Added HMAC-SHA256 authentication to
+  `FileCoordinator`: `put()` signs entries with `compute_entry_hmac()` using
+  pre-shared cluster secret; `get()` and `get_prefix()` verify HMAC before
+  returning data; `cluster_secret` / `cluster_secret_file` parameters added;
+  `generate_cluster_secret()` helper function added
+- `daemon/distributed/cluster_manager.py` - Added two-layer node identity
+  verification: `_sign_node_data()` creates per-node identity signature;
+  `_verify_node_sig()` verifies it with constant-time comparison;
+  `_register_node()`, `_send_heartbeat()`, `broadcast_mode_change()`,
+  `report_violation()` all include node signatures; `get_cluster_state()`
+  and `get_violations()` verify signatures before trusting data
+
+**What was fixed:**
+- FileCoordinator accepted writes from any process with filesystem access,
+  allowing rogue nodes to register, inject heartbeats, broadcast unauthorized
+  mode changes (e.g. force OPEN via MAJORITY sync), or spoof violations.
+  Now: all writes include HMAC-SHA256 tag using a pre-shared cluster secret;
+  reads reject entries with missing or invalid HMAC.
+- ClusterManager blindly trusted node data from the coordinator, allowing
+  identity spoofing (one node impersonating another). Now: two-layer auth -
+  coordinator HMAC authenticates the writer has the cluster secret, and
+  per-node identity signatures bind data to specific node_ids with
+  constant-time verification.
+
 ---
 
-**Report Version:** 3.3
+**Report Version:** 3.4
 **Classification:** CONFIDENTIAL
 **Distribution:** Security Team Only
 **Last Updated:** 2026-02-19

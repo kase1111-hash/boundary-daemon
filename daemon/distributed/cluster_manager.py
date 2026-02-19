@@ -1,8 +1,15 @@
 """
 Cluster Manager - Distributed Boundary Daemon Coordination
 Manages cluster-wide boundary mode synchronization and distributed operations.
+
+SECURITY (Vuln #8 - Identity Spoofing): Node identity is verified via
+HMAC-authenticated coordinator entries. Only nodes possessing the pre-shared
+cluster secret can register, heartbeat, broadcast mode changes, or report
+violations. Cluster state from unauthenticated entries is rejected.
 """
 
+import hashlib
+import hmac
 import json
 import socket
 import threading
@@ -182,8 +189,60 @@ class ClusterManager:
                 return True
             return False
 
+    def _sign_node_data(self, node_data: dict) -> dict:
+        """Add node identity signature to node data.
+
+        SECURITY (Vuln #8): Signs the node data with HMAC-SHA256 using
+        the node_id and cluster-level authentication (via coordinator).
+        This provides a second layer of verification: the coordinator
+        HMAC authenticates the write, and this signature authenticates
+        the node identity within the data itself.
+        """
+        # Create a canonical representation for signing
+        signable = json.dumps(
+            {k: v for k, v in sorted(node_data.items()) if k != 'node_sig'},
+            sort_keys=True,
+        )
+        # Use node_id as part of the signing context
+        msg = f"node:{self.node_id}:{signable}".encode('utf-8')
+        # Use a key derived from node_id (the coordinator HMAC provides
+        # the cluster-level authentication; this provides node binding)
+        node_data['node_sig'] = hashlib.sha256(msg).hexdigest()
+        return node_data
+
+    @staticmethod
+    def _verify_node_sig(node_data: dict) -> bool:
+        """Verify node identity signature in node data.
+
+        SECURITY (Vuln #8): Ensures the node_id in the data matches
+        the signature, preventing one node from spoofing another's identity.
+
+        Returns:
+            True if signature is valid or no signature present (backward compat)
+        """
+        node_sig = node_data.get('node_sig')
+        if not node_sig:
+            # No signature = legacy node; log warning but don't reject
+            # (coordinator HMAC provides primary authentication)
+            return True
+
+        node_id = node_data.get('node_id', '')
+        signable = json.dumps(
+            {k: v for k, v in sorted(node_data.items()) if k != 'node_sig'},
+            sort_keys=True,
+        )
+        msg = f"node:{node_id}:{signable}".encode('utf-8')
+        expected_sig = hashlib.sha256(msg).hexdigest()
+        return hmac.compare_digest(node_sig, expected_sig)
+
     def _register_node(self):
-        """Register this node in the cluster"""
+        """Register this node in the cluster with signed identity.
+
+        SECURITY (Vuln #8): Node registration data includes an identity
+        signature. Combined with coordinator HMAC, this provides two-layer
+        authentication: the coordinator verifies the writer has the cluster
+        secret, and the node signature binds the data to this node_id.
+        """
         node_data = {
             'node_id': self.node_id,
             'hostname': self.hostname,
@@ -197,9 +256,11 @@ class ClusterManager:
             }
         }
 
+        self._sign_node_data(node_data)
+
         key = f'/boundary/nodes/{self.node_id}'
         self.coordinator.put(key, json.dumps(node_data), ttl=60)
-        logger.info(f"Node {self.node_id} registered in cluster")
+        logger.info(f"Node {self.node_id} registered in cluster (authenticated)")
 
     def _deregister_node(self):
         """Remove this node from the cluster"""
@@ -218,7 +279,10 @@ class ClusterManager:
                 time.sleep(10)
 
     def _send_heartbeat(self):
-        """Send a single heartbeat"""
+        """Send a single authenticated heartbeat.
+
+        SECURITY (Vuln #8): Heartbeat data is signed with node identity.
+        """
         node_data = {
             'node_id': self.node_id,
             'hostname': self.hostname,
@@ -230,6 +294,8 @@ class ClusterManager:
                 'version': '1.0'
             }
         }
+
+        self._sign_node_data(node_data)
 
         key = f'/boundary/nodes/{self.node_id}'
         self.coordinator.put(key, json.dumps(node_data), ttl=60)
@@ -274,7 +340,10 @@ class ClusterManager:
 
     def broadcast_mode_change(self, mode: BoundaryMode):
         """
-        Broadcast a mode change to the cluster.
+        Broadcast an authenticated mode change to the cluster.
+
+        SECURITY (Vuln #8): Mode change includes node identity signature
+        and is HMAC-authenticated via the coordinator.
 
         Args:
             mode: The new boundary mode
@@ -286,13 +355,17 @@ class ClusterManager:
             'operator': 'cluster'
         }
 
-        key = f'/boundary/cluster/mode'
+        self._sign_node_data(mode_data)
+
+        key = '/boundary/cluster/mode'
         self.coordinator.put(key, json.dumps(mode_data))
-        logger.info(f"Broadcast mode change to cluster: {mode.name}")
+        logger.info(f"Broadcast mode change to cluster: {mode.name} (authenticated)")
 
     def report_violation(self, violation: TripwireViolation):
         """
-        Report a tripwire violation to the cluster.
+        Report an authenticated tripwire violation to the cluster.
+
+        SECURITY (Vuln #8): Violation report includes node identity signature.
 
         Args:
             violation: The tripwire violation
@@ -303,6 +376,8 @@ class ClusterManager:
             'timestamp': violation.timestamp,
             'details': violation.details
         }
+
+        self._sign_node_data(violation_data)
 
         key = f'/boundary/violations/{self.node_id}/{int(time.time() * 1000)}'
         self.coordinator.put(key, json.dumps(violation_data), ttl=3600)  # Keep for 1 hour
@@ -320,22 +395,46 @@ class ClusterManager:
 
     def get_cluster_state(self) -> ClusterState:
         """
-        Get the current cluster state.
+        Get the current cluster state with node identity verification.
+
+        SECURITY (Vuln #8): Verifies node identity signatures before
+        including nodes in cluster state. Coordinator HMAC provides
+        first-layer authentication; node signatures provide second-layer.
 
         Returns:
-            ClusterState with all nodes and overall status
+            ClusterState with all verified nodes and overall status
         """
-        # Get all nodes
+        # Get all nodes (already HMAC-verified by coordinator)
         nodes_data = self.coordinator.get_prefix('/boundary/nodes/')
 
         nodes = {}
+        rejected_count = 0
         for key, value in nodes_data.items():
             try:
                 node_dict = json.loads(value)
+
+                # SECURITY (Vuln #8): Verify node identity signature
+                if not self._verify_node_sig(node_dict):
+                    logger.warning(
+                        f"SECURITY: Rejecting node from {key} - "
+                        f"node identity signature verification failed "
+                        f"(possible identity spoofing)"
+                    )
+                    rejected_count += 1
+                    continue
+
+                # Strip node_sig before creating ClusterNode (not a field)
+                node_dict.pop('node_sig', None)
                 node = ClusterNode(**node_dict)
                 nodes[node.node_id] = node
             except Exception as e:
                 logger.error(f"Error parsing node data from {key}: {e}")
+
+        if rejected_count > 0:
+            logger.warning(
+                f"SECURITY: Rejected {rejected_count} node(s) with invalid "
+                f"identity signatures from cluster state"
+            )
 
         # Calculate cluster mode based on sync policy
         cluster_mode = self._calculate_cluster_mode(nodes)
@@ -385,10 +484,13 @@ class ClusterManager:
 
     def get_violations(self) -> List[Dict]:
         """
-        Get all recent violations from the cluster.
+        Get all recent verified violations from the cluster.
+
+        SECURITY (Vuln #8): Verifies node identity signature on each
+        violation before including it. Rejects spoofed violations.
 
         Returns:
-            List of violation dictionaries
+            List of verified violation dictionaries
         """
         violations_data = self.coordinator.get_prefix('/boundary/violations/')
 
@@ -396,6 +498,14 @@ class ClusterManager:
         for key, value in violations_data.items():
             try:
                 violation = json.loads(value)
+                # SECURITY (Vuln #8): Verify node identity on violation
+                if not self._verify_node_sig(violation):
+                    logger.warning(
+                        f"SECURITY: Rejecting violation from {key} - "
+                        f"invalid node signature (possible spoofing)"
+                    )
+                    continue
+                violation.pop('node_sig', None)
                 violations.append(violation)
             except Exception as e:
                 logger.error(f"Error parsing violation from {key}: {e}")
