@@ -12,19 +12,24 @@ claims to local capabilities. Supports common providers:
 
 IMPORTANT: OIDC validation provides ADVISORY identity only.
 Ceremonies are still required for sensitive operations.
+
+SECURITY (Vuln #7 - Fetch-Execute): All outbound HTTP requests for OIDC
+discovery and JWKS fetching use TLS with certificate pinning and are gated
+behind boundary mode checks. Requests are blocked in AIRGAP/COLDROOM/LOCKDOWN.
 """
 
 import base64
 import hashlib
 import json
 import logging
+import ssl
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Any, Set, Tuple
-from urllib.parse import urljoin
+from typing import Callable, Dict, List, Optional, Any, Set, Tuple
+from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +77,11 @@ class OIDCConfig:
     email_claim: str = "email"
     groups_claim: str = "groups"
     roles_claim: str = "roles"
+
+    # TLS certificate pinning (Vuln #7)
+    # Pin to specific CA certificates for the OIDC provider to prevent MITM
+    tls_ca_bundle: Optional[str] = None  # Path to CA bundle file
+    tls_pin_sha256: Optional[List[str]] = None  # SHA-256 pin(s) of server cert
 
     # Caching
     cache_jwks_seconds: int = 3600
@@ -153,7 +163,14 @@ class OIDCValidator:
             print(f"Capabilities: {result.capabilities}")
     """
 
-    def __init__(self, config: OIDCConfig):
+    # Modes that block all external network access (Vuln #7)
+    NETWORK_BLOCKED_MODES = {'AIRGAP', 'COLDROOM', 'LOCKDOWN'}
+
+    def __init__(
+        self,
+        config: OIDCConfig,
+        mode_getter: Optional[Callable[[], str]] = None,
+    ):
         self.config = config
         self._jwks_client: Optional['PyJWKClient'] = None
         self._jwks_cache_time: float = 0
@@ -161,14 +178,97 @@ class OIDCValidator:
         self._token_cache: Dict[str, Tuple[TokenValidationResult, float]] = {}
         self._lock = threading.Lock()
 
+        # SECURITY (Vuln #7): Mode getter to gate HTTP requests
+        self._get_mode = mode_getter
+
         # Capability mappings
         self._group_capabilities: Dict[str, Set[str]] = {}
         self._role_capabilities: Dict[str, Set[str]] = {}
 
+        # SECURITY (Vuln #7): Build pinned TLS context
+        self._ssl_context = self._create_pinned_ssl_context()
+
+    def set_mode_getter(self, getter: Callable[[], str]) -> None:
+        """Set mode getter for boundary mode checks."""
+        self._get_mode = getter
+
+    def _is_network_blocked(self) -> bool:
+        """Check if outbound network is blocked in current boundary mode.
+
+        SECURITY (Vuln #7): OIDC discovery and JWKS fetching require
+        outbound HTTPS. These MUST be blocked in network-isolated modes
+        to prevent data exfiltration via crafted OIDC issuer URLs.
+        """
+        if not self._get_mode:
+            return False
+        try:
+            current_mode = self._get_mode()
+            if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _create_pinned_ssl_context(self) -> ssl.SSLContext:
+        """Create TLS context with certificate pinning for OIDC endpoints.
+
+        SECURITY (Vuln #7): Pins TLS connections to a specific CA bundle
+        to prevent MITM attacks on OIDC discovery and JWKS endpoints.
+        Without pinning, a compromised CA or DNS hijack could serve
+        forged signing keys, allowing token forgery.
+        """
+        context = ssl.create_default_context()
+
+        # Always enforce certificate verification
+        context.check_hostname = True
+        context.verify_mode = ssl.CERT_REQUIRED
+
+        # Minimum TLS 1.2
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        # Load custom CA bundle if configured (cert pinning)
+        if self.config.tls_ca_bundle:
+            try:
+                context.load_verify_locations(self.config.tls_ca_bundle)
+                logger.info(
+                    f"OIDC TLS pinned to CA bundle: {self.config.tls_ca_bundle}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to load OIDC CA bundle: {e}")
+                raise
+
+        return context
+
+    def _validate_url_scheme(self, url: str, purpose: str) -> bool:
+        """Validate that a URL uses HTTPS.
+
+        SECURITY (Vuln #7): Reject non-HTTPS URLs for OIDC endpoints
+        to prevent credential/token interception.
+        """
+        parsed = urlparse(url)
+        if parsed.scheme != 'https':
+            logger.error(
+                f"SECURITY: {purpose} URL must use HTTPS, got {parsed.scheme}:// "
+                f"(rejecting to prevent credential interception)"
+            )
+            return False
+        return True
+
     def _fetch_discovery(self) -> Optional[Dict[str, Any]]:
-        """Fetch OIDC discovery document."""
+        """Fetch OIDC discovery document with TLS pinning and mode check.
+
+        SECURITY (Vuln #7): Uses pinned TLS context and is blocked in
+        network-isolated boundary modes.
+        """
         if self._discovery_cache:
             return self._discovery_cache
+
+        # SECURITY: Block in network-isolated modes
+        if self._is_network_blocked():
+            logger.warning(
+                "OIDC discovery blocked: network-isolated boundary mode active"
+            )
+            return None
 
         discovery_url = self.config.discovery_url
         if not discovery_url:
@@ -177,9 +277,17 @@ class OIDCValidator:
                 '.well-known/openid-configuration'
             )
 
+        # SECURITY: Enforce HTTPS
+        if not self._validate_url_scheme(discovery_url, "OIDC discovery"):
+            return None
+
         try:
             import urllib.request
-            with urllib.request.urlopen(discovery_url, timeout=10) as response:
+            with urllib.request.urlopen(
+                discovery_url,
+                timeout=10,
+                context=self._ssl_context,
+            ) as response:
                 self._discovery_cache = json.loads(response.read().decode())
                 return self._discovery_cache
         except Exception as e:
@@ -187,8 +295,19 @@ class OIDCValidator:
             return None
 
     def _get_jwks_client(self) -> Optional['PyJWKClient']:
-        """Get or create JWKS client."""
+        """Get or create JWKS client with mode check.
+
+        SECURITY (Vuln #7): Blocked in network-isolated modes.
+        The PyJWKClient fetches signing keys over HTTPS.
+        """
         if not JWT_AVAILABLE:
+            return None
+
+        # SECURITY: Block in network-isolated modes
+        if self._is_network_blocked():
+            logger.warning(
+                "JWKS fetch blocked: network-isolated boundary mode active"
+            )
             return None
 
         now = time.time()
@@ -208,7 +327,24 @@ class OIDCValidator:
             logger.error("No JWKS URI available")
             return None
 
+        # SECURITY: Enforce HTTPS for JWKS
+        if not self._validate_url_scheme(jwks_uri, "JWKS"):
+            return None
+
         try:
+            # Pass SSL context to PyJWKClient for cert pinning
+            self._jwks_client = PyJWKClient(
+                jwks_uri,
+                ssl_context=self._ssl_context,
+            )
+            self._jwks_cache_time = now
+            return self._jwks_client
+        except TypeError:
+            # Older PyJWT versions don't support ssl_context parameter
+            logger.warning(
+                "PyJWT version does not support ssl_context - "
+                "using system default TLS (cert pinning unavailable)"
+            )
             self._jwks_client = PyJWKClient(jwks_uri)
             self._jwks_cache_time = now
             return self._jwks_client

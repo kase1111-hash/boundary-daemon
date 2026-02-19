@@ -79,13 +79,40 @@ class MonitoringReport:
 
 
 class OllamaClient:
-    """Simple client for Ollama API"""
+    """Simple client for Ollama API.
 
-    def __init__(self, config: Optional[OllamaConfig] = None):
+    SECURITY (Vuln #7): HTTP calls are gated behind boundary mode checks.
+    Even localhost calls are blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+    to enforce strict network isolation.
+    """
+
+    # Modes that block all HTTP (Vuln #7)
+    NETWORK_BLOCKED_MODES = {'AIRGAP', 'COLDROOM', 'LOCKDOWN'}
+
+    def __init__(self, config: Optional[OllamaConfig] = None, mode_getter=None):
         self.config = config or OllamaConfig()
+        self._get_mode = mode_getter
+
+    def set_mode_getter(self, getter) -> None:
+        """Set mode getter for boundary mode checks."""
+        self._get_mode = getter
+
+    def _is_network_blocked(self) -> bool:
+        """Check if HTTP is blocked in current boundary mode."""
+        if not self._get_mode:
+            return False
+        try:
+            current_mode = self._get_mode()
+            if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
+                return True
+        except Exception:
+            pass
+        return False
 
     def is_available(self) -> bool:
         """Check if Ollama is running and accessible"""
+        if self._is_network_blocked():
+            return False
         try:
             url = f"{self.config.endpoint}/api/tags"
             req = urllib.request.Request(url, method='GET')
@@ -96,6 +123,8 @@ class OllamaClient:
 
     def list_models(self) -> List[str]:
         """List available models"""
+        if self._is_network_blocked():
+            return []
         try:
             url = f"{self.config.endpoint}/api/tags"
             req = urllib.request.Request(url, method='GET')
@@ -108,6 +137,9 @@ class OllamaClient:
 
     def generate(self, prompt: str, system: Optional[str] = None) -> Optional[str]:
         """Generate a response from Ollama"""
+        if self._is_network_blocked():
+            logger.debug("Ollama generation blocked: network-isolated mode")
+            return None
         try:
             url = f"{self.config.endpoint}/api/generate"
 

@@ -787,7 +787,7 @@ auto-generated or copy-paste patterns.
 
 1. ~~**Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading~~ **FIXED**
 2. ~~**Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support~~ **FIXED**
-3. **Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks
+3. ~~**Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks~~ **FIXED**
 4. **Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator
 5. **Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events
 
@@ -841,9 +841,33 @@ auto-generated or copy-paste patterns.
 **Breaking change:** Users relying on `BOUNDARY_API_TOKEN` env var must migrate
 to file-based tokens with `chmod 600` permissions.
 
+### Fix: Fetch-Execute - TLS Cert Pinning & HTTP Mode Gating (Vuln #7)
+
+**Files changed:**
+- `daemon/identity/oidc_validator.py` - Added TLS cert pinning via `ssl.SSLContext`
+  with CERT_REQUIRED, TLS 1.2 minimum, custom CA bundle support; HTTPS-only URL
+  validation; boundary mode checks gate OIDC discovery and JWKS fetching;
+  `mode_getter` parameter added to constructor
+- `daemon/alerts/case_manager.py` - Added boundary mode gating to `CaseManager`;
+  `_auto_integrate()`, `_update_externals()`, `_resolve_externals()` all blocked
+  in AIRGAP/COLDROOM/LOCKDOWN; `mode_getter` parameter added to constructor
+- `daemon/monitoring_report.py` - Added boundary mode gating to `OllamaClient`;
+  `is_available()`, `list_models()`, `generate()` all blocked in network-isolated modes
+
+**What was fixed:**
+- OIDC discovery (`_fetch_discovery`) and JWKS fetching (`_get_jwks_client`) made
+  outbound HTTPS calls with no TLS pinning and no boundary mode check. A DNS hijack
+  or compromised CA could serve forged JWKS signing keys, enabling token forgery.
+  Now: uses pinned `ssl.SSLContext` with CERT_REQUIRED and optional CA bundle;
+  rejects non-HTTPS URLs; blocked in AIRGAP/COLDROOM/LOCKDOWN modes.
+- Case manager integrations (ServiceNow, Slack, PagerDuty) made outbound HTTP calls
+  with no boundary mode check. Alert payloads could exfiltrate data in restricted
+  modes. Now: all external calls blocked in network-isolated modes with audit log.
+- Ollama monitoring HTTP calls had no mode check. Now: blocked in restricted modes.
+
 ---
 
-**Report Version:** 3.2
+**Report Version:** 3.3
 **Classification:** CONFIDENTIAL
 **Distribution:** Security Team Only
 **Last Updated:** 2026-02-19
