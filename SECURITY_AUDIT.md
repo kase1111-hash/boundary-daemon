@@ -787,9 +787,9 @@ auto-generated or copy-paste patterns.
 
 1. ~~**Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading~~ **FIXED**
 2. ~~**Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support~~ **FIXED**
-3. **Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks
-4. **Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator
-5. **Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events
+3. ~~**Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks~~ **FIXED**
+4. ~~**Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator~~ **FIXED**
+5. ~~**Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events~~ **FIXED**
 
 ### Fix: Supply Chain Module Verification (Vuln #3)
 
@@ -841,9 +841,96 @@ auto-generated or copy-paste patterns.
 **Breaking change:** Users relying on `BOUNDARY_API_TOKEN` env var must migrate
 to file-based tokens with `chmod 600` permissions.
 
+### Fix: Fetch-Execute - TLS Cert Pinning & HTTP Mode Gating (Vuln #7)
+
+**Files changed:**
+- `daemon/identity/oidc_validator.py` - Added TLS cert pinning via `ssl.SSLContext`
+  with CERT_REQUIRED, TLS 1.2 minimum, custom CA bundle support; HTTPS-only URL
+  validation; boundary mode checks gate OIDC discovery and JWKS fetching;
+  `mode_getter` parameter added to constructor
+- `daemon/alerts/case_manager.py` - Added boundary mode gating to `CaseManager`;
+  `_auto_integrate()`, `_update_externals()`, `_resolve_externals()` all blocked
+  in AIRGAP/COLDROOM/LOCKDOWN; `mode_getter` parameter added to constructor
+- `daemon/monitoring_report.py` - Added boundary mode gating to `OllamaClient`;
+  `is_available()`, `list_models()`, `generate()` all blocked in network-isolated modes
+
+**What was fixed:**
+- OIDC discovery (`_fetch_discovery`) and JWKS fetching (`_get_jwks_client`) made
+  outbound HTTPS calls with no TLS pinning and no boundary mode check. A DNS hijack
+  or compromised CA could serve forged JWKS signing keys, enabling token forgery.
+  Now: uses pinned `ssl.SSLContext` with CERT_REQUIRED and optional CA bundle;
+  rejects non-HTTPS URLs; blocked in AIRGAP/COLDROOM/LOCKDOWN modes.
+- Case manager integrations (ServiceNow, Slack, PagerDuty) made outbound HTTP calls
+  with no boundary mode check. Alert payloads could exfiltrate data in restricted
+  modes. Now: all external calls blocked in network-isolated modes with audit log.
+- Ollama monitoring HTTP calls had no mode check. Now: blocked in restricted modes.
+
+### Fix: Identity Spoofing - Node Authentication for FileCoordinator (Vuln #8)
+
+**Files changed:**
+- `daemon/distributed/coordinators.py` - Added HMAC-SHA256 authentication to
+  `FileCoordinator`: `put()` signs entries with `compute_entry_hmac()` using
+  pre-shared cluster secret; `get()` and `get_prefix()` verify HMAC before
+  returning data; `cluster_secret` / `cluster_secret_file` parameters added;
+  `generate_cluster_secret()` helper function added
+- `daemon/distributed/cluster_manager.py` - Added two-layer node identity
+  verification: `_sign_node_data()` creates per-node identity signature;
+  `_verify_node_sig()` verifies it with constant-time comparison;
+  `_register_node()`, `_send_heartbeat()`, `broadcast_mode_change()`,
+  `report_violation()` all include node signatures; `get_cluster_state()`
+  and `get_violations()` verify signatures before trusting data
+
+**What was fixed:**
+- FileCoordinator accepted writes from any process with filesystem access,
+  allowing rogue nodes to register, inject heartbeats, broadcast unauthorized
+  mode changes (e.g. force OPEN via MAJORITY sync), or spoof violations.
+  Now: all writes include HMAC-SHA256 tag using a pre-shared cluster secret;
+  reads reject entries with missing or invalid HMAC.
+- ClusterManager blindly trusted node data from the coordinator, allowing
+  identity spoofing (one node impersonating another). Now: two-layer auth -
+  coordinator HMAC authenticates the writer has the cluster secret, and
+  per-node identity signatures bind data to specific node_ids with
+  constant-time verification.
+
+### Fix: Agent Coordination - Channel Lifecycle Audit Trail (Vuln #10)
+
+**Files changed:**
+- `daemon/event_logger.py` - Added `CHANNEL_OPENED`, `CHANNEL_CLOSED`,
+  `CHANNEL_SUMMARY` event types to `EventType` enum
+- `daemon/integrations.py` - Added `_ChannelSession` dataclass for per-channel
+  session tracking; `MessageGate` now tracks channel lifecycle with
+  `_record_channel_activity()` (emits CHANNEL_OPENED on first message per
+  agent pair), background `_channel_lifecycle_monitor()` thread (emits
+  CHANNEL_CLOSED on idle timeout, CHANNEL_SUMMARY periodically),
+  `get_active_channels()` API, and `stop()` method
+
+**What was fixed:**
+- Agent-to-agent channels could be opened and closed without any audit record.
+  While individual message checks were logged (MESSAGE_CHECK events), there was
+  no record of when channels were established, how long they lasted, how many
+  messages traversed them, or when they terminated. This made it impossible to
+  detect long-running covert coordination channels or post-incident forensics.
+- Now: CHANNEL_OPENED logged when a new sender->recipient pair first communicates;
+  CHANNEL_CLOSED logged when idle timeout (5 min) expires, including session
+  stats (message count, blocked count, rate limited count, duration);
+  CHANNEL_SUMMARY logged every 10 minutes with all active channel stats.
+  All events flow through the hash-chained event logger for tamper detection.
+
+### All Open Items Resolved
+
+All 5 remaining open items from the initial security audit have been fixed:
+
+| # | Vulnerability | Fix |
+|---|--------------|-----|
+| 1 | Supply Chain (Vuln #3) | Pre-load hash verification, module import allowlist |
+| 2 | Credential Leakage (Vuln #5) | Env var fallback removed, plaintext tokens rejected |
+| 3 | Fetch-Execute (Vuln #7) | TLS cert pinning, HTTPS enforcement, boundary mode gating |
+| 4 | Identity Spoofing (Vuln #8) | HMAC node auth, two-layer identity verification |
+| 5 | Agent Coordination (Vuln #10) | Channel lifecycle audit (open/close/summary events) |
+
 ---
 
-**Report Version:** 3.2
+**Report Version:** 3.5
 **Classification:** CONFIDENTIAL
 **Distribution:** Security Team Only
 **Last Updated:** 2026-02-19

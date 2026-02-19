@@ -1,10 +1,17 @@
 """
 Integration Interfaces - Memory Vault, Tool Enforcement, Message Checking, and Ceremony
 Provides high-level interfaces for integrating with other Agent OS components.
+
+SECURITY (Vuln #10 - Agent Coordination): MessageGate provides:
+- Rate limiting per agent pair (200 messages/60s)
+- Channel lifecycle audit trail (open, close, periodic summary)
+- All inter-agent communication is auditable via hash-chained event log
 """
 
+import threading
 import time
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from .policy_engine import MemoryClass, BoundaryMode
@@ -183,20 +190,42 @@ class ToolGate:
         return capabilities
 
 
+@dataclass
+class _ChannelSession:
+    """Tracks an agent-to-agent channel session for lifecycle auditing.
+
+    SECURITY (Vuln #10): Provides audit trail for channel creation,
+    activity, and termination. Without this, channels could be opened
+    and closed without any record in the event log.
+    """
+    channel_key: str  # "sender->recipient"
+    sender: str
+    recipient: str
+    opened_at: float
+    last_activity: float
+    message_count: int = 0
+    blocked_count: int = 0
+    rate_limited_count: int = 0
+
+
 class MessageGate:
     """
     Message validation interface for NatLangChain and Agent-OS.
     All messages MUST pass through this gate for content validation.
 
     SECURITY: Addresses Vuln #10 (Uncontrolled Agent Coordination) by
-    rate-limiting agent-to-agent messages and ensuring all inter-agent
-    communication is auditable.
+    rate-limiting agent-to-agent messages, tracking channel lifecycle,
+    and ensuring all inter-agent communication is auditable.
     """
 
     # SECURITY (Vuln #10): Rate limit agent-to-agent messages
     # Prevents runaway coordination at machine speed
     MAX_AGENT_MESSAGES_PER_MINUTE = 200
     AGENT_MESSAGE_WINDOW_SECONDS = 60
+
+    # SECURITY (Vuln #10): Channel lifecycle settings
+    CHANNEL_IDLE_TIMEOUT_SECONDS = 300  # 5 minutes idle = channel closed
+    CHANNEL_SUMMARY_INTERVAL_SECONDS = 600  # Periodic summary every 10 minutes
 
     def __init__(self, daemon, strict_mode: bool = False,
                  attestation_system=None):
@@ -222,7 +251,21 @@ class MessageGate:
 
         # SECURITY (Vuln #10): Agent-to-agent rate limiting
         self._agent_message_times: Dict[str, list] = {}
-        self._agent_rate_lock = __import__('threading').Lock()
+        self._agent_rate_lock = threading.Lock()
+
+        # SECURITY (Vuln #10): Channel lifecycle tracking
+        self._channel_sessions: Dict[str, _ChannelSession] = {}
+        self._channel_lock = threading.Lock()
+        self._last_summary_time = time.time()
+
+        # Start channel lifecycle monitor thread
+        self._lifecycle_running = True
+        self._lifecycle_thread = threading.Thread(
+            target=self._channel_lifecycle_monitor,
+            daemon=True,
+            name="channel-lifecycle-monitor",
+        )
+        self._lifecycle_thread.start()
 
     def check_natlangchain(
         self,
@@ -324,6 +367,10 @@ class MessageGate:
                     'reason': rate_msg,
                 }
             )
+            # SECURITY (Vuln #10): Record channel activity for audit trail
+            self._record_channel_activity(
+                sender_agent, recipient_agent, allowed=False, rate_limited=True,
+            )
             return (False, rate_msg, None)
 
         if timestamp is None:
@@ -356,6 +403,11 @@ class MessageGate:
                 'result_type': result.result_type.value,
                 'violations': result.violations,
             }
+        )
+
+        # SECURITY (Vuln #10): Record channel activity for audit trail
+        self._record_channel_activity(
+            sender_agent, recipient_agent, allowed=result.allowed,
         )
 
         return (result.allowed, result.reason, result.to_dict())
@@ -442,6 +494,170 @@ class MessageGate:
 
             times.append(now)
             return (True, "OK")
+
+    # ---- Channel Lifecycle Audit (Vuln #10) ----
+
+    def _record_channel_activity(
+        self,
+        sender: str,
+        recipient: str,
+        allowed: bool,
+        rate_limited: bool = False,
+    ) -> None:
+        """Record activity on an agent-to-agent channel.
+
+        SECURITY (Vuln #10): Tracks channel sessions and emits
+        CHANNEL_OPENED events when new channels are established.
+        This creates an audit trail for all agent coordination.
+        """
+        channel_key = f"{sender}->{recipient}"
+        now = time.time()
+
+        with self._channel_lock:
+            session = self._channel_sessions.get(channel_key)
+
+            if session is None:
+                # New channel - emit CHANNEL_OPENED event
+                session = _ChannelSession(
+                    channel_key=channel_key,
+                    sender=sender,
+                    recipient=recipient,
+                    opened_at=now,
+                    last_activity=now,
+                )
+                self._channel_sessions[channel_key] = session
+
+                self.daemon.event_logger.log_event(
+                    EventType.CHANNEL_OPENED,
+                    f"Agent channel opened: {channel_key}",
+                    metadata={
+                        'channel': channel_key,
+                        'sender': sender,
+                        'recipient': recipient,
+                        'opened_at': datetime.utcnow().isoformat() + "Z",
+                    }
+                )
+
+            # Update session stats
+            session.last_activity = now
+            session.message_count += 1
+            if not allowed:
+                session.blocked_count += 1
+            if rate_limited:
+                session.rate_limited_count += 1
+
+    def _channel_lifecycle_monitor(self) -> None:
+        """Background thread monitoring channel lifecycle events.
+
+        SECURITY (Vuln #10): Detects idle channels and emits
+        CHANNEL_CLOSED events. Periodically emits CHANNEL_SUMMARY
+        for all active channels. This ensures the audit trail captures
+        channel termination, not just creation and messages.
+        """
+        while self._lifecycle_running:
+            try:
+                time.sleep(30)  # Check every 30 seconds
+                now = time.time()
+
+                with self._channel_lock:
+                    # Check for idle channels
+                    idle_keys = []
+                    for key, session in self._channel_sessions.items():
+                        idle_seconds = now - session.last_activity
+                        if idle_seconds >= self.CHANNEL_IDLE_TIMEOUT_SECONDS:
+                            idle_keys.append(key)
+
+                    # Emit CHANNEL_CLOSED for idle channels
+                    for key in idle_keys:
+                        session = self._channel_sessions.pop(key)
+                        duration = session.last_activity - session.opened_at
+
+                        self.daemon.event_logger.log_event(
+                            EventType.CHANNEL_CLOSED,
+                            f"Agent channel closed (idle): {key}",
+                            metadata={
+                                'channel': key,
+                                'sender': session.sender,
+                                'recipient': session.recipient,
+                                'duration_seconds': round(duration, 1),
+                                'message_count': session.message_count,
+                                'blocked_count': session.blocked_count,
+                                'rate_limited_count': session.rate_limited_count,
+                                'reason': 'idle_timeout',
+                            }
+                        )
+
+                    # Periodic summary of active channels
+                    if (now - self._last_summary_time
+                            >= self.CHANNEL_SUMMARY_INTERVAL_SECONDS
+                            and self._channel_sessions):
+                        self._last_summary_time = now
+
+                        active_channels = []
+                        total_messages = 0
+                        total_blocked = 0
+                        for session in self._channel_sessions.values():
+                            total_messages += session.message_count
+                            total_blocked += session.blocked_count
+                            active_channels.append({
+                                'channel': session.channel_key,
+                                'messages': session.message_count,
+                                'blocked': session.blocked_count,
+                                'age_seconds': round(
+                                    now - session.opened_at, 1
+                                ),
+                            })
+
+                        self.daemon.event_logger.log_event(
+                            EventType.CHANNEL_SUMMARY,
+                            f"Active agent channels: {len(active_channels)}, "
+                            f"total messages: {total_messages}",
+                            metadata={
+                                'active_channel_count': len(active_channels),
+                                'total_messages': total_messages,
+                                'total_blocked': total_blocked,
+                                'channels': active_channels,
+                            }
+                        )
+
+            except Exception as e:
+                # Don't let monitoring crash silently
+                try:
+                    from . import logging as _logging
+                    _logging.getLogger(__name__).error(
+                        f"Channel lifecycle monitor error: {e}"
+                    )
+                except Exception:
+                    pass
+
+    def get_active_channels(self) -> List[Dict[str, Any]]:
+        """Get list of active agent-to-agent channels.
+
+        Returns:
+            List of channel info dicts with session stats
+        """
+        now = time.time()
+        with self._channel_lock:
+            return [
+                {
+                    'channel': s.channel_key,
+                    'sender': s.sender,
+                    'recipient': s.recipient,
+                    'opened_at': datetime.utcfromtimestamp(
+                        s.opened_at
+                    ).isoformat() + "Z",
+                    'age_seconds': round(now - s.opened_at, 1),
+                    'message_count': s.message_count,
+                    'blocked_count': s.blocked_count,
+                    'rate_limited_count': s.rate_limited_count,
+                    'idle_seconds': round(now - s.last_activity, 1),
+                }
+                for s in self._channel_sessions.values()
+            ]
+
+    def stop(self) -> None:
+        """Stop the channel lifecycle monitor."""
+        self._lifecycle_running = False
 
     def is_available(self) -> bool:
         """Check if message checking is available"""

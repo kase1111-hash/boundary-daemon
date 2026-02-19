@@ -546,7 +546,14 @@ class CaseManager:
     - Event logger for audit trail
     - External ticketing systems
     - Alerting platforms
+
+    SECURITY (Vuln #7): All outbound HTTP calls to external integrations
+    (ServiceNow, Slack, PagerDuty) are gated behind boundary mode checks.
+    Calls are blocked in AIRGAP/COLDROOM/LOCKDOWN modes.
     """
+
+    # Modes that block all external network access (Vuln #7)
+    NETWORK_BLOCKED_MODES = {'AIRGAP', 'COLDROOM', 'LOCKDOWN'}
 
     def __init__(
         self,
@@ -554,12 +561,16 @@ class CaseManager:
         sla_config: Optional[SLAConfig] = None,
         storage_path: str = "/var/lib/boundary-daemon/cases/",
         event_logger=None,
+        mode_getter=None,
     ):
         self.config = integration_config or IntegrationConfig()
         self.sla_config = sla_config or SLAConfig()
         self.storage_path = Path(storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
         self.event_logger = event_logger
+
+        # SECURITY (Vuln #7): Mode getter to gate outbound HTTP
+        self._get_mode = mode_getter
 
         # Initialize integration clients
         self.servicenow = ServiceNowClient(self.config)
@@ -865,8 +876,45 @@ class CaseManager:
 
         return breaches
 
+    def _is_network_blocked(self) -> bool:
+        """Check if outbound network is blocked in current boundary mode.
+
+        SECURITY (Vuln #7): External integration HTTP calls (ServiceNow,
+        Slack, PagerDuty) are blocked in AIRGAP/COLDROOM/LOCKDOWN modes
+        to prevent data exfiltration via crafted alert payloads.
+        """
+        if not self._get_mode:
+            return False
+        try:
+            current_mode = self._get_mode()
+            if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
+                return True
+        except Exception:
+            pass
+        return False
+
+    def set_mode_getter(self, getter) -> None:
+        """Set mode getter for boundary mode checks."""
+        self._get_mode = getter
+
     def _auto_integrate(self, case: Case):
-        """Automatically create external tickets based on severity."""
+        """Automatically create external tickets based on severity.
+
+        SECURITY (Vuln #7): Blocked in network-isolated modes.
+        """
+        # SECURITY: Block outbound HTTP in restricted modes
+        if self._is_network_blocked():
+            logger.warning(
+                f"External integrations blocked for case {case.case_id}: "
+                f"network-isolated boundary mode active"
+            )
+            case.add_event(
+                "integration", "system",
+                "External integrations blocked: network-isolated mode"
+            )
+            self._save_case(case)
+            return
+
         # ServiceNow for CRITICAL
         if case.severity.value >= self.config.auto_servicenow_severity.value:
             if self.servicenow.enabled:
@@ -895,7 +943,14 @@ class CaseManager:
                     self._save_case(case)
 
     def _update_externals(self, case: Case):
-        """Update all external tickets."""
+        """Update all external tickets.
+
+        SECURITY (Vuln #7): Blocked in network-isolated modes.
+        """
+        if self._is_network_blocked():
+            logger.debug("External updates blocked: network-isolated mode")
+            return
+
         for integration, ref in case.external_refs.items():
             if integration == 'servicenow':
                 self.servicenow.update_incident(case, ref)
@@ -905,7 +960,14 @@ class CaseManager:
                 self.pagerduty.update_incident(case, ref)
 
     def _resolve_externals(self, case: Case):
-        """Resolve all external tickets."""
+        """Resolve all external tickets.
+
+        SECURITY (Vuln #7): Blocked in network-isolated modes.
+        """
+        if self._is_network_blocked():
+            logger.debug("External resolves blocked: network-isolated mode")
+            return
+
         for integration, ref in case.external_refs.items():
             if integration == 'servicenow':
                 self.servicenow.resolve_incident(case, ref)

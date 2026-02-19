@@ -58,6 +58,10 @@ class EventType(Enum):
     SANDBOX_VIOLATION = "sandbox_violation"  # Kernel-level violation in sandbox
     SANDBOX_TIGHTENED = "sandbox_tightened"  # Sandbox profile tightened on mode escalation
     SANDBOX_TERMINATED = "sandbox_terminated"  # Sandbox terminated due to mode change
+    # SECURITY (Vuln #10): Channel lifecycle audit trail
+    CHANNEL_OPENED = "channel_opened"  # New agent-to-agent channel established
+    CHANNEL_CLOSED = "channel_closed"  # Agent-to-agent channel terminated (idle timeout)
+    CHANNEL_SUMMARY = "channel_summary"  # Periodic channel activity summary
 
 
 @dataclass
