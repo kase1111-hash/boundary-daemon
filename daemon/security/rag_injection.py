@@ -342,6 +342,9 @@ class RAGInjectionDetector:
             threats.extend(query_threats)
 
         # 2. Analyze each document
+        # SECURITY (Vuln #2 - Memory Poisoning): Documents with UNKNOWN provenance
+        # are quarantined rather than silently passed through. External-sourced
+        # documents must be explicitly verified or from trusted sources.
         for doc in documents:
             doc_threats, doc_score = self._analyze_document(doc)
             threats.extend(doc_threats)
@@ -352,10 +355,46 @@ class RAGInjectionDetector:
                 blocked_docs.append(doc)
             elif doc_score > 0.3:
                 doc.trust_level = DocumentTrustLevel.SUSPICIOUS
-                safe_docs.append(doc)  # Still allow but flagged
+                # SECURITY: Suspicious documents are quarantined, not passed through
+                blocked_docs.append(doc)
+                threats.append(RAGThreat(
+                    threat_type=RAGThreatType.POISONED_DOCUMENT,
+                    severity=ThreatSeverity.MEDIUM,
+                    description=(
+                        f"Document '{doc.document_id}' quarantined: "
+                        f"risk score {doc_score:.2f} exceeds suspicion threshold. "
+                        f"External-sourced documents require explicit verification."
+                    ),
+                    document_id=doc.document_id,
+                    confidence=doc_score,
+                    remediation="Verify document provenance and add to trusted sources or verified hashes",
+                ))
+            elif doc.source in self.trusted_sources:
+                doc.trust_level = DocumentTrustLevel.TRUSTED
+                safe_docs.append(doc)
+            elif doc.content_hash in self._verified_hashes:
+                doc.trust_level = DocumentTrustLevel.VERIFIED
+                safe_docs.append(doc)
+            elif doc.trust_level == DocumentTrustLevel.UNKNOWN:
+                # SECURITY (Vuln #2): UNKNOWN provenance documents are NOT
+                # silently passed through. They must be from a trusted source
+                # or have a verified content hash. This prevents time-shifted
+                # memory poisoning where malicious content is injected via
+                # untrusted documents that appear benign in isolation.
+                doc.trust_level = DocumentTrustLevel.SUSPICIOUS
+                blocked_docs.append(doc)
+                threats.append(RAGThreat(
+                    threat_type=RAGThreatType.INTEGRITY_VIOLATION,
+                    severity=ThreatSeverity.LOW,
+                    description=(
+                        f"Document '{doc.document_id}' quarantined: UNKNOWN provenance. "
+                        f"Source '{doc.source}' is not in trusted sources list."
+                    ),
+                    document_id=doc.document_id,
+                    confidence=0.5,
+                    remediation="Add source to trusted_sources or verify document hash",
+                ))
             else:
-                if doc.source in self.trusted_sources:
-                    doc.trust_level = DocumentTrustLevel.TRUSTED
                 safe_docs.append(doc)
 
         # 3. Cross-document analysis

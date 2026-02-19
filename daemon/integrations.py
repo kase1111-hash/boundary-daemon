@@ -187,23 +187,42 @@ class MessageGate:
     """
     Message validation interface for NatLangChain and Agent-OS.
     All messages MUST pass through this gate for content validation.
+
+    SECURITY: Addresses Vuln #10 (Uncontrolled Agent Coordination) by
+    rate-limiting agent-to-agent messages and ensuring all inter-agent
+    communication is auditable.
     """
 
-    def __init__(self, daemon, strict_mode: bool = False):
+    # SECURITY (Vuln #10): Rate limit agent-to-agent messages
+    # Prevents runaway coordination at machine speed
+    MAX_AGENT_MESSAGES_PER_MINUTE = 200
+    AGENT_MESSAGE_WINDOW_SECONDS = 60
+
+    def __init__(self, daemon, strict_mode: bool = False,
+                 attestation_system=None):
         """
         Initialize message gate.
 
         Args:
             daemon: Reference to BoundaryDaemon instance
             strict_mode: If True, block on any potential issue
+            attestation_system: Optional AgentAttestationSystem for identity verification
         """
         self.daemon = daemon
         self.strict_mode = strict_mode
 
         if MESSAGE_CHECKER_AVAILABLE and MessageChecker is not None:
-            self.checker = MessageChecker(daemon=daemon, strict_mode=strict_mode)
+            self.checker = MessageChecker(
+                daemon=daemon,
+                strict_mode=strict_mode,
+                attestation_system=attestation_system,
+            )
         else:
             self.checker = None
+
+        # SECURITY (Vuln #10): Agent-to-agent rate limiting
+        self._agent_message_times: Dict[str, list] = {}
+        self._agent_rate_lock = __import__('threading').Lock()
 
     def check_natlangchain(
         self,
@@ -271,6 +290,9 @@ class MessageGate:
         """
         Check an Agent-OS inter-agent message.
 
+        SECURITY: Includes rate limiting (Vuln #10) and attestation
+        integration (Vuln #8) for all inter-agent messages.
+
         Args:
             sender_agent: Sending agent identifier
             recipient_agent: Receiving agent identifier
@@ -286,6 +308,23 @@ class MessageGate:
         """
         if not self.checker:
             return (False, "Message checker not available", None)
+
+        # SECURITY (Vuln #10): Rate limit agent-to-agent communication
+        # Prevents runaway coordination outpacing human oversight
+        rate_key = f"{sender_agent}->{recipient_agent}"
+        is_rate_ok, rate_msg = self._check_agent_rate_limit(rate_key)
+        if not is_rate_ok:
+            self.daemon.event_logger.log_event(
+                EventType.MESSAGE_CHECK,
+                f"Agent-OS message RATE LIMITED: {rate_key}",
+                metadata={
+                    'source': 'agent_os',
+                    'sender': sender_agent,
+                    'recipient': recipient_agent,
+                    'reason': rate_msg,
+                }
+            )
+            return (False, rate_msg, None)
 
         if timestamp is None:
             timestamp = datetime.utcnow().isoformat() + "Z"
@@ -366,6 +405,43 @@ class MessageGate:
         )
 
         return (result.allowed, result.reason, result.to_dict())
+
+    def _check_agent_rate_limit(self, rate_key: str) -> tuple:
+        """
+        Check rate limit for agent-to-agent communication.
+
+        SECURITY (Vuln #10): Prevents uncontrolled agent coordination
+        by limiting message frequency between agent pairs.
+
+        Args:
+            rate_key: Identifier for the agent pair (sender->recipient)
+
+        Returns:
+            (allowed, reason)
+        """
+        now = time.time()
+        with self._agent_rate_lock:
+            if rate_key not in self._agent_message_times:
+                self._agent_message_times[rate_key] = []
+
+            times = self._agent_message_times[rate_key]
+            window_start = now - self.AGENT_MESSAGE_WINDOW_SECONDS
+            # Prune old entries
+            self._agent_message_times[rate_key] = [
+                t for t in times if t > window_start
+            ]
+            times = self._agent_message_times[rate_key]
+
+            if len(times) >= self.MAX_AGENT_MESSAGES_PER_MINUTE:
+                return (False,
+                    f"Agent-to-agent rate limit exceeded for {rate_key}: "
+                    f"{self.MAX_AGENT_MESSAGES_PER_MINUTE} messages per "
+                    f"{self.AGENT_MESSAGE_WINDOW_SECONDS}s. This limit prevents "
+                    f"uncontrolled machine-speed coordination (Vuln #10)."
+                )
+
+            times.append(now)
+            return (True, "OK")
 
     def is_available(self) -> bool:
         """Check if message checking is available"""

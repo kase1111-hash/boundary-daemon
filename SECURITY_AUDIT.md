@@ -594,7 +594,204 @@ While most issues are addressed, consider:
 
 ---
 
-**Report Version:** 2.0
+---
+
+## Moltbook/OpenClaw Vulnerability Review (2026-02-19)
+
+> Cross-referencing the Boundary Daemon against the 10 vulnerability categories
+> identified in the [Moltbook/OpenClaw case study](https://github.com/kase1111-hash/Claude-prompts/blob/main/Moltbook-OpenClaw-Vulnerabilities.md).
+> Each category is assessed against the codebase with specific file/line references.
+
+### Vuln #1: Indirect Prompt Injection
+
+**Status:** MITIGATED - Strong detection in place
+
+The daemon has 50+ prompt injection patterns in `daemon/security/prompt_injection.py`
+covering DAN attacks, encoding bypasses, delimiter injection, Unicode homoglyphs,
+and zero-width character abuse. Detection operates at four sensitivity levels
+(low, medium, high, paranoid).
+
+**Remaining gap:** Pattern-based detection is inherently a blocklist approach.
+Novel injection techniques not matching existing patterns will bypass detection.
+Consider adding embedding-based semantic anomaly detection as a second layer.
+
+### Vuln #2: Memory Poisoning / Time-Shifted Injection
+
+**Status:** CRITICAL GAPS FIXED (this review)
+
+| Finding | Severity | Location | Fix Applied |
+|---------|----------|----------|-------------|
+| External documents with UNKNOWN provenance silently passed through | CRITICAL | `daemon/security/rag_injection.py:345-359` | Yes - quarantine UNKNOWN docs |
+| NatLangChain entries lack provenance tracking | HIGH | `daemon/messages/message_checker.py:35-66` | Yes - added `source_trust` field |
+| RecallGate checks memory class but not source trustworthiness | HIGH | `daemon/integrations.py:47-74` | No - requires Memory Vault changes |
+| Prompt injection detector lacked memory poisoning defense-in-depth | MEDIUM | `daemon/security/prompt_injection.py` | Existing patterns adequate |
+
+**Fixes applied:**
+- `rag_injection.py`: Documents with UNKNOWN provenance are now quarantined instead
+  of silently passed through. Documents must be from trusted sources or have verified
+  content hashes.
+- `message_checker.py`: Added `source_trust` and `ingestion_context` fields to
+  NatLangChainEntry with hash integrity protection. External/unknown entries now
+  require cryptographic signatures.
+
+### Vuln #3: Malicious Skills / Supply Chain
+
+**Status:** HIGH - Unsigned runtime code paths
+
+| Finding | Severity | Location |
+|---------|----------|----------|
+| `code_signer.py` exists but `verify_signature()` is never called at runtime | HIGH | `daemon/integrity/code_signer.py:438-469` |
+| Dynamic module loading via `importlib.exec_module()` without signature check | HIGH | `daemon/boundary_daemon.py:47-54` |
+| Optional modules loaded at startup without verification | HIGH | `daemon/boundary_daemon.py:74-170` |
+| `features.py` uses `__import__()` for feature detection | MEDIUM | `daemon/features.py:43-49` |
+
+**Recommendation:** Integrate `CodeSigner.verify_signature()` into the module loading
+path in `boundary_daemon.py`. All modules should have Ed25519 signatures verified
+before `exec_module()` is called.
+
+### Vuln #4: Bot-to-Bot Social Engineering
+
+**Status:** CRITICAL GAPS FIXED (this review)
+
+| Finding | Severity | Location | Fix Applied |
+|---------|----------|----------|-------------|
+| Agent authority claims accepted without cryptographic proof | CRITICAL | `daemon/messages/message_checker.py:400-407` | Yes |
+| No human-in-the-loop for destructive agent-to-agent commands | CRITICAL | `daemon/integrations.py:375-579` | Yes |
+| Ceremony system is human-focused, not integrated with agent messages | HIGH | `daemon/integrations.py:509-579` | Partial |
+| `requires_consent` flag is self-asserted by sending agent | HIGH | `daemon/messages/message_checker.py:405` | Yes |
+
+**Fixes applied:**
+- `message_checker.py`: Added destructive action pattern detection with mandatory
+  `ceremony_completed` metadata requirement. Destructive actions (delete account,
+  transfer funds, revoke permissions, etc.) now require human ceremony approval
+  regardless of authority level.
+- `message_checker.py`: Authority levels >= 2 now require cryptographic attestation
+  tokens verified against the AgentAttestationSystem.
+
+### Vuln #5: Credential Leakage
+
+**Status:** HIGH - Multiple credential exposure vectors
+
+| Finding | Severity | Location |
+|---------|----------|----------|
+| Plaintext bootstrap token fallback in `_write_bootstrap_fallback()` | HIGH | `daemon/auth/api_auth.py:495-528` |
+| Predictable credential file paths (./config/, ~/.boundary-daemon/) | MEDIUM | Multiple TUI/API files |
+| `BOUNDARY_API_TOKEN` env var support (inheritable, visible in /proc) | MEDIUM | `daemon/auth/secure_token_storage.py:583-614` |
+| Config salt file in predictable location | MEDIUM | `daemon/config/secure_config.py:287-290` |
+| Token files searchable via well-known directory scanning | MEDIUM | `boundary-tui/boundary_tui/client.py:527-549` |
+
+**Fixes applied:**
+- `prompt_injection.py`: Added credential exfiltration detection patterns to catch
+  attempts to extract credentials through agent communication channels.
+
+**Remaining recommendations:**
+- Remove plaintext token fallback; fail-fast if encryption unavailable
+- Deprecate `BOUNDARY_API_TOKEN` env var in favor of file-based tokens only
+- Randomize credential file paths or use OS keychain integration
+
+### Vuln #6: Unsandboxed Host Execution
+
+**Status:** MITIGATED - Strong sandbox infrastructure
+
+The daemon has comprehensive sandboxing via `daemon/sandbox/` (namespace isolation,
+seccomp-bpf syscall filtering, cgroups v2 resource limits, per-sandbox firewall rules).
+The `SandboxEnforcementBridge` integrates sandbox management with policy decisions.
+
+**Remaining gap:** Sandbox modules are optional and require root. When running without
+root, enforcement degrades silently. The `privilege_manager.py` tracks this, but
+operators may not realize enforcement is absent.
+
+### Vuln #7: Fetch-and-Execute
+
+**Status:** HIGH - Multiple remote fetch patterns
+
+| Finding | Severity | Location |
+|---------|----------|----------|
+| OIDC discovery fetches remote JSON without origin validation | HIGH | `daemon/identity/oidc_validator.py:168-187` |
+| JWKS endpoint fetched from untrusted remote discovery response | HIGH | `daemon/identity/oidc_validator.py:189-217` |
+| HTTP log shipper sends to configurable endpoints | MEDIUM | `daemon/external_integrations/siem/log_shipper.py:464-527` |
+| Threat intel HTTP requests to AbuseIPDB/VirusTotal | MEDIUM | `daemon/security/threat_intel.py:419-469` |
+| `importlib.exec_module()` on file-based module without verification | HIGH | `daemon/boundary_daemon.py:47-54` |
+
+**Fixes applied:**
+- `prompt_injection.py`: Added fetch-and-execute detection patterns (C2 check-in,
+  heartbeat/beacon, remote content execution, periodic polling).
+
+**Remaining recommendations:**
+- Add TLS certificate pinning for OIDC endpoints
+- Gate all external HTTP requests behind boundary mode checks (block in AIRGAP)
+- Add code signature verification before `exec_module()`
+
+### Vuln #8: Identity Spoofing / Impersonation
+
+**Status:** CRITICAL GAPS FIXED (this review)
+
+| Finding | Severity | Location | Fix Applied |
+|---------|----------|----------|-------------|
+| `sender_agent` accepted as plain string without verification | CRITICAL | `daemon/messages/message_checker.py:381-384` | Yes |
+| `authority_level` self-asserted without cryptographic proof | CRITICAL | `daemon/messages/message_checker.py:400-407` | Yes |
+| AgentAttestationSystem exists but NOT integrated with message checking | CRITICAL | `daemon/security/agent_attestation.py:509-694` | Yes |
+| FileCoordinator accepts operations without node authentication | HIGH | `daemon/distributed/coordinators.py:141-169` | No |
+
+**Fixes applied:**
+- `message_checker.py`: Integrated attestation system verification. Messages with
+  `authority_level >= 2` now require a valid `attestation_token` in metadata.
+  The token's agent identity is cross-checked against the claimed `sender_agent`.
+- `integrations.py`: MessageGate now accepts and forwards `attestation_system` to
+  the MessageChecker for runtime verification.
+
+### Vuln #9: Vibe-Coded Infrastructure
+
+**Status:** LOW - Well-architected codebase
+
+The Boundary Daemon does NOT exhibit "vibe-coded" characteristics:
+- No hardcoded secrets found in source code
+- Token generation uses `secrets.token_urlsafe()` (cryptographically secure)
+- Token storage uses SHA-256 hashing (not plaintext)
+- Token comparison uses `hmac.compare_digest()` (constant-time)
+- Rate limiting persists across daemon restarts
+- Configuration uses PBKDF2 with 480,000 iterations
+- Log chain uses SHA-256 hash chains with Ed25519 signatures
+
+The codebase demonstrates deliberate security engineering rather than
+auto-generated or copy-paste patterns.
+
+### Vuln #10: Uncontrolled Agent Coordination
+
+**Status:** HIGH GAPS FIXED (this review)
+
+| Finding | Severity | Location | Fix Applied |
+|---------|----------|----------|-------------|
+| No rate limiting on agent-to-agent messages | HIGH | `daemon/integrations.py:260-323` | Yes |
+| FileCoordinator has no authentication for inter-node ops | HIGH | `daemon/distributed/coordinators.py:141-169` | No |
+| Persistent rate limiter not tied to agent identity verification | MEDIUM | `daemon/auth/persistent_rate_limiter.py:393-444` | No |
+| No audit trail for agent communication channel creation/destruction | MEDIUM | `daemon/boundary_daemon.py` | No |
+
+**Fixes applied:**
+- `integrations.py`: Added per-agent-pair rate limiting (200 messages/minute default)
+  to the MessageGate to prevent runaway machine-speed coordination that outpaces
+  human oversight.
+
+### Summary of Fixes Applied in This Review
+
+| File | Changes | Vulns Addressed |
+|------|---------|-----------------|
+| `daemon/messages/message_checker.py` | Attestation integration, destructive action detection, provenance tracking | #2, #4, #8 |
+| `daemon/security/rag_injection.py` | UNKNOWN provenance document quarantine | #2 |
+| `daemon/security/prompt_injection.py` | Fetch-execute, C2, credential exfil patterns | #5, #7 |
+| `daemon/integrations.py` | Agent-to-agent rate limiting, attestation forwarding | #8, #10 |
+
+### Remaining Open Items (Require Follow-Up)
+
+1. **Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading
+2. **Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support
+3. **Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks
+4. **Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator
+5. **Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events
+
+---
+
+**Report Version:** 3.0
 **Classification:** CONFIDENTIAL
 **Distribution:** Security Team Only
-**Last Updated:** 2026-01-01
+**Last Updated:** 2026-02-19

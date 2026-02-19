@@ -545,6 +545,42 @@ class PromptInjectionDetector:
         ])
 
         # ============================================================
+        # FETCH-AND-EXECUTE PATTERNS (Vuln #7)
+        # ============================================================
+        # Detects attempts to establish C2-like fetch-and-execute channels
+
+        self._patterns.extend([
+            InjectionPattern(
+                name="fetch_execute_url",
+                pattern=r"(?:fetch|download|retrieve|get)\s+(?:instructions?|commands?|code|script)\s+from\s+(?:https?://|ftp://)",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.CRITICAL,
+                description="Fetch-and-execute pattern: retrieving instructions from URL",
+            ),
+            InjectionPattern(
+                name="periodic_checkin",
+                pattern=r"(?:every|each|per)\s+(?:\d+\s+)?(?:hours?|minutes?|seconds?)\s+(?:check|fetch|poll|visit|ping)\s+(?:https?://|the\s+(?:url|endpoint|server))",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.CRITICAL,
+                description="C2 check-in pattern: periodic remote polling for instructions",
+            ),
+            InjectionPattern(
+                name="execute_remote_content",
+                pattern=r"(?:execute|run|eval|process)\s+(?:the\s+)?(?:content|response|output|result)\s+(?:from|of)\s+(?:the\s+)?(?:url|endpoint|server|website|api)",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.CRITICAL,
+                description="Remote content execution: treating fetched data as instructions",
+            ),
+            InjectionPattern(
+                name="heartbeat_pattern",
+                pattern=r"(?:heartbeat|keepalive|keep-alive|beacon|phone\s+home)\s+(?:to|at|every|url|endpoint)",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.HIGH,
+                description="C2 heartbeat/beacon pattern detected",
+            ),
+        ])
+
+        # ============================================================
         # MEMORY POISONING PATTERNS
         # ============================================================
 
@@ -569,6 +605,37 @@ class PromptInjectionDetector:
                 injection_type=InjectionType.MEMORY_POISONING,
                 severity=DetectionSeverity.MEDIUM,
                 description="Fact injection attempt",
+            ),
+        ])
+
+        # ============================================================
+        # CREDENTIAL EXFILTRATION PATTERNS (Vuln #5)
+        # ============================================================
+        # Detects attempts to extract or transmit credentials through
+        # agent communication channels
+
+        self._patterns.extend([
+            InjectionPattern(
+                name="credential_exfil_request",
+                pattern=r"(?:share|send|transmit|give|post|upload)\s+(?:your\s+)?(?:api[_\s-]?key|token|password|secret|credential|private[_\s-]?key)",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.CRITICAL,
+                description="Credential exfiltration request: agent asked to share secrets",
+            ),
+            InjectionPattern(
+                name="config_exfil_request",
+                pattern=r"(?:read|show|cat|display|output)\s+(?:the\s+)?(?:config|\.env|credentials?|secrets?)\s+(?:file|path)",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.HIGH,
+                description="Configuration file exfiltration attempt",
+            ),
+            InjectionPattern(
+                name="curl_exfil",
+                pattern=r"(?:curl|wget|fetch)\s+.*?\s+(?:https?://[^\s]+)\s*(?:--data|--post|-d|-X\s+POST)",
+                injection_type=InjectionType.TOOL_ABUSE,
+                severity=DetectionSeverity.CRITICAL,
+                description="Data exfiltration via HTTP POST to external URL",
+                require_word_boundary=False,
             ),
         ])
 

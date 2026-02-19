@@ -38,6 +38,11 @@ class NatLangChainEntry:
 
     Based on NatLangChain's prose-based blockchain protocol where
     natural language is the core substrate for recording intent.
+
+    SECURITY: Includes provenance tracking fields to address Vuln #2
+    (Memory Poisoning / Time-Shifted Injection). Every entry records
+    its source trust level and ingestion context to prevent fragmented
+    payload assembly attacks.
     """
     author: str
     intent: str
@@ -45,12 +50,17 @@ class NatLangChainEntry:
     signature: Optional[str] = None
     previous_hash: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # SECURITY (Vuln #2): Provenance tracking fields
+    source_trust: str = "unknown"  # "verified", "trusted", "unknown", "external"
+    ingestion_context: Optional[str] = None  # How this entry was ingested
 
     def compute_hash(self) -> str:
-        """Compute SHA-256 hash of the entry"""
+        """Compute SHA-256 hash of the entry (includes provenance)"""
         data = f"{self.author}:{self.intent}:{self.timestamp}"
         if self.previous_hash:
             data += f":{self.previous_hash}"
+        # Include provenance in hash to prevent tampering with trust markers
+        data += f":{self.source_trust}"
         return hashlib.sha256(data.encode()).hexdigest()
 
     def to_dict(self) -> Dict[str, Any]:
@@ -62,6 +72,8 @@ class NatLangChainEntry:
             'signature': self.signature,
             'previous_hash': self.previous_hash,
             'metadata': self.metadata,
+            'source_trust': self.source_trust,
+            'ingestion_context': self.ingestion_context,
         }
 
 
@@ -131,6 +143,11 @@ class MessageChecker:
     - Constitutional compliance (Agent-OS)
     - Authority level violations
     - Blocked patterns and keywords
+    - Agent identity attestation (cryptographic verification)
+
+    SECURITY: Addresses Moltbook/OpenClaw Vuln #4 (Bot-to-Bot Social Engineering)
+    and Vuln #8 (Identity Spoofing) by requiring cryptographic attestation for
+    inter-agent messages with elevated authority levels.
     """
 
     # PII detection patterns (simplified - full implementation would use Presidio)
@@ -180,17 +197,34 @@ class MessageChecker:
         r'\b(prompt|system_prompt|user_prompt)\b',
     ]
 
-    def __init__(self, daemon=None, strict_mode: bool = False):
+    # Destructive action patterns that require human-in-the-loop confirmation
+    # regardless of authority level (Vuln #4: Bot-to-Bot Social Engineering)
+    DESTRUCTIVE_ACTION_PATTERNS = [
+        r'\b(delete\s+account|remove\s+user|drop\s+database)\b',
+        r'\b(transfer\s+funds?|send\s+(?:money|payment|crypto))\b',
+        r'\b(revoke\s+all|disable\s+security|shutdown\s+system)\b',
+        r'\b(format\s+disk|wipe\s+data|purge\s+all)\b',
+        r'\b(grant\s+admin|elevate\s+privileges?|override\s+policy)\b',
+    ]
+
+    def __init__(self, daemon=None, strict_mode: bool = False,
+                 attestation_system=None):
         """
         Initialize message checker.
 
         Args:
             daemon: Reference to BoundaryDaemon instance
             strict_mode: If True, block on any ambiguity or potential issue
+            attestation_system: Optional AgentAttestationSystem for identity verification
         """
         self.daemon = daemon
         self.strict_mode = strict_mode
+        self._attestation_system = attestation_system
         self._compile_patterns()
+        self._destructive_compiled = [
+            re.compile(pattern, re.IGNORECASE)
+            for pattern in self.DESTRUCTIVE_ACTION_PATTERNS
+        ]
 
     def _compile_patterns(self):
         """Pre-compile regex patterns for efficiency"""
@@ -330,6 +364,21 @@ class MessageChecker:
         )
         violations.extend(intent_result.violations)
 
+        # SECURITY (Vuln #2): Validate provenance tracking
+        valid_trust_levels = ("verified", "trusted", "unknown", "external")
+        if entry.source_trust not in valid_trust_levels:
+            violations.append(
+                f"Invalid source_trust '{entry.source_trust}': "
+                f"must be one of {valid_trust_levels}"
+            )
+
+        # SECURITY (Vuln #2): External/unknown entries require signature
+        if entry.source_trust in ("unknown", "external") and not entry.signature:
+            violations.append(
+                f"Entries with source_trust='{entry.source_trust}' require "
+                f"cryptographic signature for provenance verification"
+            )
+
         # Validate intent is not too vague (NatLangChain specific)
         if entry.intent and len(entry.intent.split()) < 3:
             violations.append("Intent too brief - provide more context")
@@ -368,6 +417,12 @@ class MessageChecker:
         - Constitutional rules adherence
         - Consent requirements
         - PII in content
+        - Agent identity attestation (cryptographic verification)
+        - Destructive action detection (human-in-the-loop requirement)
+
+        SECURITY: Addresses Moltbook/OpenClaw vulnerabilities:
+        - Vuln #4: Bot-to-Bot Social Engineering (destructive action gating)
+        - Vuln #8: Identity Spoofing (attestation token verification)
 
         Args:
             message: Agent-OS message to check
@@ -384,6 +439,45 @@ class MessageChecker:
             violations.append("Missing recipient_agent field")
         if not message.content:
             violations.append("Missing content field")
+
+        # SECURITY (Vuln #8): Verify agent identity via attestation token
+        # Authority levels >= 2 require cryptographic proof of identity
+        attestation_token = message.metadata.get('attestation_token')
+        if message.authority_level >= 2:
+            if self._attestation_system and attestation_token:
+                result = self._attestation_system.verify_token(attestation_token)
+                if not result.is_valid:
+                    violations.append(
+                        f"Agent attestation failed for sender '{message.sender_agent}': "
+                        f"{result.status.value}. Authority level >= 2 requires "
+                        f"cryptographic identity verification"
+                    )
+                elif result.agent_identity and result.agent_identity.agent_name != message.sender_agent:
+                    violations.append(
+                        f"Attestation token agent '{result.agent_identity.agent_name}' "
+                        f"does not match sender '{message.sender_agent}' - "
+                        f"possible identity spoofing"
+                    )
+            elif self._attestation_system:
+                violations.append(
+                    f"No attestation token provided for authority level "
+                    f"{message.authority_level}. Agent identity verification "
+                    f"required for authority >= 2 (anti-spoofing)"
+                )
+
+        # SECURITY (Vuln #4): Detect destructive actions requiring human-in-the-loop
+        destructive_actions = self._detect_destructive_actions(message.content)
+        if destructive_actions:
+            if not message.requires_consent:
+                violations.append(
+                    f"Destructive action(s) detected ({', '.join(destructive_actions)}) "
+                    f"require human-in-the-loop confirmation via requires_consent=True"
+                )
+            if not message.metadata.get('ceremony_completed'):
+                violations.append(
+                    f"Destructive action(s) ({', '.join(destructive_actions)}) require "
+                    f"completed ceremony approval (metadata.ceremony_completed=True)"
+                )
 
         # Check content
         content_result = self.check_message(
@@ -439,6 +533,28 @@ class MessageChecker:
             source=MessageSource.AGENT_OS,
             reason="Agent-OS message passed validation",
         )
+
+    def _detect_destructive_actions(self, content: str) -> list:
+        """
+        Detect destructive actions in message content that require
+        human-in-the-loop confirmation.
+
+        SECURITY: Addresses Vuln #4 (Bot-to-Bot Social Engineering).
+        Prevents agents from instructing other agents to perform
+        destructive actions without human approval.
+
+        Args:
+            content: Message content to analyze
+
+        Returns:
+            List of detected destructive action descriptions
+        """
+        found = []
+        for pattern in self._destructive_compiled:
+            match = pattern.search(content)
+            if match:
+                found.append(match.group())
+        return found
 
     def _detect_pii(self, content: str) -> Dict[str, List[str]]:
         """Detect PII in content"""
