@@ -780,18 +780,39 @@ auto-generated or copy-paste patterns.
 | `daemon/security/rag_injection.py` | UNKNOWN provenance document quarantine | #2 |
 | `daemon/security/prompt_injection.py` | Fetch-execute, C2, credential exfil patterns | #5, #7 |
 | `daemon/integrations.py` | Agent-to-agent rate limiting, attestation forwarding | #8, #10 |
+| `daemon/boundary_daemon.py` | Deferred module loading, pre-load hash verification | #3 |
+| `daemon/features.py` | Module import allowlist for supply chain protection | #3 |
 
 ### Remaining Open Items (Require Follow-Up)
 
-1. **Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading
+1. ~~**Supply Chain (Vuln #3):** Integrate `CodeSigner.verify_signature()` into runtime module loading~~ **FIXED**
 2. **Credential Leakage (Vuln #5):** Remove plaintext token fallback, deprecate env var support
 3. **Fetch-Execute (Vuln #7):** Add TLS cert pinning for OIDC, gate HTTP behind mode checks
 4. **Identity Spoofing (Vuln #8):** Add node authentication to FileCoordinator
 5. **Agent Coordination (Vuln #10):** Add audit trail for channel lifecycle events
 
+### Fix: Supply Chain Module Verification (Vuln #3)
+
+**Files changed:**
+- `daemon/boundary_daemon.py` - Deferred API server loading to after integrity verification;
+  added `_verify_file_hash()` for pre-load SHA-256 hash verification against manifest;
+  added `_load_api_server_module()` with hash check before `exec_module()`
+- `daemon/features.py` - Added `_ALLOWED_MODULE_PATHS` allowlist to `_check_import()`;
+  rejects any module path not in the hardcoded allowlist
+
+**What was fixed:**
+- API server module (`api/boundary_api.py`) was loaded via `exec_module()` at
+  module import time, BEFORE the `DaemonIntegrityProtector.verify_startup()` check
+  in `__init__`. This created a window where tampered code could execute.
+- Now: loading is deferred to `__init__`, after integrity verification completes.
+  A standalone `_verify_file_hash()` function checks the file's SHA-256 against
+  the signing manifest before `exec_module()` is called.
+- `features.py` now enforces a frozen allowlist of importable module paths,
+  preventing configuration injection attacks that could load arbitrary modules.
+
 ---
 
-**Report Version:** 3.0
+**Report Version:** 3.1
 **Classification:** CONFIDENTIAL
 **Distribution:** Security Team Only
 **Last Updated:** 2026-02-19

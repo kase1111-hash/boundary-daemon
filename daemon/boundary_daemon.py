@@ -41,25 +41,161 @@ from .tripwires import TripwireSystem, LockdownManager, TripwireViolation
 from .event_logger import EventLogger, EventType
 from .constants import Paths
 
-# Import API server for external CLI tools
-# SECURITY: Use importlib instead of sys.path manipulation to prevent import hijacking
-try:
-    import importlib
-    _api_spec = importlib.util.spec_from_file_location(
-        "api.boundary_api",
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "api", "boundary_api.py")
-    )
-    if _api_spec and _api_spec.loader:
-        _api_module = importlib.util.module_from_spec(_api_spec)
-        _api_spec.loader.exec_module(_api_module)
-        BoundaryAPIServer = _api_module.BoundaryAPIServer
-        API_SERVER_AVAILABLE = True
-    else:
-        API_SERVER_AVAILABLE = False
-        BoundaryAPIServer = None
-except (ImportError, AttributeError, FileNotFoundError):
-    API_SERVER_AVAILABLE = False
-    BoundaryAPIServer = None
+# SECURITY (Vuln #3 - Supply Chain): API server is loaded via importlib.exec_module()
+# which executes arbitrary code. We DEFER loading until after integrity verification
+# in __init__ to prevent execution of tampered modules.
+# Previously, this loaded at module import time (before integrity checks).
+import importlib
+import hashlib as _hashlib_for_verify
+
+API_SERVER_AVAILABLE = False
+BoundaryAPIServer = None
+
+# Path to the API module (computed once, loaded later after verification)
+_API_MODULE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "api", "boundary_api.py"
+)
+
+
+def _verify_file_hash(file_path: str, manifest_path: str = None) -> bool:
+    """
+    Verify a file's SHA-256 hash against the signing manifest BEFORE loading it.
+
+    SECURITY (Vuln #3): This function MUST be called before exec_module() to
+    prevent execution of tampered code. This closes the supply chain attack
+    window where modules were loaded before integrity verification.
+
+    Args:
+        file_path: Absolute path to the file to verify
+        manifest_path: Path to manifest.json (auto-detected if None)
+
+    Returns:
+        True if file hash matches manifest (or no manifest exists in dev mode)
+    """
+    import json as _json
+
+    # Auto-detect manifest path
+    if manifest_path is None:
+        daemon_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        manifest_candidates = [
+            os.path.join(daemon_root, 'config', 'manifest.json'),
+            os.path.join(daemon_root, 'manifest.json'),
+            '/etc/boundary-daemon/manifest.json',
+        ]
+        for candidate in manifest_candidates:
+            if os.path.exists(candidate):
+                manifest_path = candidate
+                break
+
+    if not manifest_path or not os.path.exists(manifest_path):
+        # No manifest = development mode; allow but warn
+        logger.debug(
+            "No signing manifest found - skipping pre-load hash verification "
+            "(acceptable in development, not in production)"
+        )
+        return True
+
+    try:
+        # Compute the file's current hash
+        sha256 = _hashlib_for_verify.sha256()
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                sha256.update(chunk)
+        current_hash = sha256.hexdigest()
+
+        # Load manifest and find the file's expected hash
+        with open(manifest_path, 'r') as f:
+            manifest_data = _json.load(f)
+
+        # Compute relative path from daemon root
+        daemon_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            rel_path = os.path.relpath(file_path, daemon_root)
+        except ValueError:
+            rel_path = file_path
+
+        # Search manifest for this file
+        # Support both code_signer.py format (list of modules) and
+        # daemon_integrity.py format (dict of files)
+        expected_hash = None
+
+        if 'modules' in manifest_data:
+            # code_signer.py manifest format
+            for module in manifest_data['modules']:
+                if module.get('path') == rel_path:
+                    expected_hash = module.get('sha256')
+                    break
+        elif 'files' in manifest_data:
+            # daemon_integrity.py manifest format
+            file_info = manifest_data['files'].get(rel_path)
+            if file_info:
+                expected_hash = file_info.get('hash')
+
+        if expected_hash is None:
+            logger.warning(
+                f"File {rel_path} not found in manifest - "
+                f"cannot verify integrity before loading"
+            )
+            return True  # Not in manifest = not a signed module
+
+        if current_hash == expected_hash:
+            logger.debug(f"Pre-load hash verified for {rel_path}")
+            return True
+        else:
+            logger.critical(
+                f"SECURITY: Hash mismatch for {rel_path} - "
+                f"expected {expected_hash[:16]}..., got {current_hash[:16]}... "
+                f"Module may have been tampered with. REFUSING TO LOAD."
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"Pre-load hash verification failed for {file_path}: {e}")
+        # Fail-closed: do not load unverifiable modules
+        return False
+
+
+def _load_api_server_module():
+    """
+    Load the API server module with pre-load hash verification.
+
+    SECURITY (Vuln #3): Verifies file hash against manifest BEFORE
+    calling exec_module() to prevent execution of tampered code.
+
+    Returns:
+        (BoundaryAPIServer_class, available_bool)
+    """
+    global API_SERVER_AVAILABLE, BoundaryAPIServer
+
+    try:
+        if not os.path.exists(_API_MODULE_PATH):
+            logger.info("API server module not found - API unavailable")
+            return None, False
+
+        # SECURITY: Verify hash BEFORE exec_module()
+        if not _verify_file_hash(_API_MODULE_PATH):
+            logger.critical(
+                "SECURITY: API server module failed integrity check. "
+                "NOT loading potentially tampered module."
+            )
+            return None, False
+
+        _api_spec = importlib.util.spec_from_file_location(
+            "api.boundary_api", _API_MODULE_PATH
+        )
+        if _api_spec and _api_spec.loader:
+            _api_module = importlib.util.module_from_spec(_api_spec)
+            _api_spec.loader.exec_module(_api_module)
+            BoundaryAPIServer = _api_module.BoundaryAPIServer
+            API_SERVER_AVAILABLE = True
+            logger.info("API server module loaded (hash verified)")
+            return BoundaryAPIServer, True
+        else:
+            return None, False
+    except (ImportError, AttributeError, FileNotFoundError) as e:
+        logger.warning(f"API server module loading failed: {e}")
+        return None, False
 
 # Import signed event logger (Plan 3: Cryptographic Log Signing)
 try:
@@ -505,6 +641,11 @@ class BoundaryDaemon:
             logger.warning("Daemon integrity check SKIPPED - this is insecure!")
         else:
             logger.info("Daemon integrity protection: not available")
+
+        # SECURITY (Vuln #3 - Supply Chain): Load API server module AFTER integrity
+        # verification. This ensures tampered modules are detected before execution.
+        # Previously, this happened at module import time (before any checks).
+        _load_api_server_module()
 
         self.log_dir = os.path.normpath(log_dir)
         os.makedirs(self.log_dir, exist_ok=True)
