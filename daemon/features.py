@@ -4,6 +4,12 @@ Feature Detection Module for Boundary Daemon
 Centralizes all optional feature detection and provides diagnostics
 for understanding which capabilities are available at runtime.
 
+SECURITY (Vuln #3 - Supply Chain): All module paths used in feature detection
+are HARDCODED in this file, not user-controlled. The __import__() calls are
+safe because module_path values come from trusted string literals below,
+not from external input, configuration files, or environment variables.
+An allowlist enforces this invariant as defense-in-depth.
+
 Usage:
     from daemon.features import FEATURES, get_feature_status, log_feature_summary
 
@@ -23,6 +29,36 @@ IS_WINDOWS = sys.platform == 'win32'
 IS_LINUX = sys.platform.startswith('linux')
 IS_MACOS = sys.platform == 'darwin'
 
+# SECURITY (Vuln #3): Allowlist of module paths that _check_import() may load.
+# Any import not in this set will be rejected to prevent supply chain attacks
+# via configuration injection into the module_path parameter.
+_ALLOWED_MODULE_PATHS = frozenset([
+    "daemon.logging_config",
+    "api.boundary_api",
+    "daemon.signed_event_logger",
+    "daemon.enforcement",
+    "daemon.privilege_manager",
+    "daemon.hardware",
+    "daemon.distributed",
+    "daemon.policy",
+    "daemon.auth",
+    "daemon.security",
+    "daemon.security.clock_monitor",
+    "daemon.security.daemon_integrity",
+    "daemon.security.network_attestation",
+    "daemon.watchdog",
+    "daemon.telemetry",
+    "daemon.messages",
+    "daemon.config",
+    "daemon.redundant_event_logger",
+    "daemon.memory_monitor",
+    "daemon.resource_monitor",
+    "daemon.health_monitor",
+    "daemon.queue_monitor",
+    "daemon.monitoring_report",
+    "daemon.siem",
+])
+
 
 @dataclass
 class FeatureInfo:
@@ -37,9 +73,21 @@ def _check_import(module_path: str, items: Optional[List[str]] = None) -> Tuple[
     """
     Check if a module can be imported.
 
+    SECURITY (Vuln #3): Validates module_path against allowlist to prevent
+    arbitrary module loading. While all current callers use hardcoded paths,
+    this defense-in-depth check prevents future misuse.
+
     Returns:
         Tuple of (available, reason)
     """
+    # SECURITY: Reject module paths not in the allowlist
+    if module_path not in _ALLOWED_MODULE_PATHS:
+        logger.warning(
+            f"SECURITY: Rejected import of '{module_path}' - "
+            f"not in allowed module paths (supply chain protection)"
+        )
+        return False, f"Module path '{module_path}' not in allowlist"
+
     try:
         if items:
             module = __import__(module_path, fromlist=items)

@@ -1664,26 +1664,43 @@ class BoundaryAPIClient:
         token: Optional[str],
         token_file: Optional[str],
     ) -> Optional[str]:
-        """Resolve token from various sources."""
-        # Priority: direct token > token file > environment variable
+        """Resolve token from direct parameter or token file.
+
+        SECURITY (Vuln #5): Environment variable fallback (BOUNDARY_API_TOKEN)
+        has been REMOVED. Env vars are visible via /proc/pid/environ, leaked in
+        shell history and crash dumps, and inherited by all child processes.
+        Use token_file with 0o600 permissions instead.
+
+        Priority: direct token > token file (with permission check)
+        """
         if token:
             return token.strip()
 
         if token_file:
             try:
+                # SECURITY: Verify file permissions before reading
+                st = os.stat(token_file)
+                if st.st_mode & 0o077:
+                    logger.error(
+                        f"SECURITY: Refusing to read token file {token_file} "
+                        f"with mode {oct(st.st_mode)} - must be 0o600 or stricter"
+                    )
+                    return None
                 with open(token_file, 'r') as f:
                     for line in f:
                         line = line.strip()
                         if line and not line.startswith('#'):
                             return line
             except (IOError, OSError, PermissionError) as e:
-                # Token file access errors
                 logger.warning(f"Could not read token file: {e}")
 
-        # Try environment variable
-        env_token = os.environ.get('BOUNDARY_API_TOKEN')
-        if env_token:
-            return env_token.strip()
+        # SECURITY (Vuln #5): env var fallback removed
+        if os.environ.get('BOUNDARY_API_TOKEN'):
+            logger.error(
+                "SECURITY: BOUNDARY_API_TOKEN env var is set but will NOT be "
+                "used (deprecated - Vuln #5). Use --token-file with a file "
+                "having 0o600 permissions instead."
+            )
 
         return None
 

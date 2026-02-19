@@ -505,14 +505,21 @@ class DashboardClient(DaemonProtocol):
         return None
 
     def _resolve_token(self) -> Optional[str]:
-        """Resolve API token from environment, file, or bootstrap token."""
+        """Resolve API token from token file or bootstrap token.
+
+        SECURITY (Vuln #5): Environment variable BOUNDARY_API_TOKEN is no longer
+        accepted. Env vars are visible via /proc/pid/environ, leaked in shell
+        history and crash dumps, and inherited by all child processes.
+        Use file-based token storage with 0o600 permissions instead.
+        """
         self._log_debug("Resolving API token...")
 
-        # 1. Environment variable (highest priority)
-        token = os.environ.get('BOUNDARY_API_TOKEN')
-        if token:
-            self._log_debug("Found token in BOUNDARY_API_TOKEN environment variable")
-            return token.strip()
+        # SECURITY (Vuln #5): env var fallback removed
+        if os.environ.get('BOUNDARY_API_TOKEN'):
+            self._log_debug(
+                "SECURITY: BOUNDARY_API_TOKEN env var is set but will NOT be "
+                "used (deprecated). Use token file with 0o600 permissions."
+            )
 
         # Build paths to check
         token_paths = []
@@ -548,11 +555,19 @@ class DashboardClient(DaemonProtocol):
             os.path.expanduser('~/.boundary-daemon/config/tui_token.txt'),
         ])
 
-        # 2. Check for bootstrap/TUI token files (plaintext token)
+        # 2. Check for bootstrap/TUI token files (with permission verification)
+        # SECURITY (Vuln #5): Verify file permissions before reading tokens
         for path in bootstrap_paths:
             if os.path.exists(path):
                 self._log_debug(f"Checking bootstrap/TUI token file: {path}")
                 try:
+                    st = os.stat(path)
+                    if st.st_mode & 0o077:
+                        self._log_debug(
+                            f"SECURITY: Skipping {path} - file mode {oct(st.st_mode)} "
+                            f"is too permissive (must be 0o600 or stricter)"
+                        )
+                        continue
                     with open(path, 'r') as f:
                         for line in f:
                             line = line.strip()
@@ -635,9 +650,12 @@ class DashboardClient(DaemonProtocol):
         return None
 
     def _save_tui_token(self, token: str):
-        """Save TUI token to file for future use."""
+        """Save TUI token to file with secure permissions.
+
+        SECURITY (Vuln #5): Token files are created with 0o600 permissions
+        to prevent other users from reading credentials.
+        """
         try:
-            # Try to save in config directory
             save_paths = [
                 Path(__file__).parent.parent.parent / 'config' / 'tui_token.txt',
                 Path.home() / '.boundary-daemon' / 'config' / 'tui_token.txt',
@@ -646,11 +664,18 @@ class DashboardClient(DaemonProtocol):
             for path in save_paths:
                 try:
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(path, 'w') as f:
+                    # SECURITY: Use os.open with exclusive permissions to avoid
+                    # TOCTOU race between file creation and chmod
+                    fd = os.open(
+                        str(path),
+                        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                        0o600,
+                    )
+                    with os.fdopen(fd, 'w') as f:
                         f.write(f"# TUI Dashboard Token - Auto-generated\n")
                         f.write(f"# Created: {datetime.now().isoformat()}\n")
                         f.write(f"{token}\n")
-                    self._log_debug(f"Saved TUI token to {path}")
+                    self._log_debug(f"Saved TUI token to {path} (mode 0o600)")
                     return
                 except (OSError, PermissionError):
                     continue
