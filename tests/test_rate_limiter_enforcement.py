@@ -16,10 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from daemon.auth.persistent_rate_limiter import PersistentRateLimiter
 
 
-# ===========================================================================
-# Per-Token Rate Limit Tests
-# ===========================================================================
-
 class TestPerTokenRateLimit:
     def test_per_token_rate_limit_blocks_after_threshold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -69,10 +65,6 @@ class TestPerTokenRateLimit:
             assert reason_b == "OK"
 
 
-# ===========================================================================
-# Global Rate Limit Tests
-# ===========================================================================
-
 class TestGlobalRateLimit:
     def test_global_rate_limit_blocks_after_threshold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -118,10 +110,6 @@ class TestGlobalRateLimit:
             allowed, reason = limiter.check_global_rate_limit()
             assert allowed is False
 
-
-# ===========================================================================
-# Rate Limit Window Expiry Tests
-# ===========================================================================
 
 class TestRateLimitWindowExpiry:
     def test_rate_limit_expires_after_window(self):
@@ -184,10 +172,6 @@ class TestRateLimitWindowExpiry:
                 allowed, reason = limiter.check_global_rate_limit()
                 assert allowed is True, f"Global should be unblocked after window but got: {reason}"
 
-
-# ===========================================================================
-# State Persistence Tests
-# ===========================================================================
 
 class TestRateLimitPersistence:
     def test_rate_limit_state_persists_across_instances(self):
@@ -288,10 +272,6 @@ class TestRateLimitPersistence:
             assert data["version"] == 1
 
 
-# ===========================================================================
-# Command Rate Limit Tests
-# ===========================================================================
-
 class TestCommandRateLimit:
     def test_command_rate_limit_enforcement(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -391,10 +371,6 @@ class TestCommandRateLimit:
             assert allowed_token is True
 
 
-# ===========================================================================
-# Return Format Tests
-# ===========================================================================
-
 class TestRateLimiterReturnFormat:
     def test_rate_limiter_returns_correct_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -475,10 +451,6 @@ class TestRateLimiterReturnFormat:
             assert result[0] is False
             assert "test_cmd" in result[1]
 
-
-# ===========================================================================
-# Concurrent Rate Limiting Tests
-# ===========================================================================
 
 class TestConcurrentRateLimiting:
     def test_concurrent_rate_limiting(self):
@@ -563,10 +535,6 @@ class TestConcurrentRateLimiting:
             )
             assert denied_count == num_threads - max_global
 
-
-# ===========================================================================
-# Edge Case and Additional Tests
-# ===========================================================================
 
 class TestRateLimiterEdgeCases:
     def test_clear_all_resets_limits(self):

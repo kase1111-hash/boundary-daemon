@@ -25,10 +25,6 @@ from daemon.health_monitor import (
 )
 
 
-# ===========================================================================
-# Enum Tests
-# ===========================================================================
-
 class TestHealthStatus:
     def test_health_status_values(self):
         assert HealthStatus.HEALTHY.value == "healthy"
@@ -45,10 +41,6 @@ class TestComponentStatus:
         assert ComponentStatus.UNRESPONSIVE.value == "unresponsive"
         assert ComponentStatus.NOT_AVAILABLE.value == "not_available"
 
-
-# ===========================================================================
-# Dataclass Tests
-# ===========================================================================
 
 class TestComponentHealth:
     def test_component_health_creation(self):
@@ -182,10 +174,6 @@ class TestHealthMonitorConfig:
         assert 'history_size' in d
 
 
-# ===========================================================================
-# HealthMonitor Initialization Tests
-# ===========================================================================
-
 class TestHealthMonitorInit:
     def test_init_default(self):
         monitor = HealthMonitor()
@@ -221,10 +209,6 @@ class TestHealthMonitorInit:
         assert monitor._current_status == HealthStatus.UNKNOWN
 
 
-# ===========================================================================
-# HealthMonitor Component Registration Tests
-# ===========================================================================
-
 class TestHealthMonitorComponents:
     def test_register_component(self):
         monitor = HealthMonitor()
@@ -247,10 +231,6 @@ class TestHealthMonitorComponents:
         assert health.status == ComponentStatus.NOT_AVAILABLE
         assert health.last_check == 0
 
-
-# ===========================================================================
-# HealthMonitor Lifecycle Tests
-# ===========================================================================
 
 class TestHealthMonitorLifecycle:
     def test_start_sets_running(self):
@@ -309,10 +289,6 @@ class TestHealthMonitorLifecycle:
         monitor.stop()  # Should not raise
 
 
-# ===========================================================================
-# HealthMonitor Heartbeat Tests
-# ===========================================================================
-
 class TestHealthMonitorHeartbeat:
     def test_heartbeat_increments_count(self):
         monitor = HealthMonitor()
@@ -333,10 +309,6 @@ class TestHealthMonitorHeartbeat:
             monitor.heartbeat()
         assert monitor._heartbeat_count >= 5
 
-
-# ===========================================================================
-# HealthMonitor Status Calculation Tests
-# ===========================================================================
 
 class TestHealthMonitorStatusCalculation:
     def test_calculate_overall_empty(self):
@@ -393,10 +365,6 @@ class TestHealthMonitorStatusCalculation:
         assert status == HealthStatus.HEALTHY
 
 
-# ===========================================================================
-# HealthMonitor Telemetry Tests
-# ===========================================================================
-
 class TestHealthMonitorTelemetry:
     def test_set_telemetry_manager(self):
         monitor = HealthMonitor()
@@ -404,10 +372,6 @@ class TestHealthMonitorTelemetry:
         monitor.set_telemetry_manager(mock_telemetry)
         assert monitor._telemetry_manager == mock_telemetry
 
-
-# ===========================================================================
-# Integration Tests
-# ===========================================================================
 
 class TestHealthMonitorIntegration:
     def test_health_check_flow(self):
@@ -477,10 +441,6 @@ class TestHealthMonitorIntegration:
         # May or may not have alerts depending on timing
         # Just verify no exceptions
 
-
-# ===========================================================================
-# Edge Cases
-# ===========================================================================
 
 class TestHealthMonitorEdgeCases:
     def test_check_with_exception(self):

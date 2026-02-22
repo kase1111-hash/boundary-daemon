@@ -261,6 +261,7 @@ class IntegrationClient(ABC):
         pass
 
 
+# TODO: ServiceNow integration requires 'requests' package and has no automated tests against a real instance
 class ServiceNowClient(IntegrationClient):
     """ServiceNow integration client."""
 
@@ -366,6 +367,7 @@ class ServiceNowClient(IntegrationClient):
         return self.update_incident(case, ref)
 
 
+# TODO: Slack integration uses incoming webhooks only — no thread reply support for case updates
 class SlackClient(IntegrationClient):
     """Slack integration client."""
 
@@ -438,6 +440,7 @@ class SlackClient(IntegrationClient):
         return self.update_incident(case, ref)
 
 
+# TODO: PagerDuty update_incident() returns False (stub) — implement note-adding via PagerDuty API
 class PagerDutyClient(IntegrationClient):
     """PagerDuty integration client."""
 

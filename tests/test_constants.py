@@ -18,10 +18,6 @@ from daemon.constants import (
 )
 
 
-# ===========================================================================
-# Timeout Constants Tests
-# ===========================================================================
-
 class TestTimeouts:
     def test_subprocess_timeouts_positive(self):
         assert Timeouts.SUBPROCESS_SHORT > 0
@@ -69,10 +65,6 @@ class TestTimeouts:
         assert hasattr(Timeouts, 'SOCKET_CONNECT')
 
 
-# ===========================================================================
-# Buffer Size Constants Tests
-# ===========================================================================
-
 class TestBufferSizes:
     def test_socket_buffers_positive(self):
         assert BufferSizes.SOCKET_RECV > 0
@@ -103,10 +95,6 @@ class TestBufferSizes:
         assert hasattr(BufferSizes, 'SOCKET_RECV')
         assert hasattr(BufferSizes, 'FILE_CHUNK')
 
-
-# ===========================================================================
-# Permission Constants Tests
-# ===========================================================================
 
 class TestPermissions:
     def test_owner_permissions(self):
@@ -146,10 +134,6 @@ class TestPermissions:
             # This validates they're proper permission values
             assert 0 <= perm.value <= 0o7777
 
-
-# ===========================================================================
-# Integration Tests
-# ===========================================================================
 
 class TestConstantsIntegration:
     def test_timeout_reasonable_for_security(self):

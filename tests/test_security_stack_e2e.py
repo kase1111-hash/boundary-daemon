@@ -365,13 +365,11 @@ class TestSecurityStackE2E:
         token_result = attestation.verify_token(session_token)
         assert token_result.is_valid, "Agent token should be valid"
 
-        # Step 1: Check user input for injection
         detector = get_prompt_injection_detector()
         user_input = "Help me understand Python decorators"
         input_result = detector.analyze(user_input)
         assert input_result.is_safe, "Safe input should pass injection check"
 
-        # Step 2: Retrieve documents (RAG)
         # Configure with trusted sources so clean docs from known sources pass
         rag_detector = configure_rag_detector(
             trusted_sources={"official_docs", "internal_kb"},
@@ -387,7 +385,6 @@ class TestSecurityStackE2E:
         rag_result = rag_detector.analyze_documents(documents, query=user_input)
         assert rag_result.is_safe, "Clean RAG documents should pass"
 
-        # Step 3: Tool invocation with validation
         validator = get_tool_validator()
         validator.register_policy(ToolPolicy(
             name="code_search",
@@ -405,7 +402,6 @@ class TestSecurityStackE2E:
         output_result = validator.validate_output("code_search", tool_output, call_id)
         validator.end_tool_call(call_id)
 
-        # Step 4: Validate AI response
         guardrails = get_response_guardrails()
         ai_response = """
         A decorator in Python is a function that modifies another function.
@@ -421,7 +417,6 @@ class TestSecurityStackE2E:
         response_result = guardrails.analyze(ai_response)
         assert response_result.passed, "Safe response should pass guardrails"
 
-        # Step 5: Bind the action for audit
         binding = attestation.bind_action(
             token=session_token,
             action_type="user_query",

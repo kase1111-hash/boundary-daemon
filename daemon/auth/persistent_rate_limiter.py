@@ -312,6 +312,7 @@ class PersistentRateLimiter:
 
     def _cleanup_expired(self):
         """Remove expired entries to prevent unbounded growth."""
+        # TODO: auto-cleanup threshold (24h) should be configurable via constructor or config file
         now = time.time()
 
         if (now - self._last_cleanup) < self.cleanup_interval:

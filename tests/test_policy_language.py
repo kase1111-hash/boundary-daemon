@@ -39,10 +39,6 @@ from daemon.policy_language import (
 )
 
 
-# ===========================================================================
-# Helpers
-# ===========================================================================
-
 def _make_env_state(**overrides):
     """Build a minimal EnvironmentState for testing."""
     defaults = dict(
@@ -126,10 +122,6 @@ def _make_policy_set(rules=None, strategy='first_match'):
         conflict_resolution=strategy,
     )
 
-
-# ===========================================================================
-# Condition Evaluation — every field × relevant operators
-# ===========================================================================
 
 class TestConditionEvaluation:
     # --- mode ---
@@ -290,10 +282,6 @@ class TestConditionEvaluation:
         assert evaluate_condition(Condition('nonexistent', 'eq', 'x'), ctx) is False
 
 
-# ===========================================================================
-# Rule Evaluation
-# ===========================================================================
-
 class TestRuleEvaluation:
     """Test AND semantics and rule matching."""
 
@@ -341,10 +329,6 @@ class TestRuleEvaluation:
             result = evaluate_rule(rule, _make_ctx())
             assert result == PolicyDecision(action)
 
-
-# ===========================================================================
-# PolicySet Evaluation
-# ===========================================================================
 
 class TestPolicySetEvaluation:
     def test_first_match_returns_highest_priority(self):
@@ -415,10 +399,6 @@ class TestPolicySetEvaluation:
         result = evaluate_policy_set(ps, _make_ctx())
         assert result == PolicyDecision.DENY
 
-
-# ===========================================================================
-# Security Invariant: custom rules can only tighten
-# ===========================================================================
 
 class TestTighteningInvariant:
     """
@@ -498,10 +478,6 @@ class TestTighteningInvariant:
             f"expected={expected.value}, got={result.value}"
         )
 
-
-# ===========================================================================
-# Validation
-# ===========================================================================
 
 class TestValidation:
     def test_valid_policy_set_no_errors(self):
@@ -583,10 +559,6 @@ class TestValidation:
         assert any('Invalid hardware_trust' in e.message for e in errors)
 
 
-# ===========================================================================
-# Static Analysis
-# ===========================================================================
-
 class TestStaticAnalysis:
     def test_find_conflicts_different_actions(self):
         ps = _make_policy_set(rules=[
@@ -641,10 +613,6 @@ class TestStaticAnalysis:
         assert find_shadows(ps) == []
 
 
-# ===========================================================================
-# Serialization
-# ===========================================================================
-
 class TestSerialization:
     def test_json_round_trip(self):
         ps = _make_policy_set(rules=[
@@ -684,10 +652,6 @@ class TestSerialization:
         assert 'value' not in d
 
 
-# ===========================================================================
-# EvaluationContext.build
-# ===========================================================================
-
 class TestEvaluationContextBuild:
     def test_build_from_standard_types(self):
         env = _make_env_state(
@@ -721,10 +685,6 @@ class TestEvaluationContextBuild:
         assert ctx.agent == 'test-agent'
         assert ctx.hour == 14
 
-
-# ===========================================================================
-# PolicyEngine Integration
-# ===========================================================================
 
 class TestPolicyEngineIntegration:
     def _make_engine_with_policy(self, mode, rules, strategy='first_match'):
@@ -887,10 +847,6 @@ class TestPolicyEngineIntegration:
         assert engine.evaluate_policy(request, env) == PolicyDecision.ALLOW
         assert engine.get_custom_policies() is None
 
-
-# ===========================================================================
-# ROADMAP Examples — verifying the four use cases from the roadmap
-# ===========================================================================
 
 class TestRoadmapExamples:
     """

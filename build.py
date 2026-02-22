@@ -800,7 +800,6 @@ Examples:
     print_info(f"Platform: {platform.system()} {platform.machine()}")
     print()
 
-    # Step 1: Pre-build checks
     print_step(1, total_steps, "Running pre-build checks...")
     if not check_python_version():
         return 1
@@ -810,12 +809,10 @@ Examples:
         return 1
     print_success("Pre-build checks passed!")
 
-    # Step 2: Clean if requested
     print_step(2, total_steps, "Cleaning previous build artifacts..." if args.clean else "Skipping clean (use --clean to enable)")
     if args.clean:
         clean_build()
 
-    # Step 3: Install dependencies
     print_step(3, total_steps, "Installing dependencies..." if not args.skip_deps else "Skipping dependency installation (--skip-deps)")
     if not args.skip_deps:
         if not install_pyinstaller():
@@ -823,18 +820,15 @@ Examples:
         if not install_dependencies():
             return 1
 
-    # Step 4: Generate integrity files (signing key and manifest)
     print_step(4, total_steps, "Generating integrity manifest...")
     if not setup_integrity_files():
         print_warning("Failed to generate integrity files - build will continue but runtime verification may fail")
 
-    # Step 5: Setup build environment
     print_step(5, total_steps, "Setting up build environment...")
     Path("dist").mkdir(exist_ok=True)
     Path("build").mkdir(exist_ok=True)
     print_info("Created output directories")
 
-    # Step 6: Build
     onefile = not args.onedir
     print_step(6, total_steps, "Building boundary-daemon...")
     success = build_executable(

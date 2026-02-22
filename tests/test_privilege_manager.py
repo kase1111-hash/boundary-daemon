@@ -30,10 +30,6 @@ from daemon.privilege_manager import (
 )
 
 
-# ===========================================================================
-# Platform Detection Tests
-# ===========================================================================
-
 class TestPlatformDetection:
     def test_is_windows_returns_bool(self):
         result = _is_windows()
@@ -69,10 +65,6 @@ class TestPlatformDetection:
         assert isinstance(result, int)
 
 
-# ===========================================================================
-# Privilege Level and Alert Enum Tests
-# ===========================================================================
-
 class TestEnums:
     def test_privilege_level_values(self):
         assert PrivilegeLevel.NONE.value == "none"
@@ -93,10 +85,6 @@ class TestEnums:
         assert PrivilegeAlert.CRITICAL.value == "critical"
         assert PrivilegeAlert.FATAL.value == "fatal"
 
-
-# ===========================================================================
-# PrivilegeIssue Dataclass Tests
-# ===========================================================================
 
 class TestPrivilegeIssue:
     def test_privilege_issue_creation(self):
@@ -138,10 +126,6 @@ class TestPrivilegeIssue:
         assert issue.boundary_mode == "AIRGAP"
 
 
-# ===========================================================================
-# PrivilegeStatus Dataclass Tests
-# ===========================================================================
-
 class TestPrivilegeStatus:
     def test_privilege_status_defaults(self):
         status = PrivilegeStatus()
@@ -166,10 +150,6 @@ class TestPrivilegeStatus:
         assert status.effective_uid == 0
         assert status.modules_available == {'network': True}
 
-
-# ===========================================================================
-# PrivilegeManager Tests
-# ===========================================================================
 
 class TestPrivilegeManagerInit:
     def test_init_without_args(self):
@@ -398,10 +378,6 @@ class TestPrivilegeManagerHelpers:
         manager.print_security_status()
 
 
-# ===========================================================================
-# Global Manager Functions Tests
-# ===========================================================================
-
 class TestGlobalManager:
     def test_get_privilege_manager_initially_none(self):
         # Reset global state
@@ -437,10 +413,6 @@ class TestGlobalManager:
         assert isinstance(result, bool)
 
 
-# ===========================================================================
-# Mode Requirements Tests
-# ===========================================================================
-
 class TestModeRequirements:
     def test_enforcement_required_modes(self):
         assert 'AIRGAP' in PrivilegeManager.ENFORCEMENT_REQUIRED_MODES
@@ -462,10 +434,6 @@ class TestModeRequirements:
         assert EnforcementModule.ARP in reqs
         assert EnforcementModule.DNS in reqs
 
-
-# ===========================================================================
-# Integration Tests
-# ===========================================================================
 
 class TestPrivilegeManagerIntegration:
     def test_full_workflow(self):

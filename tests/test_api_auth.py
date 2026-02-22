@@ -25,10 +25,6 @@ from daemon.auth.api_auth import (
 )
 
 
-# ===========================================================================
-# APICapability Enum Tests
-# ===========================================================================
-
 class TestAPICapability:
     def test_read_only_capabilities(self):
         assert isinstance(APICapability.STATUS, APICapability)
@@ -49,10 +45,6 @@ class TestAPICapability:
         values = [c.value for c in APICapability]
         assert len(values) == len(set(values))
 
-
-# ===========================================================================
-# Capability Sets Tests
-# ===========================================================================
 
 class TestCapabilitySets:
     def test_readonly_set_exists(self):
@@ -84,10 +76,6 @@ class TestCapabilitySets:
         assert APICapability.ADMIN in admin
 
 
-# ===========================================================================
-# Command Capabilities Tests
-# ===========================================================================
-
 class TestCommandCapabilities:
     def test_status_command(self):
         assert COMMAND_CAPABILITIES['status'] == APICapability.STATUS
@@ -107,10 +95,6 @@ class TestCommandCapabilities:
         for cmd, cap in COMMAND_CAPABILITIES.items():
             assert isinstance(cap, APICapability)
 
-
-# ===========================================================================
-# Command Rate Limits Tests
-# ===========================================================================
 
 class TestCommandRateLimits:
     def test_rate_limit_format(self):
@@ -136,10 +120,6 @@ class TestCommandRateLimits:
         assert create_limit <= 10  # Very limited
 
 
-# ===========================================================================
-# CommandRateLimitEntry Tests
-# ===========================================================================
-
 class TestCommandRateLimitEntry:
     def test_entry_creation(self):
         entry = CommandRateLimitEntry()
@@ -156,10 +136,6 @@ class TestCommandRateLimitEntry:
         entry = CommandRateLimitEntry(blocked_until=block_time)
         assert entry.blocked_until == block_time
 
-
-# ===========================================================================
-# APIToken Tests
-# ===========================================================================
 
 class TestAPIToken:
     def test_token_creation(self):
@@ -251,10 +227,6 @@ class TestAPIToken:
         assert APICapability.SET_MODE not in token.capabilities
 
 
-# ===========================================================================
-# Integration Tests
-# ===========================================================================
-
 class TestAPIAuthIntegration:
     def test_readonly_token_workflow(self):
         readonly_caps = CAPABILITY_SETS['readonly']
@@ -301,10 +273,6 @@ class TestAPIAuthIntegration:
         assert APICapability.ADMIN in token.capabilities
 
 
-# ===========================================================================
-# Edge Cases
-# ===========================================================================
-
 class TestAPIAuthEdgeCases:
     def test_empty_capabilities(self):
         """Token with empty capabilities should be valid but useless."""
@@ -342,10 +310,6 @@ class TestAPIAuthEdgeCases:
         )
         assert token.use_count == 42
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 class TestTokenManagerErrorPaths:
     """Error-path tests for TokenManager using pytest.raises."""

@@ -32,10 +32,6 @@ except ImportError:
 from ..event_logger import EventLogger, BoundaryEvent, EventType
 
 
-# =============================================================================
-# MERKLE TREE IMPLEMENTATION
-# =============================================================================
-
 def sha256_hash(data: bytes) -> bytes:
     """Compute SHA-256 hash of data."""
     return hashlib.sha256(data).digest()
@@ -333,10 +329,6 @@ class MerkleTree:
         return current_hash.hex() == proof.root_hash
 
 
-# =============================================================================
-# CROSS-NODE LOG ANCHORING
-# =============================================================================
-
 @dataclass
 class LogAnchor:
     """
@@ -582,10 +574,6 @@ class CrossNodeAnchoringManager:
             return False
 
 
-# =============================================================================
-# LOG WITNESS PROTOCOL
-# =============================================================================
-
 @dataclass
 class WitnessCommitment:
     """
@@ -826,10 +814,6 @@ class LogWitnessManager:
             return False
 
 
-# =============================================================================
-# SELECTIVE DISCLOSURE PROOFS
-# =============================================================================
-
 @dataclass
 class SelectiveDisclosureProof:
     """
@@ -1057,10 +1041,6 @@ class SelectiveDisclosureManager:
             return False
 
 
-# =============================================================================
-# FORENSIC AUDIT MANAGER (UNIFIED)
-# =============================================================================
-
 class ForensicAuditManager:
     """
     Unified manager for all forensic audit capabilities.
@@ -1204,10 +1184,6 @@ class ForensicAuditManager:
         except OSError as e:
             return (False, str(e))
 
-
-# =============================================================================
-# MODULE EXPORTS
-# =============================================================================
 
 __all__ = [
     # Merkle tree

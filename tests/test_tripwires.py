@@ -21,10 +21,6 @@ from daemon.tripwires import (
 from daemon.policy_engine import BoundaryMode
 
 
-# ===========================================================================
-# ViolationType Enum Tests
-# ===========================================================================
-
 class TestViolationType:
     def test_violation_type_values(self):
         assert ViolationType.NETWORK_IN_AIRGAP.value == "network_in_airgap"
@@ -36,10 +32,6 @@ class TestViolationType:
         assert ViolationType.SUSPICIOUS_PROCESS.value == "suspicious_process"
         assert ViolationType.HARDWARE_TRUST_DEGRADED.value == "hardware_trust_degraded"
 
-
-# ===========================================================================
-# TripwireViolation Dataclass Tests
-# ===========================================================================
 
 class TestTripwireViolation:
     def test_violation_creation(self):
@@ -70,10 +62,6 @@ class TestTripwireViolation:
         assert violation.environment_snapshot == snapshot
         assert violation.current_mode == BoundaryMode.COLDROOM
 
-
-# ===========================================================================
-# TripwireSystem Initialization Tests
-# ===========================================================================
 
 class TestTripwireSystemInit:
     def test_init_default(self):
@@ -106,10 +94,6 @@ class TestTripwireSystemInit:
         assert tripwire._failed_attempts == 0
 
 
-# ===========================================================================
-# TripwireSystem Callback Tests
-# ===========================================================================
-
 class TestTripwireSystemCallbacks:
     def test_register_callback(self):
         tripwire = TripwireSystem()
@@ -126,10 +110,6 @@ class TestTripwireSystemCallbacks:
         tripwire.register_callback(cb2)
         assert len(tripwire._callbacks) == 2
 
-
-# ===========================================================================
-# TripwireSystem Enable/Disable Tests
-# ===========================================================================
 
 class TestTripwireSystemEnableDisable:
     def test_enable(self):
@@ -176,10 +156,6 @@ class TestTripwireSystemEnableDisable:
         assert "LOCKED" in message
 
 
-# ===========================================================================
-# TripwireSystem Token Tests
-# ===========================================================================
-
 class TestTripwireSystemTokens:
     def test_verify_token_valid(self):
         tripwire = TripwireSystem()
@@ -216,10 +192,6 @@ class TestTripwireSystemTokens:
         assert tripwire._auth_token_hash != old_hash
 
 
-# ===========================================================================
-# TripwireSystem Failed Attempts Tests
-# ===========================================================================
-
 class TestTripwireSystemFailedAttempts:
     def test_log_failed_attempt(self):
         tripwire = TripwireSystem()
@@ -248,10 +220,6 @@ class TestTripwireSystemFailedAttempts:
         assert 'timestamp' in tripwire._disable_attempts[-1]
 
 
-# ===========================================================================
-# TripwireSystem Security Properties Tests
-# ===========================================================================
-
 class TestTripwireSystemSecurity:
     """Tests for security properties."""
 
@@ -278,10 +246,6 @@ class TestTripwireSystemSecurity:
         assert tripwire._auth_token_hash != token
         assert len(tripwire._auth_token_hash) == 64  # SHA256
 
-
-# ===========================================================================
-# TripwireSystem Integration Tests
-# ===========================================================================
 
 class TestTripwireSystemIntegration:
     def test_full_auth_workflow(self):
@@ -344,10 +308,6 @@ class TestTripwireSystemIntegration:
         assert ts2._enabled is True
 
 
-# ===========================================================================
-# Edge Cases
-# ===========================================================================
-
 class TestTripwireEdgeCases:
     def test_empty_violations_list(self):
         tripwire = TripwireSystem()
@@ -394,10 +354,6 @@ class TestTripwireEdgeCases:
         assert wrong_start_time >= 0
         assert wrong_end_time >= 0
 
-
-# ===========================================================================
-# Helper: Create EnvironmentState for testing
-# ===========================================================================
 
 def _make_env_state(
     network=None,
@@ -446,10 +402,6 @@ def _make_env_state(
         last_activity=None,
     )
 
-
-# ===========================================================================
-# Violation Detection Tests — NETWORK_IN_AIRGAP
-# ===========================================================================
 
 class TestViolationNetworkInAirgap:
     def test_network_online_in_airgap_triggers_violation(self):
@@ -531,10 +483,6 @@ class TestViolationNetworkInAirgap:
         assert "eth0" in result.details or "wlan0" in result.details
 
 
-# ===========================================================================
-# Violation Detection Tests — USB_IN_COLDROOM
-# ===========================================================================
-
 class TestViolationUsbInColdroom:
     def test_new_usb_device_in_coldroom_triggers(self):
         ts = TripwireSystem()
@@ -597,10 +545,6 @@ class TestViolationUsbInColdroom:
         assert "usb-storage" in result.details
 
 
-# ===========================================================================
-# Violation Detection Tests — EXTERNAL_MODEL_VIOLATION
-# ===========================================================================
-
 class TestViolationExternalModel:
     def test_external_model_in_airgap_triggers(self):
         ts = TripwireSystem()
@@ -633,10 +577,6 @@ class TestViolationExternalModel:
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
         assert result is None
 
-
-# ===========================================================================
-# Violation Detection Tests — SUSPICIOUS_PROCESS
-# ===========================================================================
 
 class TestViolationSuspiciousProcess:
     def test_shell_escapes_above_threshold_triggers(self):
@@ -690,10 +630,6 @@ class TestViolationSuspiciousProcess:
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
 
-# ===========================================================================
-# Violation Detection Tests — HARDWARE_TRUST_DEGRADED
-# ===========================================================================
-
 class TestViolationHardwareTrust:
     def test_low_trust_in_airgap_triggers(self):
         from daemon.state_monitor import HardwareTrust
@@ -731,10 +667,6 @@ class TestViolationHardwareTrust:
         assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
 
 
-# ===========================================================================
-# Violation Detection Tests — Disabled State
-# ===========================================================================
-
 class TestViolationDetectionDisabled:
     """Tests that disabled tripwires don't detect violations."""
 
@@ -749,10 +681,6 @@ class TestViolationDetectionDisabled:
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
         assert result is None
 
-
-# ===========================================================================
-# Callback Tests
-# ===========================================================================
 
 class TestTripwireCallbacks:
     """Tests for callback registration, invocation, and error isolation."""
@@ -835,10 +763,6 @@ class TestTripwireCallbacks:
         assert len(violations_received) == 1
         assert violations_received[0].violation_type == ViolationType.CLOCK_MANIPULATION
 
-
-# ===========================================================================
-# Lifecycle Tests — trigger_violation, get/count/clear, lock, status
-# ===========================================================================
 
 class TestTripwireLifecycle:
     """Tests for violation lifecycle: trigger, retrieve, clear, lock."""
@@ -998,10 +922,6 @@ class TestTripwireLifecycle:
         assert ts.get_violation_count() == 1000
 
 
-# ===========================================================================
-# SECURITY INVARIANT: Violation Priority Ordering
-# ===========================================================================
-
 class TestViolationPriorityOrdering:
     """Security invariant: check_violations returns the FIRST violation found
     in priority order: network > USB > external_model > suspicious_process > hardware_trust.
@@ -1105,10 +1025,6 @@ class TestViolationPriorityOrdering:
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
 
-# ===========================================================================
-# Tripwire Event Logger Failure Resilience
-# ===========================================================================
-
 class TestTripwireLoggerFailure:
     """Tests that tripwire violations are still recorded and callbacks still fire
     even when the event logger is unavailable or throws."""
@@ -1162,10 +1078,6 @@ class TestTripwireLoggerFailure:
         assert callback_violations[0].violation_type == ViolationType.NETWORK_TRUST_VIOLATION
 
 
-# ===========================================================================
-# Fail-Closed: Lockout After Max Failed Attempts
-# ===========================================================================
-
 class TestTripwireLockout:
     """Security invariant: After max_disable_attempts failed auth attempts,
     tripwires auto-lock to prevent brute force."""
@@ -1197,10 +1109,6 @@ class TestTripwireLockout:
         assert success is False
         assert "LOCKED" in msg
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 import pytest
 
@@ -1348,11 +1256,6 @@ class TestTripwireErrorPaths:
         success, msg = ts.clear_violations("", reason="test")
         assert success is False
         assert "Invalid" in msg
-
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 
 class TestParametrizedViolationTypeValues:

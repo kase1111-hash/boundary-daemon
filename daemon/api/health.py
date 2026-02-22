@@ -439,6 +439,7 @@ class HealthCheckServer:
         self._port = 8080
         self._systemd_watchdog = False
 
+    # TODO: bind to 127.0.0.1 by default in production — 0.0.0.0 for k8s probe compatibility
     def start(self, port: int = 8080, host: str = "0.0.0.0",
               tls_certfile: Optional[str] = None,
               tls_keyfile: Optional[str] = None) -> bool:  # nosec B104 - health endpoint needs network access

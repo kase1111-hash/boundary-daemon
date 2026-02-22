@@ -2004,7 +2004,7 @@ For detailed information, ask about specific features or run 'help' command."""
 
         lines = ["", f"You: {message}", ""]
 
-        # Step 1: Ask Ollama if commands are needed
+        # Use LLM to determine which daemon commands are relevant to the user's query
         command_detection_prompt = f"""User request: "{message}"
 
 You are an assistant for the Boundary Daemon security system. Determine if the user's request requires running system commands to answer.
@@ -2043,13 +2043,11 @@ Your response (COMMANDS: ... or NONE):"""
                 cmd_part = cmd_part.split('\n')[0]  # Take first line only
                 commands_to_run = [c.strip().lower() for c in cmd_part.split(',') if c.strip()]
 
-            # Step 2: Execute commands if needed
             command_results = {}
             if commands_to_run:
                 lines.append("  [Gathering system information...]")
                 command_results = self._gather_command_data(commands_to_run)
 
-            # Step 3: Generate natural language response
             # Build conversation context (convert deque to list for slicing)
             chat_context = ""
             chat_history_list = list(self._cli_chat_history)

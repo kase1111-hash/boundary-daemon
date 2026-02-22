@@ -28,10 +28,6 @@ from daemon.state_monitor import (
 )
 
 
-# ===========================================================================
-# Fixtures
-# ===========================================================================
-
 @pytest.fixture
 def mock_env_state() -> EnvironmentState:
     return EnvironmentState(
@@ -88,10 +84,6 @@ def vpn_env_state(mock_env_state) -> EnvironmentState:
     mock_env_state.active_interfaces = ['tun0', 'eth0']
     return mock_env_state
 
-
-# ===========================================================================
-# Boundary Mode Tests
-# ===========================================================================
 
 class TestBoundaryMode:
     @pytest.mark.unit
@@ -590,10 +582,6 @@ class TestBoundaryStateToDict:
         assert 'operator' in d
 
 
-# ===========================================================================
-# Multi-IO Tool Requirement Tests
-# ===========================================================================
-
 class TestToolPolicyMultiIO:
     @pytest.mark.unit
     def test_network_and_filesystem_denied_in_coldroom(self, mock_env_state):
@@ -717,10 +705,6 @@ class TestToolPolicyMultiIO:
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.REQUIRE_CEREMONY
 
 
-# ===========================================================================
-# LOCKDOWN Comprehensive Tests
-# ===========================================================================
-
 class TestLockdownDeniesAll:
     """LOCKDOWN mode must deny every request type — this is the fail-deadly guarantee."""
 
@@ -776,10 +760,6 @@ class TestLockdownDeniesAll:
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.DENY
 
 
-# ===========================================================================
-# Model Policy Gap Tests
-# ===========================================================================
-
 class TestModelPolicyGaps:
     @pytest.mark.unit
     def test_model_in_restricted_online(self, online_env_state):
@@ -832,10 +812,6 @@ class TestModelPolicyGaps:
         assert decision == PolicyDecision.DENY
 
 
-# ===========================================================================
-# IO Policy Gap Tests
-# ===========================================================================
-
 class TestIOPolicyGaps:
     @pytest.mark.unit
     def test_usb_denied_in_airgap(self, mock_env_state):
@@ -872,10 +848,6 @@ class TestIOPolicyGaps:
         )
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
 
-
-# ===========================================================================
-# update_environment Tests
-# ===========================================================================
 
 class TestUpdateEnvironment:
     @pytest.mark.unit
@@ -914,10 +886,6 @@ class TestUpdateEnvironment:
         assert policy_engine.get_current_mode() == BoundaryMode.AIRGAP
 
 
-# ===========================================================================
-# Callback Management Tests
-# ===========================================================================
-
 class TestCallbackManagement:
     @pytest.mark.unit
     def test_unregister_callback(self, policy_engine):
@@ -955,10 +923,6 @@ class TestCallbackManagement:
         policy_engine.transition_mode(BoundaryMode.RESTRICTED, Operator.HUMAN, "test")
         assert len(calls) == 1
 
-
-# ===========================================================================
-# SECURITY INVARIANT: Recall Policy Exhaustive Truth Table
-# ===========================================================================
 
 class TestRecallPolicyTruthTable:
     """Exhaustive test of the recall policy decision matrix.
@@ -1022,10 +986,6 @@ class TestRecallPolicyTruthTable:
             f"should be {expected.value}, got {decision.value}"
         )
 
-
-# ===========================================================================
-# SECURITY INVARIANT: Mode Monotonicity
-# ===========================================================================
 
 class TestModeMonotonicity:
     """Security invariant: higher modes are never MORE permissive than lower modes.
@@ -1141,10 +1101,6 @@ class TestModeMonotonicity:
             )
 
 
-# ===========================================================================
-# Fail-Closed Edge Cases
-# ===========================================================================
-
 class TestFailClosedEdgeCases:
     """Tests verifying fail-closed behavior with malformed or edge-case inputs."""
 
@@ -1198,10 +1154,6 @@ class TestFailClosedEdgeCases:
         )
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 class TestPolicyEngineErrorPaths:
     """Error-path tests for PolicyEngine using pytest.raises."""
@@ -1298,11 +1250,6 @@ class TestPolicyEngineErrorPaths:
         """BoundaryMode(None) raises ValueError."""
         with pytest.raises(ValueError):
             BoundaryMode(None)
-
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 
 class TestParametrizedLockdownDeniesAllRequestTypes:

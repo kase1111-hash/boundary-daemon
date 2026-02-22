@@ -186,6 +186,7 @@ class YARAEngine:
         self._rules: Dict[str, YARARule] = {}
         self._rulesets: Dict[str, YARARuleSet] = {}
         self._compiled_rules = None
+        # TODO: YARA rule hot-reload not implemented — rules loaded once at startup, no file watcher for changes
         self._needs_recompile = True
 
         # Callbacks

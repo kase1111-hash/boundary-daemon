@@ -122,6 +122,7 @@ class LogShipper(ABC):
 
     def _ship_with_retry(self, events: List[Dict[str, Any]]) -> bool:
         """Ship events with exponential backoff retry."""
+        # TODO: failed events are silently dropped after max retries — add dead-letter queue
         for attempt in range(self.config.max_retries):
             try:
                 if self._ship_batch(events):
@@ -189,6 +190,7 @@ class LogShipper(ABC):
         return self._flush_batch()
 
 
+# TODO: KafkaShipper requires kafka-python dependency — implement real integration tests when needed
 class KafkaShipper(LogShipper):
     """
     Ship logs to Apache Kafka.
@@ -267,6 +269,7 @@ class KafkaShipper(LogShipper):
             self._producer.close()
 
 
+# TODO: S3Shipper requires boto3 dependency — no integration tests exist for real S3 uploads
 class S3Shipper(LogShipper):
     """
     Ship logs to AWS S3 or S3-compatible storage.
@@ -345,6 +348,7 @@ class S3Shipper(LogShipper):
             return False
 
 
+# TODO: GCSShipper requires google-cloud-storage dependency — no integration tests exist for real GCS uploads
 class GCSShipper(LogShipper):
     """
     Ship logs to Google Cloud Storage.

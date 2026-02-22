@@ -38,10 +38,6 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Policy Decision Tracing
-# ---------------------------------------------------------------------------
-
 class TraceVerdict(Enum):
     """Why a decision was reached."""
     MODE_LOCKDOWN = auto()          # LOCKDOWN denies everything
@@ -460,10 +456,6 @@ def _trace_io(trace, steps, request, mode, env_state):
     trace.verdict = TraceVerdict.TOOL_ALLOWED.name
 
 
-# ---------------------------------------------------------------------------
-# Integration Health Registry
-# ---------------------------------------------------------------------------
-
 @dataclass
 class IntegrationCheckin:
     """Record of an integration checking in with the daemon."""
@@ -607,10 +599,6 @@ class IntegrationHealthRegistry:
             "threshold_seconds": self._threshold,
         }
 
-
-# ---------------------------------------------------------------------------
-# Operator Console — unified operator view
-# ---------------------------------------------------------------------------
 
 class OperatorConsole:
     """

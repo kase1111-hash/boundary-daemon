@@ -46,9 +46,7 @@ from daemon.sandbox.telemetry import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -101,9 +99,7 @@ def bridge(sandbox_manager, policy_engine, event_logger, telemetry):
     b.deactivate()
 
 
-# ---------------------------------------------------------------------------
 # Test: New EventTypes for sandbox
-# ---------------------------------------------------------------------------
 
 
 class TestSandboxEventTypes:
@@ -156,9 +152,7 @@ class TestSandboxEventTypes:
         assert event_logger.get_event_count() == 4
 
 
-# ---------------------------------------------------------------------------
 # Test: EnforcementBridge lifecycle
-# ---------------------------------------------------------------------------
 
 
 class TestBridgeLifecycle:
@@ -227,9 +221,7 @@ class TestBridgeLifecycle:
         assert "by_action" in stats
 
 
-# ---------------------------------------------------------------------------
 # Test: Automatic profile tightening on mode escalation
-# ---------------------------------------------------------------------------
 
 
 class TestModeEscalation:
@@ -320,9 +312,7 @@ class TestModeEscalation:
         assert sandbox.profile.name == "airgap"
 
 
-# ---------------------------------------------------------------------------
 # Test: Conservative de-escalation (no loosening)
-# ---------------------------------------------------------------------------
 
 
 class TestModeDeescalation:
@@ -360,9 +350,7 @@ class TestModeDeescalation:
         assert result.affected_count == 0
 
 
-# ---------------------------------------------------------------------------
 # Test: LOCKDOWN terminates everything
-# ---------------------------------------------------------------------------
 
 
 class TestLockdown:
@@ -435,9 +423,7 @@ class TestLockdown:
         assert is_valid, f"Chain broken: {error}"
 
 
-# ---------------------------------------------------------------------------
 # Test: Sandbox.tighten_profile()
-# ---------------------------------------------------------------------------
 
 
 class TestSandboxTightenProfile:
@@ -485,9 +471,7 @@ class TestSandboxTightenProfile:
         assert tighten_events[0][1]["new_profile"] == "trusted"
 
 
-# ---------------------------------------------------------------------------
 # Test: Telemetry
-# ---------------------------------------------------------------------------
 
 
 class TestTelemetry:
@@ -578,9 +562,7 @@ class TestTelemetry:
         assert "tracked" not in telemetry._tracked
 
 
-# ---------------------------------------------------------------------------
 # Test: EnforcementConsumer protocol
-# ---------------------------------------------------------------------------
 
 
 class TestEnforcementConsumerProtocol:
@@ -596,9 +578,7 @@ class TestEnforcementConsumerProtocol:
         assert callable(getattr(bridge, "get_enforcement_status", None))
 
 
-# ---------------------------------------------------------------------------
 # Test: SandboxProfile.from_boundary_mode coverage
-# ---------------------------------------------------------------------------
 
 
 class TestProfileBoundaryModeMapping:
@@ -636,9 +616,7 @@ class TestProfileBoundaryModeMapping:
         assert profile.max_runtime_seconds == 1
 
 
-# ---------------------------------------------------------------------------
 # Test: Hash chain integrity across enforcement events
-# ---------------------------------------------------------------------------
 
 
 class TestHashChainIntegrity:
@@ -678,9 +656,7 @@ class TestHashChainIntegrity:
         assert event_logger.get_event_count() >= 5
 
 
-# ---------------------------------------------------------------------------
 # Test: Edge cases
-# ---------------------------------------------------------------------------
 
 
 class TestEdgeCases:
@@ -768,9 +744,7 @@ class TestEdgeCases:
         assert collector._violation_count == 1
 
 
-# ---------------------------------------------------------------------------
 # Test: SandboxManager integration
-# ---------------------------------------------------------------------------
 
 
 class TestSandboxManagerIntegration:
@@ -814,9 +788,7 @@ class TestSandboxManagerIntegration:
         assert "telemetry-reg" in telemetry._tracked
 
 
-# ---------------------------------------------------------------------------
 # PARAMETRIZED TESTS - Added for comprehensive coverage
-# ---------------------------------------------------------------------------
 
 
 class TestParametrizedEnforcementActionValues:

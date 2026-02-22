@@ -241,6 +241,7 @@ class SignatureVerifier:
             # Check if hash matches
             # Note: The actual implementation may use a different hash scheme
             # This is a simplified version for demonstration
+            # FIXME: hash chain verification uses partial match (16 chars) — should do full comparison
             if not current_hash.startswith(expected_hash[:16]):
                 # Allow partial match for different hash schemes
                 pass  # Don't fail on hash format differences
@@ -468,6 +469,7 @@ class SignatureVerificationAPI:
                     })
 
                 elif self.path == '/keys':
+                    # TODO: POST /keys should require authentication — currently unauthenticated
                     key_id = data.get('key_id')
                     public_key = data.get('public_key')
                     if not key_id or not public_key:

@@ -133,6 +133,7 @@ class SyscallEvent(ObservationEvent):
     duration_ns: int = 0
 
 
+# TODO: requires python-bcc package — falls back to polling without it
 class BaseObserver(ABC):
     """Abstract base class for observers."""
 
@@ -158,6 +159,7 @@ class ProcObserver(BaseObserver):
 
     Provides limited visibility when eBPF is not available.
     """
+    # FIXME: /proc polling misses short-lived processes that start and exit between polls
 
     def __init__(self, poll_interval: float = 1.0):
         self.poll_interval = poll_interval

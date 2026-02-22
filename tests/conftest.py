@@ -24,10 +24,6 @@ from daemon.policy_engine import (
 )
 
 
-# ===========================================================================
-# Temporary Directory Fixtures
-# ===========================================================================
-
 @pytest.fixture
 def temp_dir() -> Generator[Path, None, None]:
     """Provide a temporary directory that is cleaned up after the test."""
@@ -49,10 +45,6 @@ def temp_log_dir(temp_dir: Path) -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
-
-# ===========================================================================
-# Event Logger Fixtures
-# ===========================================================================
 
 @pytest.fixture
 def event_logger(temp_log_file: Path) -> Generator[EventLogger, None, None]:
@@ -96,10 +88,6 @@ def populated_event_logger(event_logger: EventLogger) -> EventLogger:
     return event_logger
 
 
-# ===========================================================================
-# Policy Engine Fixtures
-# ===========================================================================
-
 @pytest.fixture
 def policy_engine() -> PolicyEngine:
     """Provide a PolicyEngine instance in OPEN mode."""
@@ -140,10 +128,6 @@ def tool_request() -> PolicyRequest:
     )
 
 
-# ===========================================================================
-# Log Hardening Fixtures
-# ===========================================================================
-
 @pytest.fixture
 def mock_chattr():
     """Mock the chattr command for testing without root."""
@@ -165,10 +149,6 @@ def mock_lsattr():
         mock_run.side_effect = lsattr_side_effect
         yield mock_run
 
-
-# ===========================================================================
-# Network State Fixtures
-# ===========================================================================
 
 @pytest.fixture
 def mock_network_offline():
@@ -192,10 +172,6 @@ def mock_network_online():
         yield instance
 
 
-# ===========================================================================
-# Utility Functions
-# ===========================================================================
-
 def create_test_log_file(path: Path, events: list) -> None:
     """Create a test log file with the given events."""
     with open(path, 'w') as f:
@@ -214,9 +190,9 @@ def read_log_events(path: Path) -> list:
     return events
 
 
-# ===========================================================================
-# Markers Registration
-# ===========================================================================
+# TODO: add integration tests for TLS certificate rotation and expiry
+# TODO: add integration tests for distributed cluster mode synchronization
+# TODO: add tests for YARA engine scanning with real yara-python (currently mocked)
 
 def pytest_configure(config):
     """Register custom markers."""

@@ -37,10 +37,6 @@ from daemon.logging_config import (
 )
 
 
-# =============================================================================
-# RESULT TYPES
-# =============================================================================
-
 class TestStatus(Enum):
     """Test execution status."""
     PASSED = auto()
@@ -103,10 +99,6 @@ class PipelineResult:
             'error': self.error,
         }
 
-
-# =============================================================================
-# PIPELINE TEST BASE CLASS
-# =============================================================================
 
 class PipelineTest:
     """Base class for pipeline tests."""
@@ -242,10 +234,6 @@ class PipelineTest:
         """Override this to implement actual tests."""
         raise NotImplementedError("Subclasses must implement _run_tests()")
 
-
-# =============================================================================
-# FEATURE PIPELINE TESTS
-# =============================================================================
 
 class StateMonitorPipeline(PipelineTest):
     """Tests for state monitor feature."""
@@ -1011,10 +999,6 @@ class IntegrationPipeline(PipelineTest):
                       "Webhook integration loads")
 
 
-# =============================================================================
-# FEATURE TEST RUNNER
-# =============================================================================
-
 class FeatureTestRunner:
     """Main test runner for all feature pipelines."""
 
@@ -1170,10 +1154,6 @@ class FeatureTestRunner:
         self.logger.info(f"Results exported to: {output_path}")
 
 
-# =============================================================================
-# CONVENIENCE FUNCTIONS
-# =============================================================================
-
 def run_all_pipelines(verbose: bool = False, trace: bool = False,
                       parallel: bool = False) -> List[PipelineResult]:
     """Run all feature pipeline tests."""
@@ -1189,10 +1169,6 @@ def run_pipeline(name: str, verbose: bool = False,
     runner = FeatureTestRunner(verbose=verbose, trace=trace)
     return runner.run_pipeline(name)
 
-
-# =============================================================================
-# MAIN
-# =============================================================================
 
 def main():
     parser = argparse.ArgumentParser(

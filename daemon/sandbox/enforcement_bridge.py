@@ -45,10 +45,6 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# EnforcementConsumer — the reference protocol
-# ---------------------------------------------------------------------------
-
 class EnforcementAction(Enum):
     """Actions an enforcement consumer can take in response to a mode change."""
     TIGHTEN = auto()      # Apply stricter controls
@@ -138,10 +134,6 @@ class EnforcementConsumer(ABC):
         """
         ...
 
-
-# ---------------------------------------------------------------------------
-# SandboxEnforcementBridge — the canonical implementation
-# ---------------------------------------------------------------------------
 
 class SandboxEnforcementBridge(EnforcementConsumer):
     """
