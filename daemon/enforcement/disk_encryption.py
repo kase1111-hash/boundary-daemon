@@ -332,7 +332,7 @@ class EncryptionChecker:
                             details={'fdesetup_output': result.stdout},
                         ))
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Error checking macOS volumes: {e}")
 
         return volumes
