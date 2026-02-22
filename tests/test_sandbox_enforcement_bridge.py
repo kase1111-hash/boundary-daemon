@@ -53,7 +53,6 @@ from daemon.sandbox.telemetry import (
 
 @pytest.fixture
 def temp_log_dir():
-    """Create a temporary directory for logs."""
     d = tempfile.mkdtemp(prefix="boundary_test_")
     yield d
     import shutil
@@ -62,14 +61,12 @@ def temp_log_dir():
 
 @pytest.fixture
 def event_logger(temp_log_dir):
-    """Create an event logger for testing."""
     log_file = os.path.join(temp_log_dir, "test_chain.log")
     return EventLogger(log_file, secure_permissions=False)
 
 
 @pytest.fixture
 def policy_engine():
-    """Create a policy engine starting in OPEN mode."""
     engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
     yield engine
     engine.cleanup()
@@ -77,7 +74,6 @@ def policy_engine():
 
 @pytest.fixture
 def sandbox_manager(policy_engine):
-    """Create a sandbox manager for testing."""
     manager = SandboxManager(policy_engine=policy_engine)
     yield manager
     # Don't call cleanup() — it tries to use cgroups/firewall which aren't available
@@ -85,7 +81,6 @@ def sandbox_manager(policy_engine):
 
 @pytest.fixture
 def telemetry(event_logger):
-    """Create a telemetry collector for testing."""
     collector = SandboxTelemetryCollector(
         event_logger=event_logger,
         poll_interval=60.0,  # Long interval — we'll test manually
@@ -96,7 +91,6 @@ def telemetry(event_logger):
 
 @pytest.fixture
 def bridge(sandbox_manager, policy_engine, event_logger, telemetry):
-    """Create an enforcement bridge for testing."""
     b = SandboxEnforcementBridge(
         sandbox_manager=sandbox_manager,
         policy_engine=policy_engine,
@@ -113,8 +107,6 @@ def bridge(sandbox_manager, policy_engine, event_logger, telemetry):
 
 
 class TestSandboxEventTypes:
-    """Verify the new event types were added to EventLogger."""
-
     @pytest.mark.unit
     def test_sandbox_enforcement_event_type_exists(self):
         assert hasattr(EventType, "SANDBOX_ENFORCEMENT")
@@ -137,7 +129,6 @@ class TestSandboxEventTypes:
 
     @pytest.mark.unit
     def test_sandbox_events_loggable(self, event_logger):
-        """Verify sandbox event types can be logged and verified."""
         event_logger.log_event(
             EventType.SANDBOX_ENFORCEMENT,
             "Bridge activated",
@@ -242,8 +233,6 @@ class TestBridgeLifecycle:
 
 
 class TestModeEscalation:
-    """Test that mode escalation tightens running sandboxes."""
-
     @pytest.mark.unit
     def test_escalation_tightens_profile(self, bridge, policy_engine, sandbox_manager):
         """When mode escalates, sandbox profiles should tighten."""
@@ -270,7 +259,6 @@ class TestModeEscalation:
     def test_escalation_skips_compliant_sandboxes(
         self, bridge, policy_engine, sandbox_manager
     ):
-        """Sandboxes already at target level should not be tightened."""
         bridge.activate()
 
         # Create a sandbox already at AIRGAP level
@@ -289,7 +277,6 @@ class TestModeEscalation:
 
     @pytest.mark.unit
     def test_escalation_records_history(self, bridge, policy_engine, sandbox_manager):
-        """Mode escalation should be recorded in enforcement history."""
         bridge.activate()
 
         profile = SandboxProfile.from_boundary_mode(0)
@@ -307,7 +294,6 @@ class TestModeEscalation:
 
     @pytest.mark.unit
     def test_multi_step_escalation(self, bridge, policy_engine, sandbox_manager):
-        """Progressive escalation should tighten step by step."""
         bridge.activate()
 
         profile = SandboxProfile.from_boundary_mode(0)
@@ -340,13 +326,10 @@ class TestModeEscalation:
 
 
 class TestModeDeescalation:
-    """Test that de-escalation does NOT loosen running sandboxes."""
-
     @pytest.mark.unit
     def test_deescalation_keeps_strict_profile(
         self, bridge, policy_engine, sandbox_manager
     ):
-        """Sandboxes should keep strict profile when mode drops."""
         bridge.activate()
 
         # Create sandbox at OPEN
@@ -383,13 +366,10 @@ class TestModeDeescalation:
 
 
 class TestLockdown:
-    """Test LOCKDOWN mode terminates all sandboxes."""
-
     @pytest.mark.unit
     def test_lockdown_terminates_sandboxes(
         self, bridge, policy_engine, sandbox_manager
     ):
-        """LOCKDOWN should terminate all running sandboxes."""
         bridge.activate()
 
         # Create some sandboxes
@@ -412,7 +392,6 @@ class TestLockdown:
     def test_lockdown_via_mode_transition(
         self, bridge, policy_engine, sandbox_manager
     ):
-        """Mode transition to LOCKDOWN should trigger sandbox termination."""
         bridge.activate()
 
         sandbox_manager.create_sandbox(
@@ -434,7 +413,6 @@ class TestLockdown:
     def test_lockdown_logs_to_hash_chain(
         self, bridge, event_logger, sandbox_manager, policy_engine
     ):
-        """LOCKDOWN enforcement should be logged in the hash chain."""
         bridge.activate()
 
         sandbox_manager.create_sandbox(
@@ -463,8 +441,6 @@ class TestLockdown:
 
 
 class TestSandboxTightenProfile:
-    """Test the Sandbox.tighten_profile() method."""
-
     @pytest.mark.unit
     def test_tighten_created_sandbox(self, sandbox_manager):
         """Tightening a CREATED sandbox just swaps the profile."""
@@ -483,7 +459,6 @@ class TestSandboxTightenProfile:
 
     @pytest.mark.unit
     def test_tighten_emits_event(self, sandbox_manager):
-        """Tightening should emit a sandbox_tightened event."""
         events = []
 
         def callback(event_type, data):
@@ -516,8 +491,6 @@ class TestSandboxTightenProfile:
 
 
 class TestTelemetry:
-    """Test the SandboxTelemetryCollector."""
-
     @pytest.mark.unit
     def test_report_seccomp_kill(self, telemetry):
         telemetry.track_sandbox("s1", profile_name="airgap", boundary_mode=3)
@@ -549,7 +522,6 @@ class TestTelemetry:
 
     @pytest.mark.unit
     def test_violation_logged_to_hash_chain(self, telemetry, event_logger):
-        """Violations should appear in the hash-chained event log."""
         initial_count = event_logger.get_event_count()
 
         telemetry.report_seccomp_kill("chain-test", syscall_name="mount")
@@ -588,7 +560,6 @@ class TestTelemetry:
 
     @pytest.mark.unit
     def test_violation_callback(self):
-        """Custom violation callback should be invoked."""
         violations = []
 
         collector = SandboxTelemetryCollector(
@@ -613,16 +584,12 @@ class TestTelemetry:
 
 
 class TestEnforcementConsumerProtocol:
-    """Test that the protocol interface is properly defined."""
-
     @pytest.mark.unit
     def test_bridge_implements_consumer(self, bridge):
-        """SandboxEnforcementBridge should be an EnforcementConsumer."""
         assert isinstance(bridge, EnforcementConsumer)
 
     @pytest.mark.unit
     def test_consumer_methods_exist(self, bridge):
-        """All required interface methods should exist."""
         assert callable(getattr(bridge, "on_mode_escalation", None))
         assert callable(getattr(bridge, "on_mode_deescalation", None))
         assert callable(getattr(bridge, "on_lockdown", None))
@@ -635,8 +602,6 @@ class TestEnforcementConsumerProtocol:
 
 
 class TestProfileBoundaryModeMapping:
-    """Verify that every boundary mode maps to a sandbox profile."""
-
     @pytest.mark.unit
     @pytest.mark.parametrize("mode,expected_name", [
         (0, "minimal"),
@@ -652,7 +617,6 @@ class TestProfileBoundaryModeMapping:
 
     @pytest.mark.unit
     def test_strictness_ordering(self):
-        """Higher modes should produce strictly tighter profiles."""
         profiles = [SandboxProfile.from_boundary_mode(m) for m in range(6)]
 
         # Network should be disabled at AIRGAP and above
@@ -665,7 +629,6 @@ class TestProfileBoundaryModeMapping:
 
     @pytest.mark.unit
     def test_lockdown_is_maximally_restrictive(self):
-        """LOCKDOWN profile should be maximally restrictive."""
         profile = SandboxProfile.from_boundary_mode(5)
         assert profile.readonly_filesystem is True
         assert profile.network_disabled is True
@@ -679,8 +642,6 @@ class TestProfileBoundaryModeMapping:
 
 
 class TestHashChainIntegrity:
-    """Verify the hash chain remains valid through enforcement operations."""
-
     @pytest.mark.unit
     def test_chain_valid_after_full_lifecycle(
         self, bridge, policy_engine, sandbox_manager, event_logger
@@ -727,7 +688,6 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_escalation_with_no_sandboxes(self, bridge):
-        """Escalation with no running sandboxes should succeed with 0 affected."""
         bridge.activate()
         result = bridge.on_mode_escalation(0, 3, "no sandboxes")
         assert result.success is True
@@ -735,7 +695,6 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_lockdown_with_no_sandboxes(self, bridge):
-        """LOCKDOWN with no sandboxes should succeed with 0 terminated."""
         bridge.activate()
         result = bridge.on_lockdown("no sandboxes")
         assert result.success is True
@@ -745,7 +704,6 @@ class TestEdgeCases:
     def test_same_mode_transition_ignored(
         self, bridge, policy_engine, sandbox_manager
     ):
-        """Transition to the same mode should not trigger enforcement."""
         bridge.activate()
 
         sandbox_manager.create_sandbox(
@@ -767,7 +725,6 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_enforcement_history_limit(self, bridge):
-        """History should be bounded to max_history entries."""
         bridge._max_history = 5
         bridge.activate()
 
@@ -778,7 +735,6 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_telemetry_max_violations(self):
-        """Violation history should be bounded."""
         collector = SandboxTelemetryCollector()
         collector._max_violations = 5
 
@@ -818,8 +774,6 @@ class TestEdgeCases:
 
 
 class TestSandboxManagerIntegration:
-    """Test that SandboxManager correctly integrates with bridge and telemetry."""
-
     @pytest.mark.unit
     def test_set_enforcement_bridge(self, sandbox_manager, bridge):
         sandbox_manager.set_enforcement_bridge(bridge)
@@ -858,3 +812,167 @@ class TestSandboxManagerIntegration:
         )
 
         assert "telemetry-reg" in telemetry._tracked
+
+
+# ---------------------------------------------------------------------------
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ---------------------------------------------------------------------------
+
+
+class TestParametrizedEnforcementActionValues:
+    """Parametrized: All EnforcementAction enum members."""
+
+    ACTION_VALUES = [
+        (EnforcementAction.TIGHTEN, 1),
+        (EnforcementAction.LOOSEN, 2),
+        (EnforcementAction.TERMINATE, 3),
+        (EnforcementAction.NO_CHANGE, 4),
+        (EnforcementAction.FAILED, 5),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("action,expected_value", ACTION_VALUES,
+        ids=[a.name for a, _ in ACTION_VALUES])
+    def test_action_value(self, action, expected_value):
+        """Each EnforcementAction should have its expected int value."""
+        assert action.value == expected_value
+
+
+class TestParametrizedModeToProfileMapping:
+    """Parametrized: Every BoundaryMode maps to a named sandbox profile."""
+
+    PROFILE_MAP = [
+        (0, "minimal"),
+        (1, "restricted"),
+        (2, "trusted"),
+        (3, "airgap"),
+        (4, "coldroom"),
+        (5, "lockdown"),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("mode,profile_name", PROFILE_MAP,
+        ids=[f"mode{m}->{p}" for m, p in PROFILE_MAP])
+    def test_mode_profile(self, mode, profile_name):
+        """SandboxProfile.from_boundary_mode returns correct profile name."""
+        profile = SandboxProfile.from_boundary_mode(mode)
+        assert profile.name == profile_name
+
+
+class TestParametrizedEscalationTightensToTarget:
+    """Parametrized: Mode escalation tightens sandbox profiles to target mode."""
+
+    ESCALATION_CASES = [
+        (0, 1, "restricted"),
+        (0, 2, "trusted"),
+        (0, 3, "airgap"),
+        (0, 4, "coldroom"),
+        (1, 3, "airgap"),
+        (2, 4, "coldroom"),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("from_mode,to_mode,expected_profile", ESCALATION_CASES,
+        ids=[f"{f}->{t}" for f, t, _ in ESCALATION_CASES])
+    def test_escalation_profile(self, from_mode, to_mode, expected_profile,
+                                 bridge, sandbox_manager):
+        """Sandbox profile should be tightened to match target mode."""
+        bridge.activate()
+        profile = SandboxProfile.from_boundary_mode(from_mode)
+        sandbox = sandbox_manager.create_sandbox(
+            name=f"esc-{from_mode}-{to_mode}",
+            profile=profile,
+            skip_ceremony=True,
+        )
+        bridge.on_mode_escalation(from_mode, to_mode, "test")
+        assert sandbox.profile.name == expected_profile
+
+
+class TestParametrizedDeescalationPreservesProfile:
+    """Parametrized: De-escalation always returns NO_CHANGE."""
+
+    DEESCALATION_CASES = [
+        (3, 0),
+        (3, 1),
+        (3, 2),
+        (4, 0),
+        (4, 1),
+        (2, 0),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("from_mode,to_mode", DEESCALATION_CASES,
+        ids=[f"{f}->{t}" for f, t in DEESCALATION_CASES])
+    def test_deescalation_no_change(self, from_mode, to_mode, bridge):
+        """De-escalation should always return NO_CHANGE."""
+        bridge.activate()
+        result = bridge.on_mode_deescalation(from_mode, to_mode, "de-esc")
+        assert result.action == EnforcementAction.NO_CHANGE
+        assert result.success is True
+        assert result.affected_count == 0
+
+
+class TestParametrizedLockdownProfileProperties:
+    """Parametrized: LOCKDOWN profile properties are maximally restrictive."""
+
+    LOCKDOWN_CHECKS = [
+        ("readonly_filesystem", True),
+        ("network_disabled", True),
+        ("max_processes", 1),
+        ("max_runtime_seconds", 1),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("attr,expected", LOCKDOWN_CHECKS,
+        ids=[a for a, _ in LOCKDOWN_CHECKS])
+    def test_lockdown_profile_property(self, attr, expected):
+        """LOCKDOWN profile attributes should be maximally restrictive."""
+        profile = SandboxProfile.from_boundary_mode(5)
+        assert getattr(profile, attr) == expected
+
+
+class TestParametrizedNetworkDisabledByMode:
+    """Parametrized: Network disabled at AIRGAP and above."""
+
+    NETWORK_CASES = [
+        (0, False),  # OPEN
+        (1, False),  # RESTRICTED
+        (2, False),  # TRUSTED
+        (3, True),   # AIRGAP
+        (4, True),   # COLDROOM
+        (5, True),   # LOCKDOWN
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("mode,expected_disabled", NETWORK_CASES,
+        ids=[f"mode{m}" for m, _ in NETWORK_CASES])
+    def test_network_disabled(self, mode, expected_disabled):
+        """Network should be disabled at AIRGAP and above."""
+        profile = SandboxProfile.from_boundary_mode(mode)
+        assert profile.network_disabled == expected_disabled
+
+
+class TestParametrizedTelemetryViolationTypes:
+    """Parametrized: Telemetry violation reporting for all types."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("vtype", list(ViolationType),
+        ids=[v.name for v in ViolationType])
+    def test_violation_type_has_value(self, vtype):
+        """Each ViolationType should have a positive int value."""
+        assert isinstance(vtype.value, int)
+        assert vtype.value > 0
+
+
+class TestParametrizedBridgeEscalationWithNoSandboxes:
+    """Parametrized: Escalation with no sandboxes succeeds for any target mode."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("target_mode", [1, 2, 3, 4, 5],
+        ids=[f"mode{m}" for m in [1, 2, 3, 4, 5]])
+    def test_escalation_no_sandboxes(self, target_mode, bridge):
+        """Escalation with no sandboxes should succeed with 0 affected."""
+        bridge.activate()
+        result = bridge.on_mode_escalation(0, target_mode, "test")
+        assert result.success is True
+        assert result.affected_count == 0

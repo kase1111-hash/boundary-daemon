@@ -25,7 +25,6 @@ class TestSecurityStackE2E:
     """End-to-end tests for the complete security stack."""
 
     def test_prompt_injection_detection(self):
-        """Test prompt injection detector catches various attack patterns."""
         from daemon.security import (
             PROMPT_INJECTION_AVAILABLE,
             get_prompt_injection_detector,
@@ -65,7 +64,6 @@ class TestSecurityStackE2E:
         print("✓ Prompt injection detection: PASSED")
 
     def test_tool_output_validation(self):
-        """Test tool output validator catches dangerous outputs."""
         from daemon.security import (
             TOOL_VALIDATOR_AVAILABLE,
             get_tool_validator,
@@ -95,7 +93,7 @@ class TestSecurityStackE2E:
             tool_input={"query": "test"},
         )
         assert violation is None, "Should allow first call"
-        assert call_id is not None
+        assert isinstance(call_id, str)
 
         # Test 2: Validate safe output
         safe_output = "Here is the result of your query: 42"
@@ -115,7 +113,6 @@ class TestSecurityStackE2E:
         print("✓ Tool output validation: PASSED")
 
     def test_response_guardrails(self):
-        """Test response guardrails catch unsafe AI responses."""
         from daemon.security import (
             RESPONSE_GUARDRAILS_AVAILABLE,
             get_response_guardrails,
@@ -153,7 +150,6 @@ class TestSecurityStackE2E:
         print("✓ Response guardrails: PASSED")
 
     def test_rag_injection_detection(self):
-        """Test RAG injection detector catches poisoned documents."""
         from daemon.security import (
             RAG_INJECTION_AVAILABLE,
             configure_rag_detector,
@@ -219,7 +215,6 @@ class TestSecurityStackE2E:
         print("✓ RAG injection detection: PASSED")
 
     def test_agent_attestation(self):
-        """Test agent attestation system with full workflow."""
         from daemon.security import (
             AGENT_ATTESTATION_AVAILABLE,
             configure_attestation_system,
@@ -247,7 +242,7 @@ class TestSecurityStackE2E:
             validity=timedelta(hours=1),
         )
 
-        assert identity is not None
+        assert hasattr(identity, 'agent_name')
         assert identity.agent_name == "test-processor"
         assert AgentCapability.FILE_READ in identity.capabilities
 
@@ -258,7 +253,7 @@ class TestSecurityStackE2E:
             validity=timedelta(minutes=30),
         )
 
-        assert token is not None
+        assert hasattr(token, 'agent_id')
         assert token.agent_id == identity.agent_id
 
         # Test 3: Verify token
@@ -287,7 +282,7 @@ class TestSecurityStackE2E:
             action_data={"path": "/test/file.txt"},
         )
 
-        assert binding is not None
+        assert hasattr(binding, 'action_type')
         assert binding.action_type == "file_read"
 
         # Test 6: Verify action binding
@@ -436,7 +431,7 @@ class TestSecurityStackE2E:
                 "response_length": len(ai_response),
             },
         )
-        assert binding is not None, "Action should be bound"
+        assert hasattr(binding, 'action_type'), "Action should be bound"
 
         print("\n✓ Integrated workflow: PASSED")
         print("  - User input checked for injection")
@@ -446,7 +441,6 @@ class TestSecurityStackE2E:
         print("  - Action cryptographically bound to agent")
 
     def test_attack_scenario_blocked(self):
-        """Test that a sophisticated attack is blocked at multiple layers."""
         from daemon.security import (
             PROMPT_INJECTION_AVAILABLE,
             RAG_INJECTION_AVAILABLE,
@@ -550,7 +544,6 @@ class TestModuleImports:
         print("✓ All AI security modules available")
 
     def test_enforcement_module_imports(self):
-        """Test enforcement module imports."""
         from daemon.enforcement import (
             WINDOWS_FIREWALL_AVAILABLE,
         )
@@ -560,10 +553,7 @@ class TestModuleImports:
 
 
 class TestDetectionIntegration:
-    """Test detection engine integration."""
-
     def test_detection_modules_available(self):
-        """Test detection engine modules."""
         try:
             from daemon.detection import (  # noqa: F401
                 YARAEngine,
@@ -577,7 +567,6 @@ class TestDetectionIntegration:
             pytest.skip(f"Detection modules not available: {e}")
 
     def test_event_publisher_integration(self):
-        """Test event publisher can be configured."""
         try:
             from daemon.detection import (
                 get_event_publisher,
@@ -609,7 +598,6 @@ class TestDetectionIntegration:
 
 
 def run_tests():
-    """Run all tests and print summary."""
     print("=" * 60)
     print("BOUNDARY DAEMON - SECURITY STACK E2E TESTS")
     print("=" * 60)

@@ -197,7 +197,7 @@ class DNSPacketParser:
         for _ in range(header['arcount']):
             try:
                 additionals.append(self._parse_resource_record())
-            except Exception:
+            except (ValueError, struct.error, IndexError):
                 break  # Additional section parsing is optional
 
         return {
@@ -452,7 +452,7 @@ class NativeDNSResolver:
                 if attempt < self.retries:
                     continue
                 raise
-            except Exception as e:
+            except OSError as e:
                 if attempt < self.retries:
                     continue
                 raise
@@ -478,7 +478,7 @@ class NativeDNSResolver:
         try:
             parser = DNSPacketParser(response_data)
             parsed = parser.parse()
-        except Exception as e:
+        except (ValueError, struct.error, IndexError, UnicodeDecodeError) as e:
             logger.error(f"Failed to parse DNS response: {e}")
             return DNSResponse(
                 query_id=query_id,
@@ -506,7 +506,7 @@ class NativeDNSResolver:
                 parser = DNSPacketParser(response_data)
                 parsed = parser.parse()
                 header = parsed['header']
-            except Exception as e:
+            except (OSError, ValueError, struct.error) as e:
                 logger.warning(f"TCP fallback failed: {e}")
 
         return DNSResponse(
@@ -644,7 +644,7 @@ class NativeDNSResolver:
                     'error': 'timeout',
                     'ips': [],
                 }
-            except Exception as e:
+            except OSError as e:
                 results['responses'][resolver_name] = {
                     'error': str(e),
                     'ips': [],
@@ -701,7 +701,7 @@ class NativeDNSResolver:
             except ImportError:
                 pass
 
-        except Exception as e:
+        except (OSError, ValueError, struct.error) as e:
             result['error'] = str(e)
 
         return result
@@ -834,7 +834,7 @@ def resolve_domain(domain: str, record_type: str = 'A') -> List[str]:
     try:
         response = resolver.resolve(domain, rtype)
         return response.get_ips()
-    except Exception as e:
+    except OSError as e:
         logger.error(f"Failed to resolve {domain}: {e}")
         return []
 
@@ -865,7 +865,7 @@ if __name__ == '__main__':
             print(f"  Response code: {response.response_code}")
             print(f"  IPs: {response.get_ips()}")
             print(f"  Response time: {response.response_time_ms:.2f}ms")
-        except Exception as e:
+        except OSError as e:
             print(f"{domain}: ERROR - {e}")
 
     # Test verification across resolvers

@@ -206,7 +206,7 @@ class FileBackend(LogBackend):
                 f.write('ok')
             test_file.unlink()
             return True
-        except Exception:
+        except OSError:
             return False
 
 
@@ -272,7 +272,7 @@ class SyslogBackend(LogBackend):
         try:
             syslog.syslog(syslog.LOG_DEBUG, "boundary-daemon health check")
             return True
-        except Exception:
+        except OSError:
             return False
 
 
@@ -311,7 +311,7 @@ class MemoryBackend(LogBackend):
                         priority = LogPriority(data['priority'])
                         buffered_at = datetime.fromisoformat(data['buffered_at'])
                         self._buffer.append((event, priority, buffered_at))
-                    except Exception:
+                    except (KeyError, ValueError, TypeError):
                         continue
 
             logger.info(f"Loaded {len(self._buffer)} events from memory buffer persist file")
@@ -410,7 +410,7 @@ class RemoteBackend(LogBackend):
             host, port = addr.split(':')
             self._host = host
             self._port = int(port)
-        except Exception:
+        except (ValueError, OSError):
             self.status = LogBackendStatus.FAILED
 
     def start(self):
@@ -502,7 +502,7 @@ class RemoteBackend(LogBackend):
             sock.connect((self._host, self._port))
             sock.close()
             return True
-        except Exception:
+        except OSError:
             return False
 
 
@@ -738,7 +738,7 @@ class RedundantEventLogger:
             with open(emergency_path, 'a') as f:
                 f.write(event.to_json() + '\n')
 
-        except Exception:
+        except OSError:
             pass
 
         # Alert if configured
@@ -748,7 +748,7 @@ class RedundantEventLogger:
                     "All logging backends failed",
                     f"Event {event.event_id} could not be logged"
                 )
-            except Exception:
+            except OSError:
                 pass
 
     def _generate_event_id(self) -> str:

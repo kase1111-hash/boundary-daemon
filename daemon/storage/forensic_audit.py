@@ -498,7 +498,7 @@ class CrossNodeAnchoringManager:
                             bytes.fromhex(anchor.signature)
                         )
                         verified = True
-                except Exception as e:
+                except (ValueError, TypeError) as e:
                     verification_error = str(e)
             elif not anchor.signature:
                 verification_error = "Anchor not signed"
@@ -578,7 +578,7 @@ class CrossNodeAnchoringManager:
                 json.dump(data, f, indent=2)
 
             return True
-        except Exception:
+        except OSError:
             return False
 
 
@@ -769,7 +769,7 @@ class LogWitnessManager:
                         data_json.encode(),
                         bytes.fromhex(commitment.signature)
                     )
-                except Exception as e:
+                except (ValueError, TypeError) as e:
                     return (False, f"Signature verification failed: {e}")
 
             self._commitments.append(commitment)
@@ -822,7 +822,7 @@ class LogWitnessManager:
                 json.dump(data, f, indent=2)
 
             return True
-        except Exception:
+        except OSError:
             return False
 
 
@@ -922,7 +922,7 @@ class SelectiveDisclosureManager:
                 self._merkle_tree.build()
                 return True
 
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError):
                 return False
 
     def create_disclosure_proof(
@@ -1053,7 +1053,7 @@ class SelectiveDisclosureManager:
             with open(output_path, 'w') as f:
                 f.write(proof.to_json())
             return True
-        except Exception:
+        except OSError:
             return False
 
 
@@ -1128,7 +1128,7 @@ class ForensicAuditManager:
 
                 return True
 
-            except Exception:
+            except (OSError, ValueError, TypeError, KeyError):
                 return False
 
     def get_event_proof(self, event_index: int) -> Optional[MerkleProof]:
@@ -1201,7 +1201,7 @@ class ForensicAuditManager:
 
             return (True, f"Audit package exported to {output_dir}")
 
-        except Exception as e:
+        except OSError as e:
             return (False, str(e))
 
 

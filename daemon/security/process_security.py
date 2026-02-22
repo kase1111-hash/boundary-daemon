@@ -241,7 +241,7 @@ class ProcessSecurityMonitor:
                 self.scan_processes()
                 self._cleanup_old_data()
                 self._last_check = datetime.utcnow()
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError) as e:
                 logger.error(f"Error in process monitoring: {e}")
 
             time.sleep(self.config.check_interval_seconds)
@@ -285,7 +285,7 @@ class ProcessSecurityMonitor:
                     self._alerts.append(alert)
                     self._alert_strings.append(alert.to_alert_string())
 
-            except Exception as e:
+            except (OSError, ValueError, KeyError) as e:
                 logger.error(f"Error scanning processes: {e}")
 
         return alerts
@@ -508,7 +508,7 @@ class ProcessSecurityMonitor:
                         continue
             except ImportError:
                 logger.warning("psutil not available for Windows process enumeration")
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.error(f"Error reading processes: {e}")
         else:
             # Linux: Read from /proc filesystem
@@ -520,7 +520,7 @@ class ProcessSecurityMonitor:
                             proc_info = self._get_process_info(pid)
                             if proc_info:
                                 processes[pid] = proc_info
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Error reading processes: {e}")
 
         return processes
@@ -595,7 +595,7 @@ class ProcessSecurityMonitor:
                         match = re.match(r'(\d+)\s+\((.+)\)\s+(\S+)\s+(\d+)\s+', stat_line)
                         if match:
                             ppid = int(match.group(4))
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
             # Read environ
@@ -850,7 +850,7 @@ class ProcessSecurityMonitor:
                         line = line.strip()
                         if line.isdigit():
                             ps_pids.add(int(line))
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
             if ps_pids:
@@ -898,7 +898,7 @@ class ProcessSecurityMonitor:
                         alerts.append(alert)
                         break  # Only one gap alert
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.error(f"Error checking for hidden processes: {e}")
 
         return alerts

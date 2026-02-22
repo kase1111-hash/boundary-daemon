@@ -50,7 +50,7 @@ def get_kernel_version() -> tuple:
         match = re.search(r'(\d+)\.(\d+)\.(\d+)', version_str)
         if match:
             return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    except Exception:
+    except (OSError, ValueError):
         pass
     return (0, 0, 0)
 
@@ -194,7 +194,7 @@ class ProcObserver(BaseObserver):
         while self._running:
             try:
                 self._check_processes()
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.debug(f"Poll error: {e}")
 
             time.sleep(self.poll_interval)
@@ -206,7 +206,7 @@ class ProcObserver(BaseObserver):
             for entry in os.listdir('/proc'):
                 if entry.isdigit():
                     pids.add(int(entry))
-        except Exception:
+        except OSError:
             pass
         return pids
 
@@ -389,7 +389,7 @@ class eBPFObserverImpl(BaseObserver):
             logger.info("Started eBPF observer")
             return True
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Failed to start eBPF observer: {e}")
             return False
 
@@ -408,7 +408,7 @@ class eBPFObserverImpl(BaseObserver):
         while self._running:
             try:
                 self._bpf.perf_buffer_poll(timeout=100)
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.debug(f"Poll error: {e}")
                 time.sleep(0.1)
 
@@ -489,7 +489,7 @@ class eBPFObserver:
                 test_prog = BPF(text='int test(void *ctx) { return 0; }')
                 test_prog.cleanup()
                 return eBPFCapability.FULL
-            except Exception:
+            except (ImportError, OSError, ValueError):
                 logger.info("Insufficient permissions for eBPF")
                 return eBPFCapability.BASIC
 
@@ -567,7 +567,7 @@ class eBPFObserver:
             for callback in callbacks:
                 try:
                     callback(event)
-                except Exception as e:
+                except (OSError, ValueError, TypeError) as e:
                     logger.error(f"Callback error: {e}")
             self._events_processed += 1
 

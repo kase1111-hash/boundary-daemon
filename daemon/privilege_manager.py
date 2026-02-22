@@ -41,7 +41,7 @@ def _is_admin_windows() -> bool:
     try:
         import ctypes
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except Exception:
+    except (AttributeError, OSError):
         return False
 
 
@@ -262,13 +262,13 @@ class PrivilegeManager:
                         'euid': self._effective_uid,
                     }
                 )
-            except Exception:
+            except (AttributeError, TypeError):
                 pass  # Event logger might not be initialized yet
 
         if self._on_critical:
             try:
                 self._on_critical(issue)
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
     def log_privilege_failure(
@@ -340,7 +340,7 @@ class PrivilegeManager:
                             'euid': self._effective_uid,
                         }
                     )
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
         else:
             logger.warning(
@@ -424,7 +424,7 @@ class PrivilegeManager:
                         'euid': self._effective_uid,
                     }
                 )
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
         return (False, message)

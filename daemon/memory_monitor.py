@@ -335,7 +335,7 @@ class TraceMallocDebugger:
 
         try:
             return tracemalloc.get_traced_memory()
-        except Exception:
+        except (ValueError, OSError):
             return (0, 0)
 
     def get_snapshots(self, limit: Optional[int] = None) -> List[TraceMallocSnapshot]:
@@ -638,7 +638,7 @@ class MemoryMonitor:
 
                 time.sleep(self.config.sample_interval)
 
-            except Exception as e:
+            except (psutil.NoSuchProcess, psutil.AccessDenied, OSError) as e:
                 logger.error(f"Error in memory monitor loop: {e}")
                 time.sleep(self.config.sample_interval)
 
@@ -679,7 +679,7 @@ class MemoryMonitor:
                     'new_sites_count': len(report.new_sites),
                 }
             )
-        except Exception:
+        except (ImportError, AttributeError):
             pass
 
     def _take_snapshot(self) -> MemorySnapshot:
@@ -1048,7 +1048,7 @@ class MemoryMonitor:
                         **(metadata or {}),
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
         # Capture tracemalloc snapshot on critical leak alerts
@@ -1065,7 +1065,7 @@ class MemoryMonitor:
                     for i, site in enumerate(report.growth_sites[:3]):
                         logger.warning(f"  Top leak site #{i+1}: {site['location']} "
                                       f"(+{site['size_diff_mb']:.2f} MB)")
-            except Exception as e:
+            except (RuntimeError, OSError) as e:
                 logger.debug(f"Failed to capture debug snapshot: {e}")
 
     def _export_metrics(self, snapshot: MemorySnapshot):
@@ -1102,7 +1102,7 @@ class MemoryMonitor:
             }.get(self._leak_indicator, 0)
             self._telemetry_manager.set_gauge("memory.leak_indicator", leak_value)
 
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.debug(f"Failed to export memory metrics: {e}")
 
     def get_current_snapshot(self) -> Optional[MemorySnapshot]:

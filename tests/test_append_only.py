@@ -8,7 +8,9 @@ import os
 import sys
 import tempfile
 from datetime import datetime
+from unittest.mock import patch, MagicMock
 
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,10 +31,7 @@ from daemon.storage.append_only import (
 # ===========================================================================
 
 class TestAppendOnlyMode:
-    """Tests for AppendOnlyMode enum."""
-
     def test_append_only_mode_values(self):
-        """AppendOnlyMode should have expected values."""
         assert AppendOnlyMode.NONE.value == "none"
         assert AppendOnlyMode.CHATTR.value == "chattr"
         assert AppendOnlyMode.COPY_ON_WRITE.value == "cow"
@@ -41,10 +40,7 @@ class TestAppendOnlyMode:
 
 
 class TestSyslogFacility:
-    """Tests for SyslogFacility enum."""
-
     def test_syslog_facility_values(self):
-        """SyslogFacility should have expected values."""
         assert SyslogFacility.KERN.value == 0
         assert SyslogFacility.USER.value == 1
         assert SyslogFacility.DAEMON.value == 3
@@ -54,10 +50,7 @@ class TestSyslogFacility:
 
 
 class TestSyslogSeverity:
-    """Tests for SyslogSeverity enum."""
-
     def test_syslog_severity_values(self):
-        """SyslogSeverity should have expected values."""
         assert SyslogSeverity.EMERGENCY.value == 0
         assert SyslogSeverity.ALERT.value == 1
         assert SyslogSeverity.CRITICAL.value == 2
@@ -73,17 +66,13 @@ class TestSyslogSeverity:
 # ===========================================================================
 
 class TestRemoteSyslogConfig:
-    """Tests for RemoteSyslogConfig dataclass."""
-
     def test_remote_syslog_config_creation(self):
-        """RemoteSyslogConfig should be creatable."""
         config = RemoteSyslogConfig(host="syslog.example.com")
         assert config.host == "syslog.example.com"
         assert config.port == 514
         assert config.protocol == "udp"
 
     def test_remote_syslog_config_defaults(self):
-        """RemoteSyslogConfig should have correct defaults."""
         config = RemoteSyslogConfig(host="test")
         assert config.facility == SyslogFacility.LOCAL0
         assert config.app_name == "boundary-daemon"
@@ -93,7 +82,6 @@ class TestRemoteSyslogConfig:
         assert config.retry_count == 3
 
     def test_remote_syslog_config_custom(self):
-        """RemoteSyslogConfig should accept custom values."""
         config = RemoteSyslogConfig(
             host="secure.example.com",
             port=6514,
@@ -106,10 +94,7 @@ class TestRemoteSyslogConfig:
 
 
 class TestIntegrityCheckpoint:
-    """Tests for IntegrityCheckpoint dataclass."""
-
     def test_integrity_checkpoint_creation(self):
-        """IntegrityCheckpoint should be creatable."""
         checkpoint = IntegrityCheckpoint(
             checkpoint_id="cp-001",
             timestamp=datetime.utcnow().isoformat() + "Z",
@@ -122,7 +107,6 @@ class TestIntegrityCheckpoint:
         assert checkpoint.signature is None
 
     def test_integrity_checkpoint_with_signature(self):
-        """IntegrityCheckpoint should accept signature."""
         checkpoint = IntegrityCheckpoint(
             checkpoint_id="cp-002",
             timestamp=datetime.utcnow().isoformat() + "Z",
@@ -135,10 +119,7 @@ class TestIntegrityCheckpoint:
 
 
 class TestAppendOnlyConfig:
-    """Tests for AppendOnlyConfig dataclass."""
-
     def test_config_defaults(self):
-        """AppendOnlyConfig should have sensible defaults."""
         config = AppendOnlyConfig()
         assert config.mode == AppendOnlyMode.CHATTR
         assert config.log_path == "./logs/boundary_chain.log"
@@ -147,7 +128,6 @@ class TestAppendOnlyConfig:
         assert config.backup_count == 5
 
     def test_config_custom(self):
-        """AppendOnlyConfig should accept custom values."""
         config = AppendOnlyConfig(
             mode=AppendOnlyMode.NONE,
             log_path="/var/log/boundary.log",
@@ -157,7 +137,6 @@ class TestAppendOnlyConfig:
         assert config.log_path == "/var/log/boundary.log"
 
     def test_config_with_remote_syslog(self):
-        """AppendOnlyConfig should accept remote syslog config."""
         remote = RemoteSyslogConfig(host="syslog.example.com")
         config = AppendOnlyConfig(remote_syslog=remote)
         assert config.remote_syslog is not None
@@ -169,23 +148,18 @@ class TestAppendOnlyConfig:
 # ===========================================================================
 
 class TestAppendOnlyStorageInit:
-    """Tests for AppendOnlyStorage initialization."""
-
     def test_init_default(self):
-        """AppendOnlyStorage should initialize with defaults."""
         storage = AppendOnlyStorage()
         assert isinstance(storage.config, AppendOnlyConfig)
         assert storage._initialized is False
         assert storage._protected is False
 
     def test_init_with_config(self):
-        """AppendOnlyStorage should accept custom config."""
         config = AppendOnlyConfig(mode=AppendOnlyMode.NONE)
         storage = AppendOnlyStorage(config=config)
         assert storage.config.mode == AppendOnlyMode.NONE
 
     def test_init_creates_lock(self):
-        """AppendOnlyStorage should create thread lock."""
         storage = AppendOnlyStorage()
         assert storage._lock is not None
 
@@ -195,22 +169,17 @@ class TestAppendOnlyStorageInit:
 # ===========================================================================
 
 class TestAppendOnlyStorageModes:
-    """Tests for different append-only modes."""
-
     def test_mode_none(self):
-        """NONE mode should be supported."""
         config = AppendOnlyConfig(mode=AppendOnlyMode.NONE)
         storage = AppendOnlyStorage(config=config)
         assert storage.config.mode == AppendOnlyMode.NONE
 
     def test_mode_chattr(self):
-        """CHATTR mode should be supported."""
         config = AppendOnlyConfig(mode=AppendOnlyMode.CHATTR)
         storage = AppendOnlyStorage(config=config)
         assert storage.config.mode == AppendOnlyMode.CHATTR
 
     def test_mode_full(self):
-        """FULL mode should be supported."""
         config = AppendOnlyConfig(mode=AppendOnlyMode.FULL)
         storage = AppendOnlyStorage(config=config)
         assert storage.config.mode == AppendOnlyMode.FULL
@@ -221,17 +190,13 @@ class TestAppendOnlyStorageModes:
 # ===========================================================================
 
 class TestSyslogPriority:
-    """Tests for syslog priority calculation."""
-
     def test_facility_codes(self):
-        """Facility codes should be correct for priority calculation."""
         # Priority = (facility * 8) + severity
         # LOCAL0 (16) + INFO (6) = 134
         priority = SyslogFacility.LOCAL0.value * 8 + SyslogSeverity.INFO.value
         assert priority == 134
 
     def test_priority_range(self):
-        """Priority should be in valid range (0-191)."""
         for facility in SyslogFacility:
             for severity in SyslogSeverity:
                 priority = facility.value * 8 + severity.value
@@ -243,10 +208,7 @@ class TestSyslogPriority:
 # ===========================================================================
 
 class TestAppendOnlyStorageIntegration:
-    """Integration tests for AppendOnlyStorage."""
-
     def test_create_storage_with_temp_path(self):
-        """Storage should work with temporary paths."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config = AppendOnlyConfig(
                 mode=AppendOnlyMode.NONE,
@@ -255,10 +217,9 @@ class TestAppendOnlyStorageIntegration:
                 checkpoint_path=os.path.join(tmpdir, "checkpoints"),
             )
             storage = AppendOnlyStorage(config=config)
-            assert storage is not None
+            assert isinstance(storage, AppendOnlyStorage)
 
     def test_multiple_storage_instances(self):
-        """Multiple storage instances should be independent."""
         config1 = AppendOnlyConfig(mode=AppendOnlyMode.NONE)
         config2 = AppendOnlyConfig(mode=AppendOnlyMode.CHATTR)
 
@@ -273,20 +234,15 @@ class TestAppendOnlyStorageIntegration:
 # ===========================================================================
 
 class TestAppendOnlyStorageEdgeCases:
-    """Edge case tests for AppendOnlyStorage."""
-
     def test_none_config(self):
-        """Storage should handle None config."""
         storage = AppendOnlyStorage(config=None)
         assert storage.config is not None
 
     def test_empty_checkpoint_path(self):
-        """Storage should handle default checkpoint path."""
         config = AppendOnlyConfig()
         assert config.checkpoint_path is not None
 
     def test_config_path_types(self):
-        """Config paths should be strings."""
         config = AppendOnlyConfig()
         assert isinstance(config.log_path, str)
         assert isinstance(config.wal_path, str)
@@ -298,10 +254,7 @@ class TestAppendOnlyStorageEdgeCases:
 # ===========================================================================
 
 class TestRemoteSyslogIntegration:
-    """Tests for remote syslog configuration."""
-
     def test_syslog_udp_config(self):
-        """UDP syslog config should be valid."""
         config = RemoteSyslogConfig(
             host="127.0.0.1",
             port=514,
@@ -311,7 +264,6 @@ class TestRemoteSyslogIntegration:
         assert config.use_tls is False
 
     def test_syslog_tcp_config(self):
-        """TCP syslog config should be valid."""
         config = RemoteSyslogConfig(
             host="127.0.0.1",
             port=514,
@@ -320,7 +272,6 @@ class TestRemoteSyslogIntegration:
         assert config.protocol == "tcp"
 
     def test_syslog_tls_config(self):
-        """TLS syslog config should be valid."""
         config = RemoteSyslogConfig(
             host="secure.example.com",
             port=6514,
@@ -331,3 +282,303 @@ class TestRemoteSyslogIntegration:
         )
         assert config.use_tls is True
         assert config.tls_verify is True
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+class TestAppendOnlyErrorPaths:
+    """Error-path tests for AppendOnlyStorage using pytest.raises."""
+
+    def test_append_only_mode_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            AppendOnlyMode("invalid_mode")
+
+    def test_syslog_facility_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            SyslogFacility(999)
+
+    def test_syslog_severity_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            SyslogSeverity(999)
+
+    def test_append_when_not_initialized_returns_false(self, tmp_path):
+        """Appending to uninitialized storage should return (False, msg)."""
+        config = AppendOnlyConfig(
+            mode=AppendOnlyMode.NONE,
+            log_path=str(tmp_path / "test.log"),
+            wal_path=str(tmp_path / "wal.log"),
+            checkpoint_path=str(tmp_path / "checkpoints"),
+        )
+        storage = AppendOnlyStorage(config)
+        # NOT calling storage.initialize()
+
+        success, msg = storage.append('{"test": true}', "abc123")
+        assert success is False
+        assert "not initialized" in msg.lower()
+
+    def test_initialize_with_bad_path_returns_false(self):
+        """Initializing with an impossible path should return (False, msg)."""
+        config = AppendOnlyConfig(
+            mode=AppendOnlyMode.NONE,
+            log_path="/proc/nonexistent/impossible/test.log",
+            wal_path="/proc/nonexistent/impossible/wal.log",
+            checkpoint_path="/proc/nonexistent/impossible/checkpoints",
+        )
+        storage = AppendOnlyStorage(config)
+
+        success, msg = storage.initialize()
+        assert success is False
+        assert "Failed" in msg
+
+    def test_verify_checkpoint_bad_hash_returns_false(self, tmp_path):
+        """verify_checkpoint with mismatched hash should return (False, msg)."""
+        config = AppendOnlyConfig(
+            mode=AppendOnlyMode.NONE,
+            log_path=str(tmp_path / "test.log"),
+            wal_path=str(tmp_path / "wal.log"),
+            checkpoint_path=str(tmp_path / "checkpoints"),
+        )
+        storage = AppendOnlyStorage(config)
+        storage.initialize()
+
+        bad_checkpoint = IntegrityCheckpoint(
+            checkpoint_id="test-cp",
+            timestamp="2024-01-01T00:00:00",
+            event_count=999,
+            last_event_hash="fake_hash",
+            checkpoint_hash="definitely_wrong_hash",
+        )
+        success, msg = storage.verify_checkpoint(bad_checkpoint)
+        assert success is False
+
+    def test_integrity_checkpoint_missing_fields_raises(self):
+        with pytest.raises(TypeError):
+            IntegrityCheckpoint(checkpoint_id="test")
+
+    def test_append_only_config_missing_fields_uses_defaults(self):
+        config = AppendOnlyConfig()
+        assert config.mode == AppendOnlyMode.CHATTR
+        assert config.checkpoint_interval == 3600
+
+    def test_remote_syslog_config_missing_host_raises(self):
+        with pytest.raises(TypeError):
+            RemoteSyslogConfig()
+
+    def test_connect_remote_syslog_unreachable_host_returns_false(self, tmp_path):
+        remote_config = RemoteSyslogConfig(
+            host="192.0.2.255",  # TEST-NET-1, guaranteed unreachable
+            port=65535,
+            protocol="tcp",
+            timeout=0.1,
+        )
+        config = AppendOnlyConfig(
+            mode=AppendOnlyMode.REMOTE_ONLY,
+            log_path=str(tmp_path / "test.log"),
+            wal_path=str(tmp_path / "wal.log"),
+            checkpoint_path=str(tmp_path / "checkpoints"),
+            remote_syslog=remote_config,
+        )
+        storage = AppendOnlyStorage(config)
+        result = storage._connect_remote_syslog()
+        assert result is False
+
+    def test_load_state_corrupted_json_does_not_raise(self, tmp_path):
+        log_file = tmp_path / "test.log"
+        log_file.write_text("this is not json\n")
+
+        config = AppendOnlyConfig(
+            mode=AppendOnlyMode.NONE,
+            log_path=str(log_file),
+            wal_path=str(tmp_path / "wal.log"),
+            checkpoint_path=str(tmp_path / "checkpoints"),
+        )
+        storage = AppendOnlyStorage(config)
+        # _load_state catches exceptions internally
+        storage._load_state()
+        # Should not raise -- error is caught and logged
+
+    def test_integrity_checkpoint_missing_all_fields_raises(self):
+        """IntegrityCheckpoint with no fields raises TypeError."""
+        with pytest.raises(TypeError):
+            IntegrityCheckpoint()
+
+    def test_integrity_checkpoint_partial_fields_raises(self):
+        """IntegrityCheckpoint with partial fields raises TypeError."""
+        with pytest.raises(TypeError):
+            IntegrityCheckpoint(
+                checkpoint_id="cp1",
+                timestamp="2024-01-01",
+            )
+
+    def test_append_only_mode_none_value_raises(self):
+        """AppendOnlyMode(None) raises ValueError."""
+        with pytest.raises(ValueError):
+            AppendOnlyMode(None)
+
+    def test_syslog_facility_negative_raises(self):
+        """SyslogFacility with negative integer raises ValueError."""
+        with pytest.raises(ValueError):
+            SyslogFacility(-1)
+
+    def test_syslog_severity_out_of_range_raises(self):
+        """SyslogSeverity with value 100 raises ValueError."""
+        with pytest.raises(ValueError):
+            SyslogSeverity(100)
+
+    def test_remote_syslog_config_missing_host_with_port_raises(self):
+        """RemoteSyslogConfig without host but with port raises TypeError."""
+        with pytest.raises(TypeError):
+            RemoteSyslogConfig(port=514)
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+import pytest
+
+
+class TestParametrizedAppendOnlyModeValues:
+    """Parametrized: All AppendOnlyMode enum members."""
+
+    MODE_VALUES = [
+        (AppendOnlyMode.NONE, "none"),
+        (AppendOnlyMode.CHATTR, "chattr"),
+        (AppendOnlyMode.COPY_ON_WRITE, "cow"),
+        (AppendOnlyMode.REMOTE_ONLY, "remote"),
+        (AppendOnlyMode.FULL, "full"),
+    ]
+
+    @pytest.mark.parametrize("mode,expected_value", MODE_VALUES,
+        ids=[m.name for m, _ in MODE_VALUES])
+    def test_mode_value(self, mode, expected_value):
+        """Each AppendOnlyMode should have its expected string value."""
+        assert mode.value == expected_value
+
+
+class TestParametrizedAppendOnlyStorageWithAllModes:
+    """Parametrized: AppendOnlyStorage can be created with every mode."""
+
+    @pytest.mark.parametrize("mode", list(AppendOnlyMode),
+        ids=[m.name for m in AppendOnlyMode])
+    def test_storage_creation_with_mode(self, mode):
+        """Storage can be created with each AppendOnlyMode."""
+        config = AppendOnlyConfig(mode=mode)
+        storage = AppendOnlyStorage(config=config)
+        assert storage.config.mode == mode
+
+
+class TestParametrizedSyslogFacilityValues:
+    """Parametrized: All SyslogFacility enum members have correct int values."""
+
+    FACILITY_VALUES = [
+        (SyslogFacility.KERN, 0),
+        (SyslogFacility.USER, 1),
+        (SyslogFacility.MAIL, 2),
+        (SyslogFacility.DAEMON, 3),
+        (SyslogFacility.AUTH, 4),
+        (SyslogFacility.SYSLOG, 5),
+        (SyslogFacility.LPR, 6),
+        (SyslogFacility.NEWS, 7),
+        (SyslogFacility.UUCP, 8),
+        (SyslogFacility.CRON, 9),
+        (SyslogFacility.AUTHPRIV, 10),
+        (SyslogFacility.FTP, 11),
+        (SyslogFacility.LOCAL0, 16),
+        (SyslogFacility.LOCAL1, 17),
+        (SyslogFacility.LOCAL2, 18),
+        (SyslogFacility.LOCAL3, 19),
+        (SyslogFacility.LOCAL4, 20),
+        (SyslogFacility.LOCAL5, 21),
+        (SyslogFacility.LOCAL6, 22),
+        (SyslogFacility.LOCAL7, 23),
+    ]
+
+    @pytest.mark.parametrize("facility,expected_value", FACILITY_VALUES,
+        ids=[f.name for f, _ in FACILITY_VALUES])
+    def test_facility_value(self, facility, expected_value):
+        """Each SyslogFacility should have its expected int value."""
+        assert facility.value == expected_value
+
+
+class TestParametrizedSyslogSeverityValues:
+    """Parametrized: All SyslogSeverity enum members."""
+
+    SEVERITY_VALUES = [
+        (SyslogSeverity.EMERGENCY, 0),
+        (SyslogSeverity.ALERT, 1),
+        (SyslogSeverity.CRITICAL, 2),
+        (SyslogSeverity.ERROR, 3),
+        (SyslogSeverity.WARNING, 4),
+        (SyslogSeverity.NOTICE, 5),
+        (SyslogSeverity.INFO, 6),
+        (SyslogSeverity.DEBUG, 7),
+    ]
+
+    @pytest.mark.parametrize("severity,expected_value", SEVERITY_VALUES,
+        ids=[s.name for s, _ in SEVERITY_VALUES])
+    def test_severity_value(self, severity, expected_value):
+        """Each SyslogSeverity should have its expected int value."""
+        assert severity.value == expected_value
+
+
+class TestParametrizedSyslogPriorityCalculation:
+    """Parametrized: Syslog priority = (facility * 8) + severity."""
+
+    PRIORITY_CASES = [
+        (SyslogFacility.KERN, SyslogSeverity.EMERGENCY, 0),
+        (SyslogFacility.KERN, SyslogSeverity.DEBUG, 7),
+        (SyslogFacility.USER, SyslogSeverity.INFO, 14),
+        (SyslogFacility.LOCAL0, SyslogSeverity.INFO, 134),
+        (SyslogFacility.LOCAL0, SyslogSeverity.EMERGENCY, 128),
+        (SyslogFacility.LOCAL7, SyslogSeverity.DEBUG, 191),
+        (SyslogFacility.AUTH, SyslogSeverity.ALERT, 33),
+        (SyslogFacility.DAEMON, SyslogSeverity.ERROR, 27),
+    ]
+
+    @pytest.mark.parametrize("facility,severity,expected_priority", PRIORITY_CASES,
+        ids=[f"{f.name}-{s.name}" for f, s, _ in PRIORITY_CASES])
+    def test_priority_value(self, facility, severity, expected_priority):
+        """Syslog priority should equal (facility * 8) + severity."""
+        priority = facility.value * 8 + severity.value
+        assert priority == expected_priority
+        assert 0 <= priority <= 191
+
+
+class TestParametrizedCheckpointIntervals:
+    """Parametrized: Various checkpoint interval values."""
+
+    @pytest.mark.parametrize("interval", [60, 300, 900, 1800, 3600, 7200, 86400],
+        ids=[f"{i}s" for i in [60, 300, 900, 1800, 3600, 7200, 86400]])
+    def test_checkpoint_interval_stored(self, interval):
+        """AppendOnlyConfig should accept various checkpoint intervals."""
+        config = AppendOnlyConfig(checkpoint_interval=interval)
+        assert config.checkpoint_interval == interval
+
+
+class TestParametrizedBackupCounts:
+    """Parametrized: Various backup count values."""
+
+    @pytest.mark.parametrize("count", [0, 1, 3, 5, 10, 50],
+        ids=[f"backups-{c}" for c in [0, 1, 3, 5, 10, 50]])
+    def test_backup_count_stored(self, count):
+        """AppendOnlyConfig should accept various backup counts."""
+        config = AppendOnlyConfig(backup_count=count)
+        assert config.backup_count == count
+
+
+class TestParametrizedRemoteSyslogProtocols:
+    """Parametrized: Remote syslog protocol options."""
+
+    @pytest.mark.parametrize("protocol,port", [
+        ("udp", 514),
+        ("tcp", 514),
+        ("tls", 6514),
+    ], ids=["udp", "tcp", "tls"])
+    def test_protocol_config(self, protocol, port):
+        """RemoteSyslogConfig should accept various protocol/port combinations."""
+        config = RemoteSyslogConfig(host="syslog.test", port=port, protocol=protocol)
+        assert config.protocol == protocol
+        assert config.port == port

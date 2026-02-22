@@ -206,7 +206,7 @@ class AppendOnlyStorage:
                 self._initialized = True
                 return True, "Storage initialized successfully"
 
-            except Exception as e:
+            except OSError as e:
                 return False, f"Failed to initialize storage: {e}"
 
     def _load_state(self):
@@ -239,7 +239,7 @@ class AppendOnlyStorage:
             # Load last checkpoint
             self._load_last_checkpoint()
 
-        except Exception as e:
+        except (OSError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Error loading log state: {e}")
 
     def _load_last_checkpoint(self):
@@ -261,14 +261,14 @@ class AppendOnlyStorage:
                     checkpoint_hash=data['checkpoint_hash'],
                     signature=data.get('signature'),
                 )
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError) as e:
                 logger.warning(f"Error loading checkpoint: {e}")
 
     def _init_wal(self):
         """Initialize write-ahead log."""
         try:
             self._wal_fd = open(self.config.wal_path, 'a')
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Could not open WAL: {e}")
 
     def _recover_wal(self):
@@ -297,7 +297,7 @@ class AppendOnlyStorage:
             with open(wal_path, 'w') as f:
                 f.truncate()
             logger.info("WAL recovery complete")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"WAL recovery failed: {e}")
 
     def _apply_chattr_protection(self) -> bool:
@@ -347,7 +347,7 @@ class AppendOnlyStorage:
             )
             self._protected = False
             return True
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             return False
 
     def _connect_remote_syslog(self) -> bool:
@@ -393,7 +393,7 @@ class AppendOnlyStorage:
                                         'warning': 'TLS verification disabled'
                                     }
                                 )
-                        except Exception:
+                        except (ImportError, OSError):
                             pass
                         context.check_hostname = False
                         context.verify_mode = ssl.CERT_NONE
@@ -404,7 +404,7 @@ class AppendOnlyStorage:
 
             return True
 
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Failed to connect to remote syslog: {e}")
             self._remote_socket = None
             return False
@@ -426,7 +426,7 @@ class AppendOnlyStorage:
                     )
         except ImportError:
             pass  # cryptography not available
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             logger.warning(f"Could not load signing key: {e}")
 
     # === Writing ===
@@ -477,7 +477,7 @@ class AppendOnlyStorage:
 
                 return True, "Event appended"
 
-            except Exception as e:
+            except OSError as e:
                 return False, f"Failed to append: {e}"
 
     def _send_to_remote(self, event_json: str):
@@ -512,7 +512,7 @@ class AppendOnlyStorage:
 
             self._send_syslog_message(event_json, config, priority, timestamp, hostname)
 
-        except Exception as e:
+        except OSError as e:
             self._stats['remote_failed'] += 1
             logger.warning(f"Failed to send event to remote syslog: {e}")
             # Queue for retry
@@ -526,7 +526,7 @@ class AppendOnlyStorage:
                 for pending in retry_queue:
                     try:
                         self._send_to_remote(pending)
-                    except Exception:
+                    except OSError:
                         self._pending_remote.append(pending)
                         break
 
@@ -579,7 +579,7 @@ class AppendOnlyStorage:
                         signature = self._signing_key.sign(
                             checkpoint_hash.encode()
                         ).hex()
-                    except Exception:
+                    except (ValueError, TypeError):
                         pass
 
                 checkpoint = IntegrityCheckpoint(
@@ -611,7 +611,7 @@ class AppendOnlyStorage:
 
                 return checkpoint
 
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Error creating checkpoint: {e}")
                 return None
 
@@ -624,7 +624,7 @@ class AppendOnlyStorage:
             oldest = checkpoints.pop(0)
             try:
                 oldest.unlink()
-            except Exception:
+            except OSError:
                 pass
 
     def verify_checkpoint(self, checkpoint: IntegrityCheckpoint) -> Tuple[bool, str]:
@@ -662,7 +662,7 @@ class AppendOnlyStorage:
                 bytes.fromhex(checkpoint.signature),
                 checkpoint.checkpoint_hash.encode(),
             )
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             return False, f"Signature verification failed: {e}"
 
         return True, "Checkpoint valid"
@@ -684,7 +684,7 @@ class AppendOnlyStorage:
                     check=True,
                 )
                 attrs = result.stdout.split()[0] if result.stdout else "none"
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         return {
@@ -718,7 +718,7 @@ class AppendOnlyStorage:
             if self._remote_socket:
                 try:
                     self._remote_socket.close()
-                except Exception:
+                except OSError:
                     pass
                 self._remote_socket = None
 

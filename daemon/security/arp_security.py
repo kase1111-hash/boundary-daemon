@@ -62,7 +62,7 @@ def _is_elevated() -> bool:
         try:
             import ctypes
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, OSError):
             return False
     else:
         return os.geteuid() == 0
@@ -281,7 +281,7 @@ class ARPSecurityMonitor:
                 self._update_arp_table()
                 self._cleanup_old_records()
                 time.sleep(5)  # Check every 5 seconds
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError) as e:
                 print(f"Error in ARP monitor loop: {e}")
                 time.sleep(5)
 
@@ -379,13 +379,13 @@ class ARPSecurityMonitor:
             if self._on_block_callback:
                 try:
                     self._on_block_callback(ip, reason)
-                except Exception as e:
+                except (TypeError, ValueError, RuntimeError) as e:
                     logger.error(f"Block callback error: {e}")
 
             logger.warning(f"ARP BLOCKED IP: {ip} - Reason: {reason}")
             return (True, f"Blocked IP {ip}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             # Rollback on any exception
             with self._lock:
                 self._blocked_ips.discard(ip)
@@ -446,7 +446,7 @@ class ARPSecurityMonitor:
             logger.info(f"ARP UNBLOCKED IP: {ip}")
             return (True, f"Unblocked IP {ip}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             # Rollback on exception - restore blocked state
             with self._lock:
                 self._blocked_ips.add(ip)
@@ -518,7 +518,7 @@ class ARPSecurityMonitor:
             else:
                 return (False, f"Failed: {result.stderr.decode()}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to set static ARP: {e}")
             return (False, str(e))
 
@@ -549,7 +549,7 @@ class ARPSecurityMonitor:
             logger.info(f"Removed static ARP for {ip}")
             return (True, f"Removed static ARP for {ip}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to remove static ARP: {e}")
             return (False, str(e))
 
@@ -622,7 +622,7 @@ class ARPSecurityMonitor:
                 match = re.search(r'dev\s+(\w+)', output)
                 if match:
                     return match.group(1)
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
         return None
 
@@ -660,7 +660,7 @@ class ARPSecurityMonitor:
                         'timestamp': datetime.utcnow().isoformat() + "Z"
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def _log_unblock_event(self, ip: str):
@@ -676,7 +676,7 @@ class ARPSecurityMonitor:
                         'timestamp': datetime.utcnow().isoformat() + "Z"
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def cleanup_enforcement(self):
@@ -702,7 +702,7 @@ class ARPSecurityMonitor:
                     capture_output=True, timeout=5
                 )
                 logger.info("Cleaned up iptables rules")
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.error(f"Failed to cleanup iptables: {e}")
 
         # Remove static ARP entries (optional - might want to keep gateway protection)
@@ -905,7 +905,7 @@ class ARPSecurityMonitor:
                     if re.match(r'\d+\.\d+\.\d+\.\d+', output):
                         detected_ip = output
                         detected_mac = self._get_mac_for_ip(detected_ip)
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.debug(f"PowerShell gateway detection failed: {e}")
 
             # Fallback: parse 'route print' output
@@ -922,7 +922,7 @@ class ARPSecurityMonitor:
                         if match:
                             detected_ip = match.group(1)
                             detected_mac = self._get_mac_for_ip(detected_ip)
-                except Exception as e:
+                except (subprocess.SubprocessError, OSError) as e:
                     logger.debug(f"Route print gateway detection failed: {e}")
         else:
             # Linux: Try to get default gateway from /proc/net/route
@@ -943,7 +943,7 @@ class ARPSecurityMonitor:
                                 # Get gateway MAC from ARP cache
                                 detected_mac = self._get_mac_for_ip(detected_ip)
                                 break
-            except Exception as e:
+            except (OSError, ValueError, IndexError) as e:
                 logger.debug(f"Error detecting gateway from /proc/net/route: {e}")
 
             # Fallback: try ip route command
@@ -959,7 +959,7 @@ class ARPSecurityMonitor:
                         if match:
                             detected_ip = match.group(1)
                             detected_mac = self._get_mac_for_ip(detected_ip)
-                except Exception:
+                except (subprocess.SubprocessError, OSError):
                     pass
 
         # Thread-safe update of gateway state
@@ -997,7 +997,7 @@ class ARPSecurityMonitor:
                     if match:
                         # Convert to colon format for consistency
                         return match.group(1).lower().replace('-', ':')
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
         else:
             # Linux: Try reading from /proc/net/arp (no lock needed - system file)
@@ -1009,7 +1009,7 @@ class ARPSecurityMonitor:
                             mac = parts[3].lower()
                             if mac != '00:00:00:00:00:00':
                                 return mac
-            except Exception:
+            except OSError:
                 pass
 
             # Fallback: Try arp command (no lock needed - external command)
@@ -1025,7 +1025,7 @@ class ARPSecurityMonitor:
                     match = mac_pattern.search(output)
                     if match:
                         return match.group(1).lower()
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         return None
@@ -1072,7 +1072,7 @@ class ARPSecurityMonitor:
 
                             # Analyze each entry
                             self.analyze_arp_entry(ip, mac, current_interface)
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.debug(f"Error updating ARP table on Windows: {e}")
         else:
             # Linux: Read from /proc/net/arp
@@ -1094,7 +1094,7 @@ class ARPSecurityMonitor:
                         # Analyze each entry
                         self.analyze_arp_entry(ip, mac, interface)
 
-            except Exception as e:
+            except OSError as e:
                 logger.debug(f"Error updating ARP table: {e}")
 
     def _check_arp_flood(self) -> Optional[str]:
@@ -1142,7 +1142,7 @@ class ARPSecurityMonitor:
             if self._gateway_mac and mac == self._gateway_mac:
                 return True
 
-        except Exception:
+        except (ValueError, IndexError):
             pass
 
         return False

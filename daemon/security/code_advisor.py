@@ -160,7 +160,7 @@ class CodeVulnerabilityAdvisor:
                 self.client = ollama.Client()
                 # Test connection
                 self.client.list()
-            except Exception as e:
+            except (ConnectionError, OSError, RuntimeError) as e:
                 logger.warning(f"Ollama client error: {e}")
                 self.ollama_available = False
 
@@ -193,7 +193,7 @@ class CodeVulnerabilityAdvisor:
         try:
             if file_path.stat().st_size > self.MAX_FILE_SIZE:
                 return False
-        except Exception:
+        except OSError:
             return False
 
         # Skip common non-code directories
@@ -226,7 +226,7 @@ class CodeVulnerabilityAdvisor:
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 return f.read()
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Failed to read {file_path}: {e}")
             return None
 
@@ -335,7 +335,7 @@ If no issues found, respond with: []
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse LLM response as JSON: {e}")
             logger.warning(f"Response: {response[:200]}...")
-        except Exception as e:
+        except (ValueError, KeyError, TypeError) as e:
             logger.warning(f"Error parsing advisories: {e}")
 
         return advisories
@@ -412,7 +412,7 @@ If no issues found, respond with: []
 
             return advisories
 
-        except Exception as e:
+        except (ConnectionError, OSError, RuntimeError, ValueError) as e:
             logger.error(f"Error scanning {file_path}: {e}")
             return []
 
@@ -510,7 +510,7 @@ If no issues found, respond with: []
 
                     if status_filter is None or advisory.status == status_filter:
                         advisories.append(advisory)
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
                 logger.warning(f"Failed to load {advisory_file}: {e}")
 
         # Sort by severity (critical first) then timestamp
@@ -555,7 +555,7 @@ If no issues found, respond with: []
                 json.dump(data, f, indent=2)
 
             return True
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
             logger.error(f"Error updating advisory: {e}")
             return False
 

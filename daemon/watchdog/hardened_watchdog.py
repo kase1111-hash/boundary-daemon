@@ -259,7 +259,7 @@ class ProcessHardening:
             # Set process name for easier identification
             libc.prctl(PR_SET_NAME, b"boundary-wdog", 0, 0, 0)
 
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Could not apply process hardening: {e}")
 
     @staticmethod
@@ -292,7 +292,7 @@ class ProcessHardening:
                         tracer = int(line.split(':')[1].strip())
                         return tracer == 0  # Not being traced
             return False
-        except Exception:
+        except (OSError, ValueError):
             return False
 
 
@@ -347,7 +347,7 @@ class SystemdWatchdog:
             sock.sendall(status.encode())
             sock.close()
             self._last_notify = time.time()
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"sd_notify failed: {e}")
 
     def watchdog_ping(self):
@@ -399,7 +399,7 @@ class HardwareWatchdog:
             logger.info(f"Hardware watchdog enabled (timeout: {self._timeout}s)")
             return True
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to enable hardware watchdog: {e}")
             return False
 
@@ -410,7 +410,7 @@ class HardwareWatchdog:
 
         try:
             os.write(self._fd, b'1')
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Hardware watchdog ping failed: {e}")
 
     def disable(self):
@@ -419,7 +419,7 @@ class HardwareWatchdog:
             try:
                 os.write(self._fd, b'V')  # Magic close
                 os.close(self._fd)
-            except Exception:
+            except OSError:
                 pass
             self._fd = None
             self._enabled = False
@@ -479,7 +479,7 @@ class WatchdogPeer:
                 self.consecutive_failures += 1
                 return False
 
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Peer {self.peer_id} check failed: {e}")
             self.consecutive_failures += 1
             self.is_alive = False
@@ -609,7 +609,7 @@ class HardenedWatchdog:
                     conn.close()
                 except socket.timeout:
                     continue
-                except Exception as e:
+                except OSError as e:
                     logger.debug(f"Server error: {e}")
 
         self._server_thread = threading.Thread(target=server_loop, daemon=True)
@@ -660,7 +660,7 @@ class HardenedWatchdog:
             self._log_event("DAEMON_MISSING", "Daemon socket not found")
             self._daemon_failures += 1
             return False
-        except Exception as e:
+        except OSError as e:
             self._log_event("DAEMON_ERROR", str(e))
             self._daemon_failures += 1
             return False
@@ -691,7 +691,7 @@ class HardenedWatchdog:
             subprocess.run(['iptables', '-P', 'INPUT', 'DROP'], timeout=5)
             subprocess.run(['iptables', '-P', 'OUTPUT', 'DROP'], timeout=5)
             subprocess.run(['iptables', '-P', 'FORWARD', 'DROP'], timeout=5)
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"iptables lockdown failed: {e}")
 
         try:
@@ -700,7 +700,7 @@ class HardenedWatchdog:
                 'logger', '-p', 'auth.crit',
                 f'BOUNDARY-WATCHDOG: LOCKDOWN - {reason}'
             ], timeout=5)
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
 
         try:
@@ -709,14 +709,14 @@ class HardenedWatchdog:
                 'wall',
                 f'SECURITY ALERT: Boundary daemon watchdog triggered lockdown: {reason}'
             ], timeout=5)
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
 
         # 4. Callback
         if self._on_lockdown:
             try:
                 self._on_lockdown(reason)
-            except Exception:
+            except (RuntimeError, OSError):
                 pass
 
         # 5. Write lockdown indicator file
@@ -727,7 +727,7 @@ class HardenedWatchdog:
                 f"Reason: {reason}\n"
                 f"Watchdog: {self.watchdog_id}\n"
             )
-        except Exception:
+        except OSError:
             pass
 
     def _monitor_loop(self):
@@ -771,7 +771,7 @@ class HardenedWatchdog:
                 if self.hardware._enabled:
                     self.hardware.ping()
 
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Monitor loop error: {e}")
 
             # Sleep with interruption check
@@ -822,7 +822,7 @@ class HardenedWatchdog:
         if self._server_socket:
             try:
                 self._server_socket.close()
-            except Exception:
+            except OSError:
                 pass
 
         if hasattr(self, '_monitor_thread'):
@@ -834,7 +834,7 @@ class HardenedWatchdog:
         # Clean up socket
         try:
             Path(self.my_socket).unlink()
-        except Exception:
+        except OSError:
             pass
 
         # Disable hardware watchdog gracefully
@@ -911,12 +911,12 @@ class DaemonWatchdogEndpoint:
             response = self.protocol.create_response(challenge, 'daemon')
             conn.sendall(response.serialize())
 
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Watchdog endpoint error: {e}")
         finally:
             try:
                 conn.close()
-            except Exception:
+            except OSError:
                 pass
 
     def start(self):
@@ -959,7 +959,7 @@ class DaemonWatchdogEndpoint:
                     ).start()
                 except socket.timeout:
                     continue
-                except Exception as e:
+                except OSError as e:
                     if self._running:
                         logger.debug(f"Accept error: {e}")
 
@@ -975,7 +975,7 @@ class DaemonWatchdogEndpoint:
         if self._server_socket:
             try:
                 self._server_socket.close()
-            except Exception:
+            except OSError:
                 pass
 
         if self._thread:
@@ -984,7 +984,7 @@ class DaemonWatchdogEndpoint:
         # Clean up socket
         try:
             Path(self.socket_path).unlink()
-        except Exception:
+        except OSError:
             pass
 
         logger.info("Daemon watchdog endpoint stopped")
@@ -1012,27 +1012,27 @@ def generate_shared_secret() -> bytes:
             machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
             winreg.CloseKey(key)
             components.append(machine_guid)
-        except Exception:
+        except OSError:
             pass
 
         # Windows: Add computer name for additional uniqueness
         try:
             components.append(os.environ.get('COMPUTERNAME', ''))
-        except Exception:
+        except (ValueError, TypeError):
             pass
     else:
         # Linux: Machine ID
         try:
             with open('/etc/machine-id', 'r') as f:
                 components.append(f.read().strip())
-        except Exception:
+        except OSError:
             pass
 
         # Linux: Boot ID (changes each boot - adds freshness)
         try:
             with open('/proc/sys/kernel/random/boot_id', 'r') as f:
                 components.append(f.read().strip())
-        except Exception:
+        except OSError:
             pass
 
     # If nothing else, use a random secret (not persistent across restarts)

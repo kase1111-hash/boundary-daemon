@@ -241,7 +241,7 @@ class ProtectionPersistenceManager:
                     'error_code': getattr(e, 'errno', None),
                 }
             )
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             handle_error(
                 e, "_init_state_directory",
                 category=ErrorCategory.SYSTEM if ERROR_HANDLING_AVAILABLE else None,
@@ -254,7 +254,7 @@ class ProtectionPersistenceManager:
             try:
                 import ctypes
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
-            except Exception:
+            except (AttributeError, OSError):
                 return False
         else:
             return os.geteuid() == 0
@@ -304,7 +304,7 @@ class ProtectionPersistenceManager:
             )
             logger.warning("Using fallback HMAC key due to I/O error (less secure)")
             self._hmac_key = b"boundary-daemon-fallback-key-do-not-use"
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             handle_error(
                 e, "_init_hmac_key",
                 category=ErrorCategory.SECURITY if ERROR_HANDLING_AVAILABLE else None,
@@ -367,7 +367,7 @@ class ProtectionPersistenceManager:
                 # Check for expired protections
                 self._cleanup_expired()
 
-            except Exception as e:
+            except (json.JSONDecodeError, OSError, KeyError) as e:
                 logger.error(f"Failed to load protection state: {e}")
                 self._state = ProtectionState(
                     cleanup_policy=self.cleanup_policy.value,
@@ -405,7 +405,7 @@ class ProtectionPersistenceManager:
                 # Atomic rename
                 temp_file.rename(self.state_file)
 
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Failed to save protection state: {e}")
 
     def _cleanup_expired(self):
@@ -433,7 +433,7 @@ class ProtectionPersistenceManager:
                 event_type=event_type,
                 data=data,
             )
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
     def persist_protection(

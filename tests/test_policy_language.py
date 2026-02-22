@@ -132,8 +132,6 @@ def _make_policy_set(rules=None, strategy='first_match'):
 # ===========================================================================
 
 class TestConditionEvaluation:
-    """Test that every field/operator combination evaluates correctly."""
-
     # --- mode ---
 
     def test_mode_eq_match(self):
@@ -349,8 +347,6 @@ class TestRuleEvaluation:
 # ===========================================================================
 
 class TestPolicySetEvaluation:
-    """Test first_match and most_restrictive strategies."""
-
     def test_first_match_returns_highest_priority(self):
         ps = _make_policy_set(
             rules=[
@@ -508,8 +504,6 @@ class TestTighteningInvariant:
 # ===========================================================================
 
 class TestValidation:
-    """Test PolicySet validation catches errors."""
-
     def test_valid_policy_set_no_errors(self):
         ps = _make_policy_set(rules=[
             _make_rule('r1', conditions=[
@@ -594,8 +588,6 @@ class TestValidation:
 # ===========================================================================
 
 class TestStaticAnalysis:
-    """Test conflict detection and shadow detection."""
-
     def test_find_conflicts_different_actions(self):
         ps = _make_policy_set(rules=[
             _make_rule('a', priority=10, conditions=[], action='allow'),
@@ -654,8 +646,6 @@ class TestStaticAnalysis:
 # ===========================================================================
 
 class TestSerialization:
-    """Test JSON round-trip for PolicySet."""
-
     def test_json_round_trip(self):
         ps = _make_policy_set(rules=[
             PolicyRule(
@@ -699,8 +689,6 @@ class TestSerialization:
 # ===========================================================================
 
 class TestEvaluationContextBuild:
-    """Test building context from daemon types."""
-
     def test_build_from_standard_types(self):
         env = _make_env_state(
             network=NetworkState.ONLINE,
@@ -739,8 +727,6 @@ class TestEvaluationContextBuild:
 # ===========================================================================
 
 class TestPolicyEngineIntegration:
-    """Test custom policies through PolicyEngine.evaluate_policy."""
-
     def _make_engine_with_policy(self, mode, rules, strategy='first_match'):
         engine = PolicyEngine(initial_mode=mode)
         ps = _make_policy_set(rules=rules, strategy=strategy)

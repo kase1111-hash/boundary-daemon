@@ -1432,7 +1432,7 @@ class AlleyScene:
                         monitors_healthy['memory_monitor'] = False
                     if not summary.get('resource_monitor_active', True):
                         monitors_healthy['resource_monitor'] = False
-        except Exception:
+        except (OSError, KeyError, ValueError):
             pass  # Fail silently, keep previous canary state
 
         # Update canary state based on monitor health

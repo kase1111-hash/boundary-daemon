@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +21,7 @@ from daemon.auth.api_auth import (
     COMMAND_CAPABILITIES,
     COMMAND_RATE_LIMITS,
     CommandRateLimitEntry,
+    TokenManager,
 )
 
 
@@ -28,28 +30,22 @@ from daemon.auth.api_auth import (
 # ===========================================================================
 
 class TestAPICapability:
-    """Tests for APICapability enum."""
-
     def test_read_only_capabilities(self):
-        """Read-only capabilities should exist."""
-        assert APICapability.STATUS is not None
-        assert APICapability.READ_EVENTS is not None
-        assert APICapability.VERIFY_LOG is not None
-        assert APICapability.CHECK_RECALL is not None
-        assert APICapability.CHECK_TOOL is not None
-        assert APICapability.CHECK_MESSAGE is not None
+        assert isinstance(APICapability.STATUS, APICapability)
+        assert isinstance(APICapability.READ_EVENTS, APICapability)
+        assert isinstance(APICapability.VERIFY_LOG, APICapability)
+        assert isinstance(APICapability.CHECK_RECALL, APICapability)
+        assert isinstance(APICapability.CHECK_TOOL, APICapability)
+        assert isinstance(APICapability.CHECK_MESSAGE, APICapability)
 
     def test_write_capabilities(self):
-        """Write capabilities should exist."""
-        assert APICapability.SET_MODE is not None
+        assert isinstance(APICapability.SET_MODE, APICapability)
 
     def test_admin_capabilities(self):
-        """Admin capabilities should exist."""
-        assert APICapability.MANAGE_TOKENS is not None
-        assert APICapability.ADMIN is not None
+        assert isinstance(APICapability.MANAGE_TOKENS, APICapability)
+        assert isinstance(APICapability.ADMIN, APICapability)
 
     def test_all_capabilities_unique(self):
-        """All capability values should be unique."""
         values = [c.value for c in APICapability]
         assert len(values) == len(set(values))
 
@@ -59,37 +55,30 @@ class TestAPICapability:
 # ===========================================================================
 
 class TestCapabilitySets:
-    """Tests for predefined capability sets."""
-
     def test_readonly_set_exists(self):
-        """Readonly capability set should exist."""
         assert 'readonly' in CAPABILITY_SETS
         readonly = CAPABILITY_SETS['readonly']
         assert APICapability.STATUS in readonly
         assert APICapability.READ_EVENTS in readonly
 
     def test_readonly_no_write(self):
-        """Readonly set should not include write capabilities."""
         readonly = CAPABILITY_SETS['readonly']
         assert APICapability.SET_MODE not in readonly
         assert APICapability.MANAGE_TOKENS not in readonly
         assert APICapability.ADMIN not in readonly
 
     def test_operator_set_exists(self):
-        """Operator capability set should exist."""
         assert 'operator' in CAPABILITY_SETS
         operator = CAPABILITY_SETS['operator']
         assert APICapability.SET_MODE in operator
 
     def test_operator_includes_readonly(self):
-        """Operator set should include all readonly capabilities."""
         readonly = CAPABILITY_SETS['readonly']
         operator = CAPABILITY_SETS['operator']
         for cap in readonly:
             assert cap in operator
 
     def test_admin_set_exists(self):
-        """Admin capability set should exist."""
         assert 'admin' in CAPABILITY_SETS
         admin = CAPABILITY_SETS['admin']
         assert APICapability.ADMIN in admin
@@ -100,28 +89,21 @@ class TestCapabilitySets:
 # ===========================================================================
 
 class TestCommandCapabilities:
-    """Tests for command-to-capability mapping."""
-
     def test_status_command(self):
-        """status command should require STATUS capability."""
         assert COMMAND_CAPABILITIES['status'] == APICapability.STATUS
 
     def test_get_events_command(self):
-        """get_events command should require READ_EVENTS capability."""
         assert COMMAND_CAPABILITIES['get_events'] == APICapability.READ_EVENTS
 
     def test_set_mode_command(self):
-        """set_mode command should require SET_MODE capability."""
         assert COMMAND_CAPABILITIES['set_mode'] == APICapability.SET_MODE
 
     def test_token_management_commands(self):
-        """Token management commands should require MANAGE_TOKENS."""
         assert COMMAND_CAPABILITIES['create_token'] == APICapability.MANAGE_TOKENS
         assert COMMAND_CAPABILITIES['revoke_token'] == APICapability.MANAGE_TOKENS
         assert COMMAND_CAPABILITIES['list_tokens'] == APICapability.MANAGE_TOKENS
 
     def test_all_commands_have_capability(self):
-        """All defined commands should have a capability mapping."""
         for cmd, cap in COMMAND_CAPABILITIES.items():
             assert isinstance(cap, APICapability)
 
@@ -131,8 +113,6 @@ class TestCommandCapabilities:
 # ===========================================================================
 
 class TestCommandRateLimits:
-    """Tests for command-specific rate limits."""
-
     def test_rate_limit_format(self):
         """Rate limits should be (max_requests, window_seconds) tuples."""
         for cmd, limit in COMMAND_RATE_LIMITS.items():
@@ -142,19 +122,16 @@ class TestCommandRateLimits:
             assert isinstance(limit[1], int)
 
     def test_rate_limits_positive(self):
-        """Rate limits should have positive values."""
         for cmd, (max_req, window) in COMMAND_RATE_LIMITS.items():
             assert max_req > 0
             assert window > 0
 
     def test_read_commands_higher_limits(self):
-        """Read commands should have higher rate limits than write."""
         status_limit = COMMAND_RATE_LIMITS['status'][0]
         set_mode_limit = COMMAND_RATE_LIMITS['set_mode'][0]
         assert status_limit > set_mode_limit
 
     def test_token_commands_strict_limits(self):
-        """Token management should have strict limits."""
         create_limit = COMMAND_RATE_LIMITS['create_token'][0]
         assert create_limit <= 10  # Very limited
 
@@ -164,22 +141,17 @@ class TestCommandRateLimits:
 # ===========================================================================
 
 class TestCommandRateLimitEntry:
-    """Tests for CommandRateLimitEntry dataclass."""
-
     def test_entry_creation(self):
-        """CommandRateLimitEntry should be creatable."""
         entry = CommandRateLimitEntry()
         assert entry.request_times == []
         assert entry.blocked_until is None
 
     def test_entry_with_times(self):
-        """CommandRateLimitEntry should track request times."""
         now = time.monotonic()
         entry = CommandRateLimitEntry(request_times=[now])
         assert len(entry.request_times) == 1
 
     def test_entry_with_block(self):
-        """CommandRateLimitEntry should track block time."""
         block_time = time.monotonic() + 60
         entry = CommandRateLimitEntry(blocked_until=block_time)
         assert entry.blocked_until == block_time
@@ -190,10 +162,7 @@ class TestCommandRateLimitEntry:
 # ===========================================================================
 
 class TestAPIToken:
-    """Tests for APIToken dataclass."""
-
     def test_token_creation(self):
-        """APIToken should be creatable with required fields."""
         token = APIToken(
             token_id="abc12345",
             token_hash="hash_value",
@@ -205,7 +174,6 @@ class TestAPIToken:
         assert token.name == "test_token"
 
     def test_token_defaults(self):
-        """APIToken should have correct defaults."""
         token = APIToken(
             token_id="test",
             token_hash="hash",
@@ -221,7 +189,6 @@ class TestAPIToken:
         assert token.metadata == {}
 
     def test_token_with_expiry(self):
-        """APIToken should accept expiry time."""
         expiry = datetime.now() + timedelta(hours=24)
         token = APIToken(
             token_id="test",
@@ -234,7 +201,6 @@ class TestAPIToken:
         assert token.expires_at == expiry
 
     def test_token_is_valid_active(self):
-        """is_valid should return True for active token."""
         token = APIToken(
             token_id="test",
             token_hash="hash",
@@ -246,7 +212,6 @@ class TestAPIToken:
         assert valid is True
 
     def test_token_is_valid_revoked(self):
-        """is_valid should return False for revoked token."""
         token = APIToken(
             token_id="test",
             token_hash="hash",
@@ -260,7 +225,6 @@ class TestAPIToken:
         assert "revoked" in message.lower()
 
     def test_token_is_valid_expired(self):
-        """is_valid should return False for expired token."""
         token = APIToken(
             token_id="test",
             token_hash="hash",
@@ -274,7 +238,6 @@ class TestAPIToken:
         assert "expired" in message.lower()
 
     def test_token_with_capabilities(self):
-        """APIToken should store capabilities correctly."""
         caps = {APICapability.STATUS, APICapability.READ_EVENTS}
         token = APIToken(
             token_id="test",
@@ -293,10 +256,7 @@ class TestAPIToken:
 # ===========================================================================
 
 class TestAPIAuthIntegration:
-    """Integration tests for API authentication."""
-
     def test_readonly_token_workflow(self):
-        """Readonly token should not allow write operations."""
         readonly_caps = CAPABILITY_SETS['readonly']
         token = APIToken(
             token_id="readonly",
@@ -315,7 +275,6 @@ class TestAPIAuthIntegration:
         assert APICapability.SET_MODE not in token.capabilities
 
     def test_operator_token_workflow(self):
-        """Operator token should allow mode changes."""
         operator_caps = CAPABILITY_SETS['operator']
         token = APIToken(
             token_id="operator",
@@ -329,7 +288,6 @@ class TestAPIAuthIntegration:
         assert APICapability.SET_MODE in token.capabilities
 
     def test_admin_token_workflow(self):
-        """Admin token should have full access."""
         admin_caps = CAPABILITY_SETS['admin']
         token = APIToken(
             token_id="admin",
@@ -348,8 +306,6 @@ class TestAPIAuthIntegration:
 # ===========================================================================
 
 class TestAPIAuthEdgeCases:
-    """Edge case tests for API authentication."""
-
     def test_empty_capabilities(self):
         """Token with empty capabilities should be valid but useless."""
         token = APIToken(
@@ -364,7 +320,6 @@ class TestAPIAuthEdgeCases:
         assert len(token.capabilities) == 0
 
     def test_token_with_metadata(self):
-        """Token should store arbitrary metadata."""
         token = APIToken(
             token_id="test",
             token_hash="hash",
@@ -377,7 +332,6 @@ class TestAPIAuthEdgeCases:
         assert token.metadata['version'] == '1.0'
 
     def test_token_use_count(self):
-        """Token use count should be trackable."""
         token = APIToken(
             token_id="test",
             token_hash="hash",
@@ -387,3 +341,138 @@ class TestAPIAuthEdgeCases:
             use_count=42,
         )
         assert token.use_count == 42
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+class TestTokenManagerErrorPaths:
+    """Error-path tests for TokenManager using pytest.raises."""
+
+    def test_create_token_unknown_capability_raises_value_error(self, tmp_path):
+        """Creating a token with an unknown capability should raise ValueError."""
+        tm = TokenManager(token_file=str(tmp_path / "tokens.json"))
+        with pytest.raises(ValueError, match="Unknown capability"):
+            tm.create_token(
+                name="bad-token",
+                capabilities={"totally_fake_capability"},
+                created_by="test",
+            )
+
+    def test_create_token_multiple_unknown_capabilities_raises(self, tmp_path):
+        """Creating a token with multiple unknown capabilities raises ValueError."""
+        tm = TokenManager(token_file=str(tmp_path / "tokens.json"))
+        with pytest.raises(ValueError, match="Unknown capability"):
+            tm.create_token(
+                name="bad-token",
+                capabilities={"nonexistent_a", "nonexistent_b"},
+                created_by="test",
+            )
+
+    def test_from_dict_missing_token_id_raises_key_error(self):
+        """APIToken.from_dict with missing token_id should raise KeyError."""
+        bad_data = {
+            'token_hash': 'abc',
+            'name': 'test',
+            'capabilities': ['STATUS'],
+            'created_at': '2024-01-01T00:00:00',
+        }
+        with pytest.raises(KeyError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_missing_token_hash_raises_key_error(self):
+        """APIToken.from_dict with missing token_hash should raise KeyError."""
+        bad_data = {
+            'token_id': 'abc',
+            'name': 'test',
+            'capabilities': ['STATUS'],
+            'created_at': '2024-01-01T00:00:00',
+        }
+        with pytest.raises(KeyError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_missing_name_raises_key_error(self):
+        """APIToken.from_dict with missing name should raise KeyError."""
+        bad_data = {
+            'token_id': 'abc',
+            'token_hash': 'def',
+            'capabilities': ['STATUS'],
+            'created_at': '2024-01-01T00:00:00',
+        }
+        with pytest.raises(KeyError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_invalid_capability_raises_key_error(self):
+        """APIToken.from_dict with an invalid capability name raises KeyError."""
+        bad_data = {
+            'token_id': 'abc',
+            'token_hash': 'def',
+            'name': 'test',
+            'capabilities': ['NONEXISTENT_CAP'],
+            'created_at': '2024-01-01T00:00:00',
+        }
+        with pytest.raises(KeyError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_invalid_created_at_raises_value_error(self):
+        """APIToken.from_dict with malformed created_at raises ValueError."""
+        bad_data = {
+            'token_id': 'abc',
+            'token_hash': 'def',
+            'name': 'test',
+            'capabilities': ['STATUS'],
+            'created_at': 'not-a-date',
+        }
+        with pytest.raises(ValueError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_invalid_expires_at_raises_value_error(self):
+        """APIToken.from_dict with malformed expires_at raises ValueError."""
+        bad_data = {
+            'token_id': 'abc',
+            'token_hash': 'def',
+            'name': 'test',
+            'capabilities': ['STATUS'],
+            'created_at': '2024-01-01T00:00:00',
+            'expires_at': 'garbage-date',
+        }
+        with pytest.raises(ValueError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_missing_capabilities_raises_key_error(self):
+        """APIToken.from_dict with missing capabilities raises KeyError."""
+        bad_data = {
+            'token_id': 'abc',
+            'token_hash': 'def',
+            'name': 'test',
+            'created_at': '2024-01-01T00:00:00',
+        }
+        with pytest.raises(KeyError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_missing_created_at_raises_key_error(self):
+        """APIToken.from_dict with missing created_at raises KeyError."""
+        bad_data = {
+            'token_id': 'abc',
+            'token_hash': 'def',
+            'name': 'test',
+            'capabilities': ['STATUS'],
+        }
+        with pytest.raises(KeyError):
+            APIToken.from_dict(bad_data)
+
+    def test_from_dict_empty_dict_raises_key_error(self):
+        """APIToken.from_dict with empty dict raises KeyError."""
+        with pytest.raises(KeyError):
+            APIToken.from_dict({})
+
+    def test_create_token_mixed_valid_invalid_capabilities_raises(self, tmp_path):
+        """Mixed valid and invalid capabilities should raise ValueError."""
+        tm = TokenManager(token_file=str(tmp_path / "tokens.json"))
+        with pytest.raises(ValueError, match="Unknown capability"):
+            tm.create_token(
+                name="mixed-token",
+                capabilities={"readonly", "bogus_capability"},
+                created_by="test",
+            )

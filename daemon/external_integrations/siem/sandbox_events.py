@@ -138,7 +138,7 @@ class SandboxEventEmitterConfig:
             import socket
             try:
                 config.hostname = socket.gethostname()
-            except Exception:
+            except OSError:
                 config.hostname = 'unknown'
 
         return config

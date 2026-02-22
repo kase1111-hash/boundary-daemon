@@ -50,7 +50,6 @@ from daemon.operator_observability import (
 
 
 def _make_env(**overrides) -> EnvironmentState:
-    """Create a minimal EnvironmentState for testing."""
     defaults = dict(
         timestamp=datetime.utcnow().isoformat() + "Z",
         network=NetworkState.ONLINE,
@@ -115,7 +114,6 @@ def policy_engine():
 
 @pytest.fixture
 def env_state():
-    """A default environment state for testing."""
     return _make_env()
 
 
@@ -183,11 +181,8 @@ def console(fake_daemon):
 
 
 class TestDecisionTracing:
-    """Test that policy decisions can be traced with full reasoning."""
-
     @pytest.mark.unit
     def test_trace_recall_allow(self, console, env_state):
-        """Trace a recall request that should be allowed."""
         request = PolicyRequest(
             request_type="recall",
             memory_class=MemoryClass.PUBLIC,
@@ -202,7 +197,6 @@ class TestDecisionTracing:
 
     @pytest.mark.unit
     def test_trace_recall_deny(self, console, env_state):
-        """Trace a recall request that should be denied."""
         request = PolicyRequest(
             request_type="recall",
             memory_class=MemoryClass.SECRET,
@@ -329,7 +323,6 @@ class TestDecisionTracing:
 
     @pytest.mark.unit
     def test_trace_explain_readable(self, console, env_state):
-        """The explain() method should produce human-readable output."""
         request = PolicyRequest(
             request_type="recall",
             memory_class=MemoryClass.SECRET,
@@ -343,7 +336,6 @@ class TestDecisionTracing:
 
     @pytest.mark.unit
     def test_trace_to_dict(self, console, env_state):
-        """Traces should be serializable to dictionaries."""
         request = PolicyRequest(
             request_type="recall",
             memory_class=MemoryClass.PUBLIC,
@@ -364,8 +356,6 @@ class TestDecisionTracing:
 
 
 class TestIntegrationHealthRegistry:
-    """Test the integration health monitoring registry."""
-
     @pytest.mark.unit
     def test_check_in(self):
         registry = IntegrationHealthRegistry(silent_threshold_seconds=60)
@@ -435,7 +425,6 @@ class TestIntegrationHealthRegistry:
 
     @pytest.mark.unit
     def test_get_status(self):
-        """Status should include counts and details."""
         registry = IntegrationHealthRegistry(silent_threshold_seconds=60)
         registry.expect("vault")
         registry.check_in("agent-os", request_type="tool", decision="allow")
@@ -455,8 +444,6 @@ class TestIntegrationHealthRegistry:
 
 
 class TestOperatorSnapshot:
-    """Test the unified operator snapshot."""
-
     @pytest.mark.unit
     def test_snapshot_has_required_sections(self, console):
         """Snapshot should have all five ROADMAP §6 sections."""
@@ -471,7 +458,6 @@ class TestOperatorSnapshot:
 
     @pytest.mark.unit
     def test_mode_section_has_rationale(self, console):
-        """Mode section should include rationale."""
         snapshot = console.get_operator_snapshot()
         mode = snapshot["mode"]
 
@@ -484,7 +470,6 @@ class TestOperatorSnapshot:
 
     @pytest.mark.unit
     def test_tripwire_section(self, console):
-        """Tripwire section should show armed/fired status."""
         snapshot = console.get_operator_snapshot()
         tripwires = snapshot["tripwire_status"]
 
@@ -499,7 +484,6 @@ class TestOperatorSnapshot:
 
     @pytest.mark.unit
     def test_log_health_section(self, console):
-        """Log health should show chain status."""
         snapshot = console.get_operator_snapshot()
         log_health = snapshot["log_health"]
 
@@ -530,11 +514,8 @@ class TestOperatorSnapshot:
 
 
 class TestLogChainVerification:
-    """Test log chain verification through the console."""
-
     @pytest.mark.unit
     def test_verify_chain_initially(self, console, event_logger):
-        """Fresh chain should verify successfully."""
         event_logger.log_event(EventType.INFO, "test event")
         valid, msg = console.verify_log_chain()
 
@@ -560,8 +541,6 @@ class TestLogChainVerification:
 
 
 class TestDecisionLogQuerying:
-    """Test querying the decision log."""
-
     @pytest.mark.unit
     def test_query_by_request_type(self, console, env_state):
         """Query decisions filtered by request type."""
@@ -605,7 +584,6 @@ class TestDecisionLogQuerying:
 
     @pytest.mark.unit
     def test_decision_stats(self, console, env_state):
-        """Decision stats should aggregate correctly."""
         for mc in [MemoryClass.PUBLIC, MemoryClass.PUBLIC, MemoryClass.SECRET]:
             console.trace_decision(
                 PolicyRequest(request_type="recall", memory_class=mc),
@@ -620,7 +598,6 @@ class TestDecisionLogQuerying:
 
     @pytest.mark.unit
     def test_decision_log_bounded(self, console, env_state):
-        """Decision log should not grow unbounded."""
         console._max_decision_log = 5
 
         for i in range(10):
@@ -638,11 +615,8 @@ class TestDecisionLogQuerying:
 
 
 class TestEvidenceBundleExport:
-    """Test evidence bundle export for compliance/incident response."""
-
     @pytest.mark.unit
     def test_export_bundle_dict(self, console, event_logger, env_state):
-        """Bundle should contain all required sections."""
         event_logger.log_event(EventType.MODE_CHANGE, "test event")
         console.trace_decision(
             PolicyRequest(request_type="recall", memory_class=MemoryClass.PUBLIC),
@@ -663,7 +637,6 @@ class TestEvidenceBundleExport:
 
     @pytest.mark.unit
     def test_export_bundle_to_file(self, console, event_logger, temp_dir, env_state):
-        """Bundle should be writable to disk."""
         event_logger.log_event(EventType.INFO, "evidence test")
         console.trace_decision(
             PolicyRequest(request_type="recall", memory_class=MemoryClass.PUBLIC),
@@ -683,7 +656,6 @@ class TestEvidenceBundleExport:
 
     @pytest.mark.unit
     def test_bundle_has_integrity_hash(self, console, event_logger):
-        """Bundle should have a SHA-256 hash for integrity."""
         event_logger.log_event(EventType.INFO, "hash test")
         bundle = console.export_evidence_bundle()
 
@@ -692,7 +664,6 @@ class TestEvidenceBundleExport:
 
     @pytest.mark.unit
     def test_bundle_includes_chain_verification(self, console, event_logger):
-        """Bundle should verify the chain and include the result."""
         event_logger.log_event(EventType.INFO, "chain test")
         bundle = console.export_evidence_bundle()
 
@@ -732,7 +703,6 @@ class TestTraceVerdictCoverage:
     def test_recall_truth_table_traced(
         self, memory_class, mode, expected_decision, env_state
     ):
-        """Every recall decision should produce a correct trace."""
         engine = PolicyEngine(initial_mode=mode)
         request = PolicyRequest(
             request_type="recall",
@@ -778,7 +748,6 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_snapshot_with_no_decisions(self, console):
-        """Snapshot should work with empty decision log."""
         snapshot = console.get_operator_snapshot()
         assert snapshot["recent_decisions"]["total_logged"] == 0
 
@@ -806,7 +775,6 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_bundle_default_time_range(self, console, event_logger):
-        """Bundle should default to last 24 hours."""
         event_logger.log_event(EventType.INFO, "range test")
         bundle = console.export_evidence_bundle()
 

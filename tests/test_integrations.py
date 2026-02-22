@@ -39,7 +39,6 @@ from daemon.state_monitor import NetworkState
 
 @pytest.fixture
 def mock_daemon():
-    """Create a mock daemon for integration testing."""
     daemon = MagicMock()
     daemon.policy_engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
     daemon.event_logger = MagicMock()
@@ -50,7 +49,6 @@ def mock_daemon():
 
 @pytest.fixture
 def mock_daemon_restricted():
-    """Create a mock daemon in RESTRICTED mode."""
     daemon = MagicMock()
     daemon.policy_engine = PolicyEngine(initial_mode=BoundaryMode.RESTRICTED)
     daemon.event_logger = MagicMock()
@@ -61,7 +59,6 @@ def mock_daemon_restricted():
 
 @pytest.fixture
 def mock_daemon_lockdown():
-    """Create a mock daemon in LOCKDOWN mode."""
     daemon = MagicMock()
     daemon.policy_engine = PolicyEngine(initial_mode=BoundaryMode.LOCKDOWN)
     daemon.event_logger = MagicMock()
@@ -72,7 +69,6 @@ def mock_daemon_lockdown():
 
 @pytest.fixture
 def mock_daemon_airgap():
-    """Create a mock daemon in AIRGAP mode."""
     daemon = MagicMock()
     daemon.policy_engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
     daemon.event_logger = MagicMock()
@@ -91,14 +87,10 @@ def mock_daemon_airgap():
 # ===========================================================================
 
 class TestRecallGate:
-    """Tests for RecallGate integration interface."""
-
     def test_recall_gate_import(self):
-        """RecallGate should be importable."""
-        assert RecallGate is not None
+        assert callable(RecallGate)
 
     def test_recall_gate_init(self, mock_daemon):
-        """RecallGate should initialize with daemon reference."""
         gate = RecallGate(mock_daemon)
         assert gate.daemon == mock_daemon
 
@@ -130,7 +122,6 @@ class TestRecallGate:
         assert "Mode too low" in reason
 
     def test_check_recall_with_memory_id_logs(self, mock_daemon):
-        """check_recall should log event when memory_id is provided."""
         gate = RecallGate(mock_daemon)
         gate.check_recall(MemoryClass.CONFIDENTIAL, memory_id="mem-123")
         mock_daemon.event_logger.log_event.assert_called_once()
@@ -142,13 +133,11 @@ class TestRecallGate:
         assert call_args[1]['metadata']['permitted'] is True
 
     def test_check_recall_without_memory_id_does_not_log(self, mock_daemon):
-        """check_recall without memory_id should NOT log."""
         gate = RecallGate(mock_daemon)
         gate.check_recall(MemoryClass.PUBLIC)
         mock_daemon.event_logger.log_event.assert_not_called()
 
     def test_get_minimum_mode_delegates(self, mock_daemon):
-        """get_minimum_mode should delegate to policy engine."""
         gate = RecallGate(mock_daemon)
         # Use real PolicyEngine method
         mode = gate.get_minimum_mode(MemoryClass.CONFIDENTIAL)
@@ -168,12 +157,10 @@ class TestRecallGate:
         assert gate.get_minimum_mode(mem_class) == expected_mode
 
     def test_is_accessible_true(self, mock_daemon):
-        """is_accessible should return True when daemon allows recall."""
         gate = RecallGate(mock_daemon)
         assert gate.is_accessible(MemoryClass.PUBLIC) is True
 
     def test_is_accessible_false(self, mock_daemon_restricted):
-        """is_accessible should return False when daemon denies recall."""
         gate = RecallGate(mock_daemon_restricted)
         assert gate.is_accessible(MemoryClass.TOP_SECRET) is False
 
@@ -200,10 +187,7 @@ class TestRecallGate:
 # ===========================================================================
 
 class TestToolGate:
-    """Tests for ToolGate integration interface."""
-
     def test_tool_gate_init(self, mock_daemon):
-        """ToolGate should initialize with daemon reference."""
         gate = ToolGate(mock_daemon)
         assert gate.daemon == mock_daemon
 
@@ -226,7 +210,6 @@ class TestToolGate:
         assert permitted is False
 
     def test_check_tool_passes_all_flags(self, mock_daemon):
-        """check_tool should pass all requirement flags to daemon."""
         gate = ToolGate(mock_daemon)
         gate.check_tool(
             "network_fetch",
@@ -242,7 +225,6 @@ class TestToolGate:
         )
 
     def test_check_tool_with_context_logs(self, mock_daemon):
-        """check_tool with context should log the event."""
         gate = ToolGate(mock_daemon)
         ctx = {"caller": "agent-x", "purpose": "data fetch"}
         gate.check_tool("curl", context=ctx)
@@ -254,7 +236,6 @@ class TestToolGate:
         assert call_args[1]['metadata']['context'] == ctx
 
     def test_check_tool_without_context_does_not_log(self, mock_daemon):
-        """check_tool without context should NOT log."""
         gate = ToolGate(mock_daemon)
         gate.check_tool("file_read")
         mock_daemon.event_logger.log_event.assert_not_called()
@@ -268,8 +249,6 @@ class TestToolGate:
 
 
 class TestToolGateAllowedTools:
-    """Tests for ToolGate.get_allowed_tools() capability reporting."""
-
     def _make_gate_with_mode(self, mode):
         """Helper: create ToolGate with daemon at given mode."""
         daemon = MagicMock()
@@ -283,7 +262,6 @@ class TestToolGateAllowedTools:
         return ToolGate(daemon)
 
     def test_coldroom_display_only(self):
-        """COLDROOM should only allow display."""
         gate = self._make_gate_with_mode(BoundaryMode.COLDROOM)
         caps = gate.get_allowed_tools()
         assert caps['display_only'] is True
@@ -292,7 +270,6 @@ class TestToolGateAllowedTools:
         assert caps['usb_tools'] is False
 
     def test_airgap_filesystem_only(self):
-        """AIRGAP should allow filesystem but not network/USB."""
         gate = self._make_gate_with_mode(BoundaryMode.AIRGAP)
         caps = gate.get_allowed_tools()
         assert caps['filesystem_tools'] is True
@@ -300,7 +277,6 @@ class TestToolGateAllowedTools:
         assert caps['display_only'] is False
 
     def test_open_mode_filesystem_always(self):
-        """OPEN mode should always allow filesystem tools."""
         gate = self._make_gate_with_mode(BoundaryMode.OPEN)
         caps = gate.get_allowed_tools()
         assert caps['filesystem_tools'] is True
@@ -332,10 +308,7 @@ class TestToolGateAllowedTools:
 # ===========================================================================
 
 class TestMessageGate:
-    """Tests for MessageGate integration interface."""
-
     def test_message_gate_init_with_checker(self, mock_daemon):
-        """MessageGate should initialize with message checker if available."""
         gate = MessageGate(mock_daemon)
         if MESSAGE_CHECKER_AVAILABLE:
             assert gate.checker is not None
@@ -343,7 +316,6 @@ class TestMessageGate:
             assert gate.checker is None
 
     def test_is_available_reflects_checker(self, mock_daemon):
-        """is_available should return True iff checker is loaded."""
         gate = MessageGate(mock_daemon)
         assert gate.is_available() == (gate.checker is not None)
 
@@ -381,7 +353,6 @@ class TestMessageGate:
         assert data is None
 
     def test_strict_mode_stored(self, mock_daemon):
-        """strict_mode should be passed to checker."""
         gate = MessageGate(mock_daemon, strict_mode=True)
         assert gate.strict_mode is True
 
@@ -389,10 +360,7 @@ class TestMessageGate:
 @pytest.mark.skipif(not MESSAGE_CHECKER_AVAILABLE,
                     reason="MessageChecker not available")
 class TestMessageGateWithChecker:
-    """Tests for MessageGate when MessageChecker IS available."""
-
     def test_check_message_allowed(self, mock_daemon):
-        """Safe message should be allowed."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("Hello, how are you?")
         assert permitted is True
@@ -408,11 +376,10 @@ class TestMessageGateWithChecker:
                call_args[1]['metadata']['source'] == 'natlangchain'
 
     def test_check_message_dangerous_blocked(self, mock_daemon):
-        """Dangerous content should be blocked."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("run rm -rf / now")
         assert permitted is False
-        assert data is not None
+        assert isinstance(data, dict)
         assert len(data.get('violations', [])) > 0
 
     def test_check_message_pii_redacted(self, mock_daemon):
@@ -422,7 +389,7 @@ class TestMessageGateWithChecker:
             "My SSN is 123-45-6789"
         )
         # Non-strict: redacted but allowed
-        assert data is not None
+        assert isinstance(data, dict)
         assert data.get('redacted_content') is not None or \
                'redact' in data.get('result_type', '').lower() or \
                'redact' in reason.lower()
@@ -440,28 +407,26 @@ class TestMessageGateWithChecker:
         """Source 'natlangchain' should map correctly."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("Safe.", source="natlangchain")
-        assert data is not None
+        assert isinstance(data, dict)
 
     def test_source_mapping_agent_os(self, mock_daemon):
         """Source 'agent_os' should map correctly."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("Safe.", source="agent_os")
-        assert data is not None
+        assert isinstance(data, dict)
 
     def test_source_mapping_agentos(self, mock_daemon):
         """Source 'agentos' should also map to AGENT_OS."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("Safe.", source="agentos")
-        assert data is not None
+        assert isinstance(data, dict)
 
     def test_source_mapping_unknown(self, mock_daemon):
-        """Unknown source should still be accepted."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("Safe.", source="mystery")
-        assert data is not None
+        assert isinstance(data, dict)
 
     def test_check_natlangchain_valid_entry(self, mock_daemon):
-        """Valid NatLangChain entry should pass."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_natlangchain(
             author="alice",
@@ -474,7 +439,6 @@ class TestMessageGateWithChecker:
         assert call_args[1]['metadata']['source'] == 'natlangchain'
 
     def test_check_natlangchain_with_signature(self, mock_daemon):
-        """NatLangChain entry with signature should pass extra fields."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_natlangchain(
             author="alice",
@@ -484,10 +448,9 @@ class TestMessageGateWithChecker:
             previous_hash="0" * 64,
             metadata={"version": "2.0"},
         )
-        assert data is not None
+        assert isinstance(data, dict)
 
     def test_check_agentos_valid_message(self, mock_daemon):
-        """Valid Agent-OS message should pass."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_agentos(
             sender_agent="planner-agent",
@@ -508,7 +471,6 @@ class TestMessageGateWithChecker:
         assert message_check_call[1]['metadata']['recipient'] == 'executor-agent'
 
     def test_check_agentos_dangerous_content(self, mock_daemon):
-        """Agent-OS message with dangerous content should be blocked."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_agentos(
             sender_agent="rogue-agent",
@@ -520,17 +482,15 @@ class TestMessageGateWithChecker:
         assert permitted is False
 
     def test_check_agentos_auto_timestamp(self, mock_daemon):
-        """check_agentos should auto-generate timestamp if not provided."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_agentos(
             sender_agent="a", recipient_agent="b",
             content="hello", message_type="request",
         )
         # Should not raise; timestamp auto-generated
-        assert data is not None
+        assert isinstance(data, dict)
 
     def test_check_message_result_data_structure(self, mock_daemon):
-        """Result data should contain expected fields."""
         gate = MessageGate(mock_daemon)
         permitted, reason, data = gate.check_message("Safe content")
         assert isinstance(data, dict)
@@ -544,21 +504,16 @@ class TestMessageGateWithChecker:
 # ===========================================================================
 
 class TestCeremonyManager:
-    """Tests for CeremonyManager integration interface."""
-
     def test_ceremony_manager_init(self, mock_daemon):
-        """CeremonyManager should initialize with daemon reference."""
         manager = CeremonyManager(mock_daemon)
         assert manager.daemon == mock_daemon
         assert manager.cooldown_seconds == 30  # default
 
     def test_ceremony_manager_custom_cooldown(self, mock_daemon):
-        """CeremonyManager should accept custom cooldown."""
         manager = CeremonyManager(mock_daemon, cooldown_seconds=5)
         assert manager.cooldown_seconds == 5
 
     def test_initiate_override_success(self, mock_daemon):
-        """Override with confirming callback should succeed."""
         manager = CeremonyManager(mock_daemon, cooldown_seconds=0)
         manager._cooldown_delay = lambda: None  # Skip delay
 
@@ -572,7 +527,6 @@ class TestCeremonyManager:
         assert manager._last_ceremony is not None
 
     def test_initiate_override_logs_initiated_and_completed(self, mock_daemon):
-        """Override should log both initiation and completion."""
         manager = CeremonyManager(mock_daemon, cooldown_seconds=0)
         manager._cooldown_delay = lambda: None
 
@@ -595,7 +549,6 @@ class TestCeremonyManager:
         assert last_meta['status'] == 'completed'
 
     def test_initiate_override_step1_deny(self, mock_daemon):
-        """Override denied at step 1 (human presence) should fail."""
         manager = CeremonyManager(mock_daemon, cooldown_seconds=0)
 
         success, message = manager.initiate_override(
@@ -607,7 +560,6 @@ class TestCeremonyManager:
         assert "presence" in message.lower() or "failed" in message.lower()
 
     def test_initiate_override_step1_deny_logs_failure(self, mock_daemon):
-        """Failed override should log ceremony failure."""
         manager = CeremonyManager(mock_daemon, cooldown_seconds=0)
 
         manager.initiate_override(
@@ -623,7 +575,6 @@ class TestCeremonyManager:
         assert 'failed' in statuses
 
     def test_initiate_override_step3_deny(self, mock_daemon):
-        """Override denied at step 3 (final confirmation) should fail."""
         manager = CeremonyManager(mock_daemon, cooldown_seconds=0)
         manager._cooldown_delay = lambda: None
 
@@ -755,27 +706,175 @@ class TestCrossGateInvariants:
 # ===========================================================================
 
 class TestIntegrationsModule:
-    """Tests for the integrations module as a whole."""
-
     def test_module_imports(self):
-        """All main classes should be importable."""
-        assert RecallGate is not None
-        assert ToolGate is not None
-        assert CeremonyManager is not None
-        assert MessageGate is not None
+        assert callable(RecallGate)
+        assert callable(ToolGate)
+        assert callable(CeremonyManager)
+        assert callable(MessageGate)
 
     def test_memory_class_import(self):
-        """MemoryClass should be imported from policy_engine."""
         from daemon.integrations import MemoryClass as MC
-        assert MC.PUBLIC is not None
-        assert MC.CROWN_JEWEL is not None
+        assert MC.PUBLIC == 0
+        assert MC.CROWN_JEWEL == 5
 
     def test_boundary_mode_import(self):
-        """BoundaryMode should be imported from policy_engine."""
         from daemon.integrations import BoundaryMode as BM
-        assert BM.OPEN is not None
-        assert BM.LOCKDOWN is not None
+        assert BM.OPEN == 0
+        assert BM.LOCKDOWN == 5
 
     def test_message_checker_available_flag(self):
-        """MESSAGE_CHECKER_AVAILABLE should be a boolean."""
         assert isinstance(MESSAGE_CHECKER_AVAILABLE, bool)
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedRecallGateAllMemoryClasses:
+    """Parametrized: RecallGate.check_recall for all MemoryClass values."""
+
+    @pytest.mark.parametrize("mem_class", list(MemoryClass),
+        ids=[mc.name for mc in MemoryClass])
+    def test_check_recall_accepts_all_classes(self, mock_daemon, mem_class):
+        gate = RecallGate(mock_daemon)
+        permitted, reason = gate.check_recall(mem_class)
+        assert isinstance(permitted, bool)
+        assert isinstance(reason, str)
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("mem_class", list(MemoryClass),
+        ids=[mc.name for mc in MemoryClass])
+    def test_lockdown_denies_all_classes(self, mock_daemon_lockdown, mem_class):
+        """LOCKDOWN must deny all memory classes."""
+        gate = RecallGate(mock_daemon_lockdown)
+        permitted, reason = gate.check_recall(mem_class)
+        assert permitted is False
+
+
+class TestParametrizedToolGateByMode:
+    """Parametrized: ToolGate.get_allowed_tools capabilities vary by mode."""
+
+    CAPABILITY_CASES = [
+        # (mode, capability, expected)
+        (BoundaryMode.COLDROOM, "display_only", True),
+        (BoundaryMode.COLDROOM, "filesystem_tools", False),
+        (BoundaryMode.COLDROOM, "network_tools", False),
+        (BoundaryMode.COLDROOM, "usb_tools", False),
+        (BoundaryMode.AIRGAP, "filesystem_tools", True),
+        (BoundaryMode.AIRGAP, "network_tools", False),
+        (BoundaryMode.AIRGAP, "display_only", False),
+    ]
+
+    @pytest.mark.parametrize("mode,capability,expected", CAPABILITY_CASES,
+        ids=[f"{m.name}-{c}" for m, c, _ in CAPABILITY_CASES])
+    def test_capability_by_mode(self, mode, capability, expected):
+        """Tool gate capabilities match expected values per mode."""
+        daemon = MagicMock()
+        daemon.policy_engine = PolicyEngine(initial_mode=mode)
+        daemon.event_logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.network = MagicMock()
+        mock_state.network.value = 'offline'
+        daemon.state_monitor = MagicMock()
+        daemon.state_monitor.get_current_state.return_value = mock_state
+        gate = ToolGate(daemon)
+        caps = gate.get_allowed_tools()
+        assert caps[capability] == expected, (
+            f"{mode.name}: {capability} should be {expected}"
+        )
+
+
+class TestParametrizedMessageGateFailClosed:
+    """Parametrized: MessageGate fails closed for all check methods."""
+
+    CHECK_METHODS = [
+        ("check_message", {"content": "hello"}),
+        ("check_natlangchain", {"author": "a", "intent": "b", "timestamp": "c"}),
+        ("check_agentos", {"sender_agent": "a", "recipient_agent": "b",
+                           "content": "c", "message_type": "request"}),
+    ]
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("method,kwargs", CHECK_METHODS,
+        ids=[m for m, _ in CHECK_METHODS])
+    def test_fail_closed_without_checker(self, mock_daemon, method, kwargs):
+        """All MessageGate check methods must fail-closed without checker."""
+        gate = MessageGate(mock_daemon)
+        gate.checker = None
+        if method == "check_message":
+            permitted, reason, data = gate.check_message(**kwargs)
+        elif method == "check_natlangchain":
+            permitted, reason, data = gate.check_natlangchain(**kwargs)
+        else:
+            permitted, reason, data = gate.check_agentos(**kwargs)
+        assert permitted is False
+        assert data is None
+
+
+class TestParametrizedMessageSourceMapping:
+    """Parametrized: Message source strings map correctly."""
+
+    SOURCE_CASES = [
+        "natlangchain",
+        "agent_os",
+        "agent-os",
+        "agentos",
+        "unknown_source",
+        "",
+    ]
+
+    @pytest.mark.skipif(not MESSAGE_CHECKER_AVAILABLE,
+                        reason="MessageChecker not available")
+    @pytest.mark.parametrize("source", SOURCE_CASES)
+    def test_source_accepted(self, mock_daemon, source):
+        gate = MessageGate(mock_daemon)
+        permitted, reason, data = gate.check_message("Safe content", source=source)
+        assert isinstance(permitted, bool)
+        assert isinstance(data, dict)
+
+
+class TestParametrizedCeremonyManagerCooldowns:
+    """Parametrized: CeremonyManager with various cooldown values."""
+
+    @pytest.mark.parametrize("cooldown", [0, 1, 5, 30, 60, 300],
+        ids=[f"cooldown-{c}s" for c in [0, 1, 5, 30, 60, 300]])
+    def test_cooldown_stored(self, mock_daemon, cooldown):
+        manager = CeremonyManager(mock_daemon, cooldown_seconds=cooldown)
+        assert manager.cooldown_seconds == cooldown
+
+
+class TestParametrizedBoundaryModeEnum:
+    """Parametrized: BoundaryMode enum int values are correct."""
+
+    MODE_VALUES = [
+        (BoundaryMode.OPEN, 0),
+        (BoundaryMode.RESTRICTED, 1),
+        (BoundaryMode.TRUSTED, 2),
+        (BoundaryMode.AIRGAP, 3),
+        (BoundaryMode.COLDROOM, 4),
+        (BoundaryMode.LOCKDOWN, 5),
+    ]
+
+    @pytest.mark.parametrize("mode,expected_value", MODE_VALUES,
+        ids=[m.name for m, _ in MODE_VALUES])
+    def test_mode_value(self, mode, expected_value):
+        assert mode.value == expected_value
+
+
+class TestParametrizedMemoryClassEnum:
+    """Parametrized: MemoryClass enum int values are correct."""
+
+    CLASS_VALUES = [
+        (MemoryClass.PUBLIC, 0),
+        (MemoryClass.INTERNAL, 1),
+        (MemoryClass.CONFIDENTIAL, 2),
+        (MemoryClass.SECRET, 3),
+        (MemoryClass.TOP_SECRET, 4),
+        (MemoryClass.CROWN_JEWEL, 5),
+    ]
+
+    @pytest.mark.parametrize("mc,expected_value", CLASS_VALUES,
+        ids=[mc.name for mc, _ in CLASS_VALUES])
+    def test_memory_class_value(self, mc, expected_value):
+        assert mc.value == expected_value

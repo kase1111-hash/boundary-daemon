@@ -1463,7 +1463,7 @@ class BoundaryDaemon:
                         # Verify daemon is functional
                         _ = self.policy_engine.get_current_mode()
                         return self._running
-                    except Exception:
+                    except (AttributeError, RuntimeError):
                         return False
 
                 self.watchdog_endpoint = DaemonWatchdogEndpoint(
@@ -2657,7 +2657,7 @@ class BoundaryDaemon:
                 import psutil
                 process = psutil.Process(os.getpid())
                 mem_before = process.memory_info().rss / (1024 * 1024)  # MB
-            except Exception:
+            except (OSError, AttributeError):
                 pass
 
             caches_cleared = 0
@@ -2668,7 +2668,7 @@ class BoundaryDaemon:
                     self._threat_intel._threat_cache.clear()
                     self._threat_intel._cache_timestamps.clear()
                     caches_cleared += 1
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Clear TPM PCR cache (will be re-read on next check)
@@ -2676,7 +2676,7 @@ class BoundaryDaemon:
                 try:
                     self._tpm_manager._pcr_cache.clear()
                     caches_cleared += 1
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Clear LDAP caches (will be re-queried on demand)
@@ -2685,7 +2685,7 @@ class BoundaryDaemon:
                     self._ldap_mapper._user_cache.clear()
                     self._ldap_mapper._group_cache.clear()
                     caches_cleared += 1
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Clear OIDC token cache (tokens will be re-validated)
@@ -2693,7 +2693,7 @@ class BoundaryDaemon:
                 try:
                     self._oidc_validator._token_cache.clear()
                     caches_cleared += 1
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
 
             # Force full garbage collection
@@ -2708,7 +2708,7 @@ class BoundaryDaemon:
                 mem_after = process.memory_info().rss / (1024 * 1024)  # MB
                 if mem_before:
                     mem_freed = mem_before - mem_after
-            except Exception:
+            except (OSError, AttributeError):
                 pass
 
             # Log the cleanup
@@ -3275,7 +3275,7 @@ class BoundaryDaemon:
                     import ctypes
                     has_root = ctypes.windll.shell32.IsUserAnAdmin() != 0
                     effective_uid = 0 if has_root else 1000
-                except Exception:
+                except (OSError, AttributeError):
                     has_root = False
                     effective_uid = 1000
             else:

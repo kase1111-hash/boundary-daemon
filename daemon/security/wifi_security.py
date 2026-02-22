@@ -446,7 +446,7 @@ class WiFiSecurityMonitor:
                         timeout=5
                     )
                     return process_name.lower() in result.stdout.decode().lower()
-                except Exception:
+                except (subprocess.SubprocessError, OSError):
                     return False
         else:
             # Linux: Use pgrep
@@ -467,7 +467,7 @@ class WiFiSecurityMonitor:
                     timeout=2
                 )
                 return result.returncode == 0
-            except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            except (subprocess.SubprocessError, OSError):
                 return False
 
     def scan_wireless_networks(self, interface: str = "wlan0") -> List[Dict]:
@@ -511,7 +511,7 @@ class WiFiSecurityMonitor:
                     self.status.is_monitoring = True
                     self.status.last_scan = datetime.now()
 
-            except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            except (subprocess.SubprocessError, OSError):
                 # Scanning not available - continue with manual analysis
                 pass
 

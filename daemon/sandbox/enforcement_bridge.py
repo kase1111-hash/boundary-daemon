@@ -199,7 +199,7 @@ class SandboxEnforcementBridge(EnforcementConsumer):
             # Get current mode
             try:
                 self._current_mode = int(self._policy_engine.get_current_mode())
-            except Exception:
+            except (AttributeError, TypeError):
                 self._current_mode = 0
 
             # Register for mode transitions
@@ -269,7 +269,7 @@ class SandboxEnforcementBridge(EnforcementConsumer):
                     results.append((sandbox.sandbox_id, True, "tightened"))
                 else:
                     results.append((sandbox.sandbox_id, True, "already_compliant"))
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(
                     f"Failed to tighten sandbox {sandbox.sandbox_id}: {e}"
                 )
@@ -547,7 +547,7 @@ class SandboxEnforcementBridge(EnforcementConsumer):
             metadata["event_subtype"] = event_type_str
 
             self._event_logger.log_event(etype, details, metadata=metadata)
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.error(f"Failed to log enforcement event: {e}")
 
     # -- Public query methods ------------------------------------------------

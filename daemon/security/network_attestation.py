@@ -244,7 +244,7 @@ class NetworkAttestor:
 
                 self._check_and_update()
 
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError) as e:
                 logger.error(f"[NETWORK] Error in monitor loop: {e}")
 
     def _check_and_update(self):
@@ -625,14 +625,14 @@ class NetworkAttestor:
                         'timestamp': new.timestamp,
                     }
                 )
-            except Exception as e:
+            except (AttributeError, TypeError, ValueError) as e:
                 logger.error(f"Failed to log trust change: {e}")
 
         # Callback
         if self._on_trust_change:
             try:
                 self._on_trust_change(new)
-            except Exception as e:
+            except (TypeError, ValueError, RuntimeError) as e:
                 logger.error(f"Error in trust_change callback: {e}")
 
         # Check for trust degradation
@@ -660,7 +660,7 @@ class NetworkAttestor:
         if self._on_violation:
             try:
                 self._on_violation(reason)
-            except Exception as e:
+            except (TypeError, ValueError, RuntimeError) as e:
                 logger.error(f"Error in violation callback: {e}")
 
     def _handle_vpn_disconnect(self):
@@ -676,7 +676,7 @@ class NetworkAttestor:
                     details="VPN connection lost",
                     metadata={'timestamp': datetime.utcnow().isoformat() + "Z"}
                 )
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 pass
 
     def _handle_network_change(self, new_fingerprint: NetworkFingerprint):
@@ -694,7 +694,7 @@ class NetworkAttestor:
                         'timestamp': new_fingerprint.timestamp,
                     }
                 )
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 pass
 
         # Update baseline

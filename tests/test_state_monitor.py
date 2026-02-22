@@ -33,23 +33,16 @@ from daemon.state_monitor import (
 # ===========================================================================
 
 class TestNetworkState:
-    """Tests for NetworkState enum."""
-
     def test_network_state_values(self):
-        """NetworkState should have expected values."""
         assert NetworkState.OFFLINE.value == "offline"
         assert NetworkState.ONLINE.value == "online"
 
     def test_network_state_members(self):
-        """NetworkState should have exactly two members."""
         assert len(NetworkState) == 2
 
 
 class TestNetworkType:
-    """Tests for NetworkType enum."""
-
     def test_network_type_common_values(self):
-        """NetworkType should have common network types."""
         assert NetworkType.ETHERNET.value == "ethernet"
         assert NetworkType.WIFI.value == "wifi"
         assert NetworkType.VPN.value == "vpn"
@@ -57,13 +50,11 @@ class TestNetworkType:
         assert NetworkType.CELLULAR_5G.value == "cellular_5g"
 
     def test_network_type_iot_values(self):
-        """NetworkType should have IoT network types."""
         assert NetworkType.LORA.value == "lora"
         assert NetworkType.THREAD.value == "thread"
         assert NetworkType.ANT_PLUS.value == "ant_plus"
 
     def test_network_type_unknown(self):
-        """NetworkType should have an unknown type."""
         assert NetworkType.UNKNOWN.value == "unknown"
 
 
@@ -81,10 +72,7 @@ class TestCellularSecurityAlert:
 
 
 class TestHardwareTrust:
-    """Tests for HardwareTrust enum."""
-
     def test_hardware_trust_values(self):
-        """HardwareTrust should have expected values."""
         assert HardwareTrust.LOW.value == "low"
         assert HardwareTrust.MEDIUM.value == "medium"
         assert HardwareTrust.HIGH.value == "high"
@@ -95,10 +83,7 @@ class TestHardwareTrust:
 # ===========================================================================
 
 class TestMonitoringConfig:
-    """Tests for MonitoringConfig dataclass."""
-
     def test_default_config(self):
-        """MonitoringConfig should have sensible defaults."""
         config = MonitoringConfig()
         assert config.monitor_lora is True
         assert config.monitor_thread is True
@@ -119,7 +104,6 @@ class TestMonitoringConfig:
         assert config.monitor_process_security is True
 
     def test_custom_config(self):
-        """MonitoringConfig should accept custom values."""
         config = MonitoringConfig(
             monitor_lora=False,
             monitor_wimax=True,
@@ -130,7 +114,6 @@ class TestMonitoringConfig:
         assert config.monitor_dns_security is False
 
     def test_to_dict(self):
-        """to_dict should return all config options."""
         config = MonitoringConfig()
         d = config.to_dict()
         assert 'monitor_lora' in d
@@ -145,10 +128,7 @@ class TestMonitoringConfig:
 # ===========================================================================
 
 class TestSpecialtyNetworkStatus:
-    """Tests for SpecialtyNetworkStatus dataclass."""
-
     def test_creation(self):
-        """SpecialtyNetworkStatus should be creatable."""
         status = SpecialtyNetworkStatus(
             lora_devices=['lora0'],
             thread_devices=[],
@@ -162,7 +142,6 @@ class TestSpecialtyNetworkStatus:
         assert status.cellular_alerts == ['tower_change']
 
     def test_to_dict(self):
-        """to_dict should return all fields."""
         status = SpecialtyNetworkStatus(
             lora_devices=[],
             thread_devices=['thread0'],
@@ -182,11 +161,8 @@ class TestSpecialtyNetworkStatus:
 # ===========================================================================
 
 class TestEnvironmentState:
-    """Tests for EnvironmentState dataclass."""
-
     @pytest.fixture
     def sample_specialty_networks(self):
-        """Provide sample specialty networks status."""
         return SpecialtyNetworkStatus(
             lora_devices=[],
             thread_devices=[],
@@ -198,7 +174,6 @@ class TestEnvironmentState:
 
     @pytest.fixture
     def sample_environment_state(self, sample_specialty_networks):
-        """Provide a sample EnvironmentState."""
         return EnvironmentState(
             timestamp=datetime.utcnow().isoformat() + "Z",
             network=NetworkState.OFFLINE,
@@ -230,13 +205,11 @@ class TestEnvironmentState:
         )
 
     def test_environment_state_creation(self, sample_environment_state):
-        """EnvironmentState should be creatable with all fields."""
         assert sample_environment_state.network == NetworkState.OFFLINE
         assert sample_environment_state.hardware_trust == HardwareTrust.HIGH
         assert sample_environment_state.tpm_present is True
 
     def test_environment_state_to_dict(self, sample_environment_state):
-        """to_dict should serialize all fields."""
         d = sample_environment_state.to_dict()
         assert d['network'] == 'offline'
         assert d['hardware_trust'] == 'high'
@@ -250,28 +223,22 @@ class TestEnvironmentState:
 # ===========================================================================
 
 class TestStateMonitorInit:
-    """Tests for StateMonitor initialization."""
-
     def test_init_default(self):
-        """StateMonitor should initialize with defaults."""
         monitor = StateMonitor()
         assert monitor.poll_interval == 1.0
         assert monitor._running is False
         assert monitor._current_state is None
 
     def test_init_custom_interval(self):
-        """StateMonitor should accept custom poll interval."""
         monitor = StateMonitor(poll_interval=0.5)
         assert monitor.poll_interval == 0.5
 
     def test_init_with_config(self):
-        """StateMonitor should accept monitoring config."""
         config = MonitoringConfig(monitor_lora=False)
         monitor = StateMonitor(monitoring_config=config)
         assert monitor.monitoring_config.monitor_lora is False
 
     def test_default_monitoring_config(self):
-        """StateMonitor should create default config if none provided."""
         monitor = StateMonitor()
         assert isinstance(monitor.monitoring_config, MonitoringConfig)
 
@@ -281,23 +248,18 @@ class TestStateMonitorInit:
 # ===========================================================================
 
 class TestStateMonitorConfig:
-    """Tests for StateMonitor configuration methods."""
-
     def test_get_monitoring_config(self):
-        """get_monitoring_config should return current config."""
         config = MonitoringConfig(monitor_lora=False)
         monitor = StateMonitor(monitoring_config=config)
         assert monitor.get_monitoring_config() == config
 
     def test_set_monitoring_config(self):
-        """set_monitoring_config should update config."""
         monitor = StateMonitor()
         new_config = MonitoringConfig(monitor_lora=False)
         monitor.set_monitoring_config(new_config)
         assert monitor.monitoring_config.monitor_lora is False
 
     def test_set_monitor_lora(self):
-        """set_monitor_lora should update LoRa monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_lora(False)
         assert monitor.monitoring_config.monitor_lora is False
@@ -305,7 +267,6 @@ class TestStateMonitorConfig:
         assert monitor.monitoring_config.monitor_lora is True
 
     def test_set_monitor_thread(self):
-        """set_monitor_thread should update Thread monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_thread(False)
         assert monitor.monitoring_config.monitor_thread is False
@@ -317,13 +278,11 @@ class TestStateMonitorConfig:
         assert monitor.monitoring_config.monitor_cellular_security is False
 
     def test_set_monitor_wimax(self):
-        """set_monitor_wimax should update WiMAX monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_wimax(True)
         assert monitor.monitoring_config.monitor_wimax is True
 
     def test_set_monitor_irda(self):
-        """set_monitor_irda should update IrDA monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_irda(True)
         assert monitor.monitoring_config.monitor_irda is True
@@ -353,19 +312,16 @@ class TestStateMonitorConfig:
         assert monitor.monitoring_config.monitor_wifi_security is False
 
     def test_set_monitor_threat_intel(self):
-        """set_monitor_threat_intel should update threat intel monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_threat_intel(False)
         assert monitor.monitoring_config.monitor_threat_intel is False
 
     def test_set_monitor_file_integrity(self):
-        """set_monitor_file_integrity should update file integrity monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_file_integrity(False)
         assert monitor.monitoring_config.monitor_file_integrity is False
 
     def test_set_monitor_traffic_anomaly(self):
-        """set_monitor_traffic_anomaly should update traffic anomaly monitoring."""
         monitor = StateMonitor()
         monitor.set_monitor_traffic_anomaly(False)
         assert monitor.monitoring_config.monitor_traffic_anomaly is False
@@ -382,10 +338,7 @@ class TestStateMonitorConfig:
 # ===========================================================================
 
 class TestStateMonitorCallbacks:
-    """Tests for StateMonitor callback functionality."""
-
     def test_register_callback(self):
-        """register_callback should add callback to dict values."""
         monitor = StateMonitor()
         callback = MagicMock()
         monitor.register_callback(callback)
@@ -406,10 +359,7 @@ class TestStateMonitorCallbacks:
 # ===========================================================================
 
 class TestStateMonitorLifecycle:
-    """Tests for StateMonitor start/stop functionality."""
-
     def test_start_sets_running(self):
-        """start() should set _running to True."""
         monitor = StateMonitor(poll_interval=10.0)  # Long interval to avoid rapid polling
         try:
             monitor.start()
@@ -418,17 +368,15 @@ class TestStateMonitorLifecycle:
             monitor.stop()
 
     def test_start_creates_thread(self):
-        """start() should create a monitoring thread."""
         monitor = StateMonitor(poll_interval=10.0)
         try:
             monitor.start()
-            assert monitor._thread is not None
+            assert isinstance(monitor._thread, threading.Thread)
             assert monitor._thread.is_alive()
         finally:
             monitor.stop()
 
     def test_start_idempotent(self):
-        """Calling start() twice should not create multiple threads."""
         monitor = StateMonitor(poll_interval=10.0)
         try:
             monitor.start()
@@ -439,14 +387,12 @@ class TestStateMonitorLifecycle:
             monitor.stop()
 
     def test_stop_sets_not_running(self):
-        """stop() should set _running to False."""
         monitor = StateMonitor(poll_interval=10.0)
         monitor.start()
         monitor.stop()
         assert monitor._running is False
 
     def test_stop_without_start(self):
-        """stop() without start() should not raise."""
         monitor = StateMonitor()
         monitor.stop()  # Should not raise
 
@@ -456,15 +402,11 @@ class TestStateMonitorLifecycle:
 # ===========================================================================
 
 class TestStateMonitorStateAccess:
-    """Tests for StateMonitor state access."""
-
     def test_get_current_state_initially_none(self):
-        """get_current_state should return None before first sample."""
         monitor = StateMonitor()
         assert monitor.get_current_state() is None
 
     def test_get_current_state_thread_safe(self):
-        """get_current_state should be thread-safe."""
         monitor = StateMonitor()
 
         # Start monitor briefly
@@ -517,17 +459,14 @@ class TestStateMonitorLazyInit:
         assert monitor._wifi_security_monitor is None
 
     def test_threat_intel_monitor_lazy_init(self):
-        """Threat intel monitor should be lazily initialized."""
         monitor = StateMonitor()
         assert monitor._threat_intel_monitor is None
 
     def test_file_integrity_monitor_lazy_init(self):
-        """File integrity monitor should be lazily initialized."""
         monitor = StateMonitor()
         assert monitor._file_integrity_monitor is None
 
     def test_traffic_anomaly_monitor_lazy_init(self):
-        """Traffic anomaly monitor should be lazily initialized."""
         monitor = StateMonitor()
         assert monitor._traffic_anomaly_monitor is None
 
@@ -542,20 +481,15 @@ class TestStateMonitorLazyInit:
 # ===========================================================================
 
 class TestStateMonitorBaseline:
-    """Tests for baseline state tracking."""
-
     def test_baseline_usb_initially_none(self):
-        """Baseline USB devices should initially be None."""
         monitor = StateMonitor()
         assert monitor._baseline_usb is None
 
     def test_baseline_block_devices_initially_none(self):
-        """Baseline block devices should initially be None."""
         monitor = StateMonitor()
         assert monitor._baseline_block_devices is None
 
     def test_last_network_state_initially_none(self):
-        """Last network state should initially be None."""
         monitor = StateMonitor()
         assert monitor._last_network_state is None
 
@@ -572,10 +506,7 @@ class TestStateMonitorBaseline:
 # ===========================================================================
 
 class TestStateMonitorIntegration:
-    """Integration tests for StateMonitor."""
-
     def test_full_lifecycle(self):
-        """Test complete monitor lifecycle."""
         callback_called = []
         def on_state_change(old, new):
             callback_called.append((old, new))
@@ -619,10 +550,7 @@ class TestStateMonitorIntegration:
 # ===========================================================================
 
 class TestStateMonitorEdgeCases:
-    """Edge case tests for StateMonitor."""
-
     def test_zero_poll_interval(self):
-        """Monitor should handle very small poll interval."""
         monitor = StateMonitor(poll_interval=0.01)
         monitor.start()
         time.sleep(0.1)
@@ -630,7 +558,6 @@ class TestStateMonitorEdgeCases:
         # Should not crash
 
     def test_callback_error_handling(self):
-        """Monitor should handle callback errors gracefully."""
         def bad_callback(old, new):
             raise ValueError("Intentional error")
 
@@ -642,7 +569,6 @@ class TestStateMonitorEdgeCases:
         # Should not crash despite callback error
 
     def test_multiple_start_stop_cycles(self):
-        """Monitor should handle multiple start/stop cycles."""
         monitor = StateMonitor(poll_interval=0.1)
 
         for _ in range(3):
@@ -670,12 +596,10 @@ class TestHardwareTrustCalculation:
     """
 
     def _make_monitor(self):
-        """Create a StateMonitor and set its baselines."""
         monitor = StateMonitor()
         return monitor
 
     def test_new_usb_device_gives_low_trust(self):
-        """New USB devices beyond baseline should yield LOW trust."""
         monitor = self._make_monitor()
         monitor._baseline_usb = {'device-a', 'device-b'}
         monitor._baseline_block_devices = set()
@@ -691,7 +615,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.LOW
 
     def test_removed_usb_device_not_low_trust(self):
-        """Removed USB device (subset of baseline) should not trigger LOW."""
         monitor = self._make_monitor()
         monitor._baseline_usb = {'device-a', 'device-b'}
         monitor._baseline_block_devices = set()
@@ -708,7 +631,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.HIGH  # TPM present
 
     def test_new_block_device_gives_low_trust(self):
-        """New block devices beyond baseline should yield LOW trust."""
         monitor = self._make_monitor()
         monitor._baseline_usb = set()
         monitor._baseline_block_devices = {'/dev/sda'}
@@ -724,7 +646,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.LOW
 
     def test_tpm_present_no_new_devices_gives_high(self):
-        """TPM present with no new devices should yield HIGH trust."""
         monitor = self._make_monitor()
         monitor._baseline_usb = {'device-a'}
         monitor._baseline_block_devices = {'/dev/sda'}
@@ -740,7 +661,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.HIGH
 
     def test_no_tpm_no_new_devices_gives_medium(self):
-        """No TPM with no new devices should yield MEDIUM trust."""
         monitor = self._make_monitor()
         monitor._baseline_usb = {'device-a'}
         monitor._baseline_block_devices = {'/dev/sda'}
@@ -785,7 +705,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.MEDIUM
 
     def test_empty_baseline_new_usb_gives_low(self):
-        """Empty baseline set with any USB device should give LOW."""
         monitor = self._make_monitor()
         monitor._baseline_usb = set()
         monitor._baseline_block_devices = set()
@@ -801,7 +720,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.LOW
 
     def test_usb_checked_before_block_devices(self):
-        """USB changes should be checked before block devices (both trigger LOW)."""
         monitor = self._make_monitor()
         monitor._baseline_usb = set()
         monitor._baseline_block_devices = set()
@@ -823,45 +741,37 @@ class TestHardwareTrustCalculation:
 # ===========================================================================
 
 class TestInterfaceTypeDetection:
-    """Tests for _detect_interface_type classification."""
-
     def test_ethernet_interfaces(self):
-        """Common ethernet interface names should be detected."""
         monitor = StateMonitor()
         for iface in ['eth0', 'enp0s3', 'eno1', 'ens160', 'em1']:
             result = monitor._detect_interface_type(iface)
             assert result == NetworkType.ETHERNET, f"{iface} should be ETHERNET"
 
     def test_wifi_interfaces(self):
-        """Common wifi interface names should be detected."""
         monitor = StateMonitor()
         for iface in ['wlan0', 'wlp3s0', 'wlx001122334455']:
             result = monitor._detect_interface_type(iface)
             assert result == NetworkType.WIFI, f"{iface} should be WIFI"
 
     def test_vpn_interfaces(self):
-        """VPN interface names should be detected."""
         monitor = StateMonitor()
         for iface in ['tun0', 'tap0', 'wg0']:
             result = monitor._detect_interface_type(iface)
             assert result == NetworkType.VPN, f"{iface} should be VPN"
 
     def test_bluetooth_interfaces(self):
-        """Bluetooth interface names should be detected."""
         monitor = StateMonitor()
         for iface in ['bnep0']:
             result = monitor._detect_interface_type(iface)
             assert result == NetworkType.BLUETOOTH, f"{iface} should be BLUETOOTH"
 
     def test_bridge_interfaces(self):
-        """Bridge/container interface names should be detected."""
         monitor = StateMonitor()
         for iface in ['br0', 'docker0', 'virbr0', 'veth12345']:
             result = monitor._detect_interface_type(iface)
             assert result == NetworkType.BRIDGE, f"{iface} should be BRIDGE"
 
     def test_ppp_interfaces(self):
-        """PPP interfaces should be classified as cellular."""
         monitor = StateMonitor()
         result = monitor._detect_interface_type('ppp0')
         assert result == NetworkType.CELLULAR_4G
@@ -872,28 +782,22 @@ class TestInterfaceTypeDetection:
 # ===========================================================================
 
 class TestStateMonitorUnregister:
-    """Tests for callback unregistration."""
-
     def test_unregister_callback_returns_true(self):
-        """Unregistering an existing callback should return True."""
         monitor = StateMonitor()
         cb_id = monitor.register_callback(lambda old, new: None)
         assert monitor.unregister_callback(cb_id) is True
 
     def test_unregister_callback_removes_it(self):
-        """Unregistered callback should no longer be in the dict."""
         monitor = StateMonitor()
         cb_id = monitor.register_callback(lambda old, new: None)
         monitor.unregister_callback(cb_id)
         assert cb_id not in monitor._callbacks
 
     def test_unregister_nonexistent_returns_false(self):
-        """Unregistering a non-existent callback should return False."""
         monitor = StateMonitor()
         assert monitor.unregister_callback(9999) is False
 
     def test_stop_clears_callbacks(self):
-        """stop() should clear all callbacks to prevent memory leaks."""
         monitor = StateMonitor()
         monitor.register_callback(lambda old, new: None)
         monitor.register_callback(lambda old, new: None)
@@ -906,17 +810,13 @@ class TestStateMonitorUnregister:
 # ===========================================================================
 
 class TestGetUsbChanges:
-    """Tests for USB change detection via get_usb_changes()."""
-
     def test_get_usb_changes_before_baseline_returns_empty(self):
-        """get_usb_changes before first sample should return empty sets."""
         monitor = StateMonitor()
         added, removed = monitor.get_usb_changes()
         assert added == set()
         assert removed == set()
 
     def test_get_usb_changes_no_state_returns_empty(self):
-        """get_usb_changes with no current state should return empty sets."""
         monitor = StateMonitor()
         monitor._baseline_usb = {'device-a'}
         # No current state sampled
@@ -933,19 +833,250 @@ class TestInterfaceTypeUnknown:
     """Tests that unknown interface names safely return UNKNOWN type."""
 
     def test_unknown_interface_name(self):
-        """Unrecognized interface names should return UNKNOWN."""
         monitor = StateMonitor()
         result = monitor._detect_interface_type('foo0')
         assert result == NetworkType.UNKNOWN
 
     def test_numeric_interface_name(self):
-        """Numeric-only interface names should return UNKNOWN."""
         monitor = StateMonitor()
         result = monitor._detect_interface_type('12345')
         assert result == NetworkType.UNKNOWN
 
     def test_empty_interface_name(self):
-        """Empty interface name should return UNKNOWN."""
         monitor = StateMonitor()
         result = monitor._detect_interface_type('')
         assert result == NetworkType.UNKNOWN
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+class TestStateMonitorErrorPaths:
+    """Error-path tests for StateMonitor using pytest.raises."""
+
+    def test_network_state_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            NetworkState("invalid_state")
+
+    def test_network_type_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            NetworkType("invalid_type")
+
+    def test_hardware_trust_invalid_value_raises(self):
+        with pytest.raises(ValueError):
+            HardwareTrust("invalid_trust")
+
+    def test_cellular_security_alert_invalid_value_raises(self):
+        """Creating a CellularSecurityAlert with invalid value should raise ValueError."""
+        with pytest.raises(ValueError):
+            CellularSecurityAlert("invalid_alert")
+
+    def test_specialty_network_status_missing_fields_raises(self):
+        with pytest.raises(TypeError):
+            SpecialtyNetworkStatus(lora_devices=[])
+
+    def test_environment_state_missing_fields_raises(self):
+        with pytest.raises(TypeError):
+            EnvironmentState(timestamp="test")
+
+    def test_unregister_nonexistent_callback_returns_false(self):
+        monitor = StateMonitor()
+        result = monitor.unregister_callback(99999)
+        assert result is False
+
+    def test_monitoring_config_unexpected_kwarg_raises(self):
+        with pytest.raises(TypeError):
+            MonitoringConfig(nonexistent_option=True)
+
+    def test_hardware_trust_calculation_missing_key_raises(self):
+        monitor = StateMonitor()
+        monitor._baseline_usb = set()
+        monitor._baseline_block_devices = set()
+
+        with pytest.raises(KeyError):
+            monitor._calculate_hardware_trust({})
+
+    def test_start_when_already_running_is_idempotent(self):
+        monitor = StateMonitor(poll_interval=0.1)
+        monitor.start()
+        try:
+            # Second start should not raise
+            monitor.start()
+        finally:
+            monitor.stop()
+
+    def test_stop_when_not_running_is_safe(self):
+        monitor = StateMonitor()
+        # Should not raise
+        monitor.stop()
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedInterfaceTypeDetection:
+    """Parametrized: Interface name -> NetworkType mapping."""
+
+    INTERFACE_MAP = [
+        ("eth0", NetworkType.ETHERNET),
+        ("eth1", NetworkType.ETHERNET),
+        ("enp0s3", NetworkType.ETHERNET),
+        ("eno1", NetworkType.ETHERNET),
+        ("ens160", NetworkType.ETHERNET),
+        ("em1", NetworkType.ETHERNET),
+        ("wlan0", NetworkType.WIFI),
+        ("wlp3s0", NetworkType.WIFI),
+        ("wlx001122334455", NetworkType.WIFI),
+        ("tun0", NetworkType.VPN),
+        ("tap0", NetworkType.VPN),
+        ("wg0", NetworkType.VPN),
+        ("bnep0", NetworkType.BLUETOOTH),
+        ("br0", NetworkType.BRIDGE),
+        ("docker0", NetworkType.BRIDGE),
+        ("virbr0", NetworkType.BRIDGE),
+        ("veth12345", NetworkType.BRIDGE),
+        ("ppp0", NetworkType.CELLULAR_4G),
+        ("foo0", NetworkType.UNKNOWN),
+        ("xyz", NetworkType.UNKNOWN),
+        ("", NetworkType.UNKNOWN),
+    ]
+
+    @pytest.mark.parametrize("iface,expected_type", INTERFACE_MAP,
+        ids=[f"{i or 'empty'}->{t.name}" for i, t in INTERFACE_MAP])
+    def test_interface_detection(self, iface, expected_type):
+        """Interface name should map to correct NetworkType."""
+        monitor = StateMonitor()
+        result = monitor._detect_interface_type(iface)
+        assert result == expected_type
+
+
+class TestParametrizedNetworkTypeEnumValues:
+    """Parametrized: All NetworkType enum members have correct string values."""
+
+    EXPECTED_VALUES = [
+        (NetworkType.ETHERNET, "ethernet"),
+        (NetworkType.WIFI, "wifi"),
+        (NetworkType.CELLULAR_4G, "cellular_4g"),
+        (NetworkType.CELLULAR_5G, "cellular_5g"),
+        (NetworkType.VPN, "vpn"),
+        (NetworkType.BLUETOOTH, "bluetooth"),
+        (NetworkType.BRIDGE, "bridge"),
+        (NetworkType.LORA, "lora"),
+        (NetworkType.THREAD, "thread"),
+        (NetworkType.WIMAX, "wimax"),
+        (NetworkType.IRDA, "irda"),
+        (NetworkType.ANT_PLUS, "ant_plus"),
+        (NetworkType.UNKNOWN, "unknown"),
+    ]
+
+    @pytest.mark.parametrize("nt,expected_value", EXPECTED_VALUES,
+        ids=[nt.name for nt, _ in EXPECTED_VALUES])
+    def test_network_type_value(self, nt, expected_value):
+        """Each NetworkType should have its expected string value."""
+        assert nt.value == expected_value
+
+
+class TestParametrizedCellularSecurityAlertValues:
+    """Parametrized: All CellularSecurityAlert enum members."""
+
+    ALERT_VALUES = [
+        (CellularSecurityAlert.NONE, "none"),
+        (CellularSecurityAlert.TOWER_CHANGE, "tower_change"),
+        (CellularSecurityAlert.WEAK_ENCRYPTION, "weak_encryption"),
+        (CellularSecurityAlert.SIGNAL_ANOMALY, "signal_anomaly"),
+        (CellularSecurityAlert.IMSI_CATCHER, "imsi_catcher"),
+        (CellularSecurityAlert.DOWNGRADE_ATTACK, "downgrade_attack"),
+    ]
+
+    @pytest.mark.parametrize("alert,expected_value", ALERT_VALUES,
+        ids=[a.name for a, _ in ALERT_VALUES])
+    def test_alert_value(self, alert, expected_value):
+        """Each CellularSecurityAlert should have its expected string value."""
+        assert alert.value == expected_value
+
+
+class TestParametrizedHardwareTrustCalculation:
+    """Parametrized: Hardware trust calculation based on device changes and TPM."""
+
+    TRUST_CASES = [
+        (True, False, True, HardwareTrust.LOW),
+        (False, True, True, HardwareTrust.LOW),
+        (True, True, True, HardwareTrust.LOW),
+        (False, False, True, HardwareTrust.HIGH),
+        (False, False, False, HardwareTrust.MEDIUM),
+    ]
+
+    @pytest.mark.parametrize("new_usb,new_block,tpm,expected", TRUST_CASES,
+        ids=["new_usb", "new_block", "both_new", "tpm_no_new", "no_tpm_no_new"])
+    def test_hardware_trust_level(self, new_usb, new_block, tpm, expected):
+        """Hardware trust level based on device changes and TPM presence."""
+        monitor = StateMonitor()
+        monitor._baseline_usb = set()
+        monitor._baseline_block_devices = set()
+        hardware_info = {
+            'usb_devices': {'new-usb-device'} if new_usb else set(),
+            'block_devices': {'/dev/sdb'} if new_block else set(),
+            'camera': False,
+            'mic': False,
+            'tpm': tpm,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == expected
+
+
+class TestParametrizedHardwareTrustValues:
+    """Parametrized: HardwareTrust enum values."""
+
+    TRUST_VALUES = [
+        (HardwareTrust.LOW, "low"),
+        (HardwareTrust.MEDIUM, "medium"),
+        (HardwareTrust.HIGH, "high"),
+    ]
+
+    @pytest.mark.parametrize("trust,expected_value", TRUST_VALUES,
+        ids=[t.name for t, _ in TRUST_VALUES])
+    def test_trust_value(self, trust, expected_value):
+        """Each HardwareTrust should have its expected string value."""
+        assert trust.value == expected_value
+
+
+class TestParametrizedMonitoringConfigDefaults:
+    """Parametrized: MonitoringConfig default values for each field."""
+
+    CONFIG_DEFAULTS = [
+        ("monitor_lora", True),
+        ("monitor_thread", True),
+        ("monitor_cellular_security", True),
+        ("monitor_wimax", False),
+        ("monitor_irda", False),
+        ("monitor_ant_plus", True),
+        ("monitor_dns_security", True),
+        ("monitor_arp_security", True),
+        ("monitor_wifi_security", True),
+        ("monitor_threat_intel", True),
+        ("monitor_file_integrity", True),
+        ("monitor_traffic_anomaly", True),
+        ("monitor_process_security", True),
+    ]
+
+    @pytest.mark.parametrize("field,default_val", CONFIG_DEFAULTS,
+        ids=[f for f, _ in CONFIG_DEFAULTS])
+    def test_config_default(self, field, default_val):
+        """Each MonitoringConfig field should have its expected default."""
+        config = MonitoringConfig()
+        assert getattr(config, field) == default_val
+
+
+class TestParametrizedNetworkStateEnum:
+    """Parametrized: NetworkState enum values."""
+
+    @pytest.mark.parametrize("state,expected_value", [
+        (NetworkState.OFFLINE, "offline"),
+        (NetworkState.ONLINE, "online"),
+    ], ids=["OFFLINE", "ONLINE"])
+    def test_network_state_value(self, state, expected_value):
+        """Each NetworkState should have its expected string value."""
+        assert state.value == expected_value

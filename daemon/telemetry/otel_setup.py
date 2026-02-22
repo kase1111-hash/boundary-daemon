@@ -329,7 +329,7 @@ class TelemetryManager:
             logger.info("OpenTelemetry initialized successfully")
             return True
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Failed to initialize OpenTelemetry: {e}")
             self._initialized = True  # Use fallback
             return False
@@ -345,7 +345,7 @@ class TelemetryManager:
             # Block remote export in restrictive modes
             blocked_modes = [BoundaryMode.AIRGAP, BoundaryMode.COLDROOM, BoundaryMode.LOCKDOWN]
             return current_mode not in blocked_modes
-        except Exception:
+        except (ImportError, AttributeError, ValueError):
             return False
 
     def _create_standard_metrics(self):
@@ -476,7 +476,7 @@ class TelemetryManager:
         if self.daemon:
             try:
                 attributes['boundary.mode'] = self.daemon.policy_engine.get_current_mode().name
-            except Exception:
+            except (AttributeError, ValueError):
                 pass
 
         if OTEL_AVAILABLE and self._tracer:

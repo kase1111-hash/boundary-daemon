@@ -28,11 +28,8 @@ from daemon.event_logger import (
 
 
 class TestBoundaryEvent:
-    """Tests for the BoundaryEvent dataclass."""
-
     @pytest.mark.unit
     def test_event_creation(self):
-        """Test basic event creation."""
         event = BoundaryEvent(
             event_id="test-123",
             timestamp="2024-01-01T00:00:00Z",
@@ -48,7 +45,6 @@ class TestBoundaryEvent:
 
     @pytest.mark.unit
     def test_event_to_dict(self):
-        """Test conversion to dictionary."""
         event = BoundaryEvent(
             event_id="test-123",
             timestamp="2024-01-01T00:00:00Z",
@@ -64,7 +60,6 @@ class TestBoundaryEvent:
 
     @pytest.mark.unit
     def test_event_to_json(self):
-        """Test conversion to JSON string."""
         event = BoundaryEvent(
             event_id="test-123",
             timestamp="2024-01-01T00:00:00Z",
@@ -80,7 +75,6 @@ class TestBoundaryEvent:
 
     @pytest.mark.unit
     def test_event_compute_hash(self):
-        """Test that hash computation is deterministic."""
         event = BoundaryEvent(
             event_id="test-123",
             timestamp="2024-01-01T00:00:00Z",
@@ -96,7 +90,6 @@ class TestBoundaryEvent:
 
     @pytest.mark.unit
     def test_different_events_have_different_hashes(self):
-        """Test that different events produce different hashes."""
         event1 = BoundaryEvent(
             event_id="test-1",
             timestamp="2024-01-01T00:00:00Z",
@@ -117,11 +110,8 @@ class TestBoundaryEvent:
 
 
 class TestEventLogger:
-    """Tests for the EventLogger class."""
-
     @pytest.mark.unit
     def test_logger_initialization(self, temp_log_file):
-        """Test logger initialization creates directory."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         assert logger.log_file_path == str(temp_log_file)
         assert logger.get_event_count() == 0
@@ -129,7 +119,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_log_event(self, event_logger):
-        """Test logging a single event."""
         event = event_logger.log_event(
             EventType.DAEMON_START,
             "Daemon started",
@@ -141,7 +130,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_log_multiple_events(self, event_logger):
-        """Test logging multiple events."""
         for i in range(5):
             event_logger.log_event(
                 EventType.HEALTH_CHECK,
@@ -152,7 +140,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_hash_chain_integrity(self, event_logger):
-        """Test that hash chain links events correctly."""
         event1 = event_logger.log_event(EventType.DAEMON_START, "Start")
         hash1 = event1.compute_hash()
 
@@ -162,7 +149,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_genesis_hash(self, event_logger):
-        """Test that first event has nonce-based genesis hash (not all zeros)."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
         # Genesis hash is now instance-specific (derived from random nonce)
         assert event.hash_chain != "0" * 64
@@ -170,21 +156,18 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_verify_chain_empty_log(self, event_logger):
-        """Test chain verification on empty log."""
         is_valid, error = event_logger.verify_chain()
         assert is_valid is True
         assert error is None
 
     @pytest.mark.unit
     def test_verify_chain_valid(self, populated_event_logger):
-        """Test chain verification on valid log."""
         is_valid, error = populated_event_logger.verify_chain()
         assert is_valid is True
         assert error is None
 
     @pytest.mark.unit
     def test_verify_chain_detects_tampering(self, temp_log_file):
-        """Test that tampering is detected."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
 
         # Log some events
@@ -211,7 +194,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_get_recent_events(self, populated_event_logger):
-        """Test retrieving recent events."""
         events = populated_event_logger.get_recent_events(2)
         assert len(events) == 2
         # Newest first
@@ -219,27 +201,23 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_get_recent_events_more_than_exist(self, event_logger):
-        """Test requesting more events than exist."""
         event_logger.log_event(EventType.DAEMON_START, "Start")
         events = event_logger.get_recent_events(100)
         assert len(events) == 1
 
     @pytest.mark.unit
     def test_get_events_by_type(self, populated_event_logger):
-        """Test filtering events by type."""
         events = populated_event_logger.get_events_by_type(EventType.MODE_CHANGE)
         assert len(events) == 1
         assert events[0].event_type == EventType.MODE_CHANGE
 
     @pytest.mark.unit
     def test_get_events_by_type_no_matches(self, populated_event_logger):
-        """Test filtering with no matching events."""
         events = populated_event_logger.get_events_by_type(EventType.VIOLATION)
         assert len(events) == 0
 
     @pytest.mark.unit
     def test_log_persistence(self, temp_log_file):
-        """Test that logs persist across logger instances."""
         # Log with first instance
         logger1 = EventLogger(str(temp_log_file), secure_permissions=False)
         logger1.log_event(EventType.DAEMON_START, "Start")
@@ -254,7 +232,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_log_continuation(self, temp_log_file):
-        """Test that new instance continues the hash chain correctly."""
         logger1 = EventLogger(str(temp_log_file), secure_permissions=False)
         event1 = logger1.log_event(EventType.DAEMON_START, "Start")
         hash1 = event1.compute_hash()
@@ -266,7 +243,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_export_log(self, populated_event_logger, temp_dir):
-        """Test log export functionality."""
         export_path = str(temp_dir / "exported.log")
         success = populated_event_logger.export_log(export_path)
         assert success is True
@@ -279,7 +255,6 @@ class TestEventLogger:
 
     @pytest.mark.unit
     def test_all_event_types(self, event_logger):
-        """Test that all event types can be logged."""
         for event_type in EventType:
             event = event_logger.log_event(event_type, f"Test {event_type.name}")
             assert event.event_type == event_type
@@ -290,7 +265,6 @@ class TestEventLoggerSecurity:
 
     @pytest.mark.security
     def test_secure_directory_permissions(self, temp_dir):
-        """Test that log directory gets secure permissions."""
         log_file = temp_dir / "secure" / "events.log"
         logger = EventLogger(str(log_file), secure_permissions=True)
         logger.log_event(EventType.DAEMON_START, "Start")
@@ -303,7 +277,6 @@ class TestEventLoggerSecurity:
 
     @pytest.mark.security
     def test_secure_file_permissions(self, temp_dir):
-        """Test that log files get secure permissions."""
         log_file = temp_dir / "secure_events.log"
         logger = EventLogger(str(log_file), secure_permissions=True)
         logger.log_event(EventType.DAEMON_START, "Start")
@@ -325,7 +298,6 @@ class TestEventLoggerSecurity:
 
     @pytest.mark.security
     def test_seal_log_changes_permissions(self, temp_log_file):
-        """Test that sealing changes file to read-only."""
         logger = EventLogger(str(temp_log_file), secure_permissions=True)
         logger.log_event(EventType.DAEMON_START, "Start")
 
@@ -338,7 +310,6 @@ class TestEventLoggerSecurity:
 
     @pytest.mark.security
     def test_seal_log_creates_checkpoint(self, temp_log_file):
-        """Test that sealing creates a checkpoint file."""
         logger = EventLogger(str(temp_log_file), secure_permissions=True)
         logger.log_event(EventType.DAEMON_START, "Start")
 
@@ -357,7 +328,6 @@ class TestEventLoggerSecurity:
 
     @pytest.mark.security
     def test_get_protection_status(self, populated_event_logger):
-        """Test protection status reporting."""
         status = populated_event_logger.get_protection_status()
         assert 'path' in status
         assert 'exists' in status
@@ -366,18 +336,14 @@ class TestEventLoggerSecurity:
 
     @pytest.mark.security
     def test_protection_status_nonexistent_file(self, temp_dir):
-        """Test protection status for non-existent file."""
         logger = EventLogger(str(temp_dir / "nonexistent.log"))
         status = logger.get_protection_status()
         assert status['exists'] is False
 
 
 class TestEventLoggerThreadSafety:
-    """Tests for thread safety of EventLogger."""
-
     @pytest.mark.unit
     def test_concurrent_logging(self, temp_log_file):
-        """Test that concurrent logging is thread-safe."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         num_threads = 10
         events_per_thread = 20
@@ -408,7 +374,6 @@ class TestEventLoggerThreadSafety:
 
     @pytest.mark.unit
     def test_concurrent_read_write(self, temp_log_file):
-        """Test concurrent reading and writing."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         stop_flag = threading.Event()
 
@@ -450,23 +415,18 @@ class TestEventLoggerThreadSafety:
 
 
 class TestEventLoggerEdgeCases:
-    """Tests for edge cases and error handling."""
-
     @pytest.mark.unit
     def test_empty_metadata(self, event_logger):
-        """Test logging event with no metadata."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start")
         assert event.metadata == {}
 
     @pytest.mark.unit
     def test_none_metadata(self, event_logger):
-        """Test logging event with None metadata."""
         event = event_logger.log_event(EventType.DAEMON_START, "Start", None)
         assert event.metadata == {}
 
     @pytest.mark.unit
     def test_complex_metadata(self, event_logger):
-        """Test logging event with complex nested metadata."""
         metadata = {
             "nested": {"key": "value"},
             "list": [1, 2, 3],
@@ -479,7 +439,6 @@ class TestEventLoggerEdgeCases:
 
     @pytest.mark.unit
     def test_unicode_in_details(self, event_logger):
-        """Test logging event with unicode characters."""
         event = event_logger.log_event(
             EventType.INFO,
             "Unicode test: \u00e9\u00e0\u00fc \u4e2d\u6587 \U0001f600",
@@ -489,14 +448,12 @@ class TestEventLoggerEdgeCases:
 
     @pytest.mark.unit
     def test_very_long_details(self, event_logger):
-        """Test logging event with very long details."""
         long_details = "x" * 10000
         event = event_logger.log_event(EventType.INFO, long_details)
         assert len(event.details) == 10000
 
     @pytest.mark.unit
     def test_seal_empty_log(self, temp_log_file):
-        """Test sealing an empty log file."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         # Don't log any events
         success, msg = logger.seal_log()
@@ -505,7 +462,6 @@ class TestEventLoggerEdgeCases:
 
     @pytest.mark.unit
     def test_get_recent_events_empty(self, event_logger):
-        """Test getting recent events from empty log."""
         events = event_logger.get_recent_events()
         assert events == []
 
@@ -515,8 +471,6 @@ class TestEventLoggerEdgeCases:
 # ===========================================================================
 
 class TestEventLoggerCrashRecovery:
-    """Tests for event logger resilience to crashes and corruption."""
-
     @pytest.mark.security
     def test_truncated_last_line_raises_on_corruption(self, temp_log_file):
         """Logger should raise RuntimeError when log is corrupted (potential tampering).
@@ -541,7 +495,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_empty_file_recovery(self, temp_log_file):
-        """Logger should handle an empty existing file."""
         # Create empty file
         with open(temp_log_file, 'w') as f:
             pass
@@ -570,7 +523,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_verify_chain_with_blank_lines(self, temp_log_file):
-        """verify_chain should skip blank lines without failing."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         logger.log_event(EventType.MODE_CHANGE, "Change")
@@ -588,7 +540,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_verify_chain_detects_tampered_details(self, temp_log_file):
-        """verify_chain should detect when event details are modified."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         logger.log_event(EventType.MODE_CHANGE, "Change")
@@ -613,7 +564,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_verify_chain_detects_tampered_metadata(self, temp_log_file):
-        """verify_chain should detect when event metadata is modified."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start", {"version": "1.0"})
         logger.log_event(EventType.MODE_CHANGE, "Change")
@@ -631,7 +581,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_verify_chain_detects_deleted_event(self, temp_log_file):
-        """verify_chain should detect when an event is deleted from the middle."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         logger.log_event(EventType.VIOLATION, "Violation occurred")
@@ -650,7 +599,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_verify_chain_detects_reordered_events(self, temp_log_file):
-        """verify_chain should detect when events are reordered."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "First")
         logger.log_event(EventType.MODE_CHANGE, "Second")
@@ -669,7 +617,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_verify_chain_detects_inserted_event(self, temp_log_file):
-        """verify_chain should detect when a forged event is inserted."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         logger.log_event(EventType.HEALTH_CHECK, "Check")
@@ -696,7 +643,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_fsync_called_on_write(self, temp_log_file):
-        """_append_to_log should call fsync for crash recovery."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
 
         # Log an event and verify the file was written
@@ -710,7 +656,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_double_seal_adds_second_event(self, temp_log_file):
-        """Sealing twice should add a second seal event (no idempotence guard)."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
         count_before = logger.get_event_count()
@@ -732,7 +677,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_seal_creates_file_hash(self, temp_log_file):
-        """Seal checkpoint should contain verifiable file hash."""
         logger = EventLogger(str(temp_log_file), secure_permissions=False)
         logger.log_event(EventType.DAEMON_START, "Start")
 
@@ -753,7 +697,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_log_write_failure_raises(self, temp_dir):
-        """_append_to_log should raise when write fails."""
         # Use a path that cannot be written to (directory doesn't exist and
         # we point to /dev/null as parent which can't contain files)
         impossible_path = "/dev/null/impossible/events.log"
@@ -770,7 +713,6 @@ class TestEventLoggerCrashRecovery:
 
     @pytest.mark.security
     def test_chain_valid_after_resume_from_crash(self, temp_log_file):
-        """Full chain should verify after crash recovery and resumed logging."""
         # Phase 1: Normal logging
         logger1 = EventLogger(str(temp_log_file), secure_permissions=False)
         logger1.log_event(EventType.DAEMON_START, "Start")
@@ -912,11 +854,8 @@ class TestHashChainInvariants:
 # ===========================================================================
 
 class TestEventLoggerRetrievalEdgeCases:
-    """Tests for edge cases in event retrieval methods."""
-
     @pytest.mark.unit
     def test_get_recent_events_count_zero(self, populated_event_logger):
-        """get_recent_events(0) should return empty list (0 events requested)."""
         events = populated_event_logger.get_recent_events(0)
         # Python slicing: lines[-0:] returns all, but lines[:0] returns empty
         # Actual behavior depends on implementation — document it
@@ -932,14 +871,12 @@ class TestEventLoggerRetrievalEdgeCases:
 
     @pytest.mark.unit
     def test_get_recent_events_from_nonexistent_file(self, temp_dir):
-        """get_recent_events on missing file should return empty list."""
         logger = EventLogger(str(temp_dir / "nonexistent.log"), secure_permissions=False)
         events = logger.get_recent_events(10)
         assert events == []
 
     @pytest.mark.unit
     def test_get_events_by_type_from_nonexistent_file(self, temp_dir):
-        """get_events_by_type on missing file should return empty list."""
         logger = EventLogger(str(temp_dir / "nonexistent.log"), secure_permissions=False)
         events = logger.get_events_by_type(EventType.VIOLATION)
         assert events == []
@@ -958,3 +895,234 @@ class TestEventLoggerRetrievalEdgeCases:
         is_valid, error = logger.verify_chain()
         assert is_valid is True
         assert error is None
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+class TestEventLoggerErrorPaths:
+    """Error-path tests for EventLogger using pytest.raises."""
+
+    @pytest.mark.unit
+    def test_load_corrupted_json_raises_runtime_error(self, tmp_path):
+        """Loading a log with corrupted JSON raises RuntimeError."""
+        log_file = tmp_path / "corrupted.log"
+        log_file.write_text("this is not valid json\n")
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_load_truncated_json_raises_runtime_error(self, tmp_path):
+        """Loading a log with truncated JSON raises RuntimeError."""
+        log_file = tmp_path / "truncated.log"
+        log_file.write_text('{"event_id": "abc", "timestamp": "2024-01-01"\n')
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_load_missing_event_type_raises_runtime_error(self, tmp_path):
+        """Loading a log with missing event_type raises RuntimeError."""
+        log_file = tmp_path / "bad_fields.log"
+        event = json.dumps({
+            'event_id': 'test-001',
+            'timestamp': '2024-01-01T00:00:00Z',
+            'details': 'test',
+            'metadata': {},
+            'hash_chain': '0' * 64,
+        })
+        log_file.write_text(event + '\n')
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_load_missing_hash_chain_raises_runtime_error(self, tmp_path):
+        """Loading a log with missing hash_chain raises RuntimeError."""
+        log_file = tmp_path / "no_hash.log"
+        event = json.dumps({
+            'event_id': 'test-001',
+            'timestamp': '2024-01-01T00:00:00Z',
+            'event_type': 'mode_change',
+            'details': 'test',
+            'metadata': {},
+        })
+        log_file.write_text(event + '\n')
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_load_invalid_event_type_value_raises_runtime_error(self, tmp_path):
+        """Loading a log with invalid EventType value raises RuntimeError."""
+        log_file = tmp_path / "bad_event_type.log"
+        event = json.dumps({
+            'event_id': 'test-001',
+            'timestamp': '2024-01-01T00:00:00Z',
+            'event_type': 'totally_fake_event_type',
+            'details': 'test',
+            'metadata': {},
+            'hash_chain': '0' * 64,
+        })
+        log_file.write_text(event + '\n')
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_append_to_impossible_path_raises_exception(self):
+        """Writing to an impossible path raises an Exception."""
+        import threading
+        log_path = "/nonexistent_dir/impossible/path/events.log"
+        el = EventLogger.__new__(EventLogger)
+        el.log_file_path = log_path
+        el._lock = threading.Lock()
+        el._last_hash = "0" * 64
+        el._event_count = 0
+        el._secure_permissions = False
+        el._file_created = False
+        with pytest.raises(Exception):
+            el.log_event(EventType.DAEMON_START, "test event")
+
+    @pytest.mark.unit
+    def test_append_with_mocked_write_failure_raises(self, tmp_path):
+        """A write failure during append propagates the exception."""
+        from unittest.mock import patch
+        log_file = tmp_path / "test.log"
+        el = EventLogger(str(log_file), secure_permissions=False)
+        with patch('builtins.open', side_effect=OSError("Disk full")):
+            with pytest.raises(OSError, match="Disk full"):
+                el.log_event(EventType.DAEMON_START, "test event")
+
+    @pytest.mark.unit
+    def test_load_empty_json_object_raises_runtime_error(self, tmp_path):
+        """Loading a log with empty JSON object raises RuntimeError."""
+        log_file = tmp_path / "empty_obj.log"
+        log_file.write_text('{}\n')
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_load_binary_garbage_raises_runtime_error(self, tmp_path):
+        """Loading a log with binary garbage raises RuntimeError."""
+        log_file = tmp_path / "binary.log"
+        log_file.write_bytes(b'\x00\x01\x02\x03\xff\xfe\xfd\n')
+        with pytest.raises(RuntimeError, match="Hash chain integrity"):
+            EventLogger(str(log_file), secure_permissions=False)
+
+    @pytest.mark.unit
+    def test_event_type_invalid_value_raises_value_error(self):
+        """Creating an EventType with invalid value raises ValueError."""
+        with pytest.raises(ValueError):
+            EventType("nonexistent_event_type")
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedAllEventTypesLoggable:
+    """Parametrized: Every EventType can be logged and retrieved."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("event_type", list(EventType),
+        ids=[et.name for et in EventType])
+    def test_log_and_retrieve_event_type(self, event_type, temp_log_file):
+        """Each EventType can be logged and retrieved by type."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        event = logger.log_event(event_type, f"Test {event_type.name}")
+        assert event.event_type == event_type
+        retrieved = logger.get_events_by_type(event_type)
+        assert len(retrieved) == 1
+        assert retrieved[0].event_type == event_type
+
+
+class TestParametrizedEventTypeStringValues:
+    """Parametrized: All EventType enum members have non-empty string values."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("event_type", list(EventType),
+        ids=[et.name for et in EventType])
+    def test_event_type_has_string_value(self, event_type):
+        """Each EventType must have a non-empty string value."""
+        assert isinstance(event_type.value, str)
+        assert len(event_type.value) > 0
+
+
+class TestParametrizedMetadataTypes:
+    """Parametrized: Various metadata shapes can be logged."""
+
+    METADATA_CASES = [
+        ("empty_dict", {}),
+        ("string_value", {"key": "value"}),
+        ("int_value", {"count": 42}),
+        ("float_value", {"rate": 3.14}),
+        ("bool_value", {"active": True}),
+        ("none_value", {"nothing": None}),
+        ("nested_dict", {"outer": {"inner": "deep"}}),
+        ("list_value", {"items": [1, 2, 3]}),
+        ("mixed", {"str": "a", "int": 1, "list": [1], "nested": {"k": "v"}}),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("label,metadata", METADATA_CASES,
+        ids=[label for label, _ in METADATA_CASES])
+    def test_metadata_type_logged(self, label, metadata, temp_log_file):
+        """Various metadata shapes can be logged and preserved."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        event = logger.log_event(EventType.INFO, f"Metadata test: {label}", metadata)
+        assert event.metadata == metadata
+
+
+class TestParametrizedHashChainAfterNEvents:
+    """Parametrized: Hash chain stays valid after N events."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("count", [1, 2, 5, 10, 25],
+        ids=[f"events-{n}" for n in [1, 2, 5, 10, 25]])
+    def test_chain_valid_after_n_events(self, count, temp_log_file):
+        """Hash chain should remain valid after N events."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        for i in range(count):
+            logger.log_event(EventType.HEALTH_CHECK, f"Event {i}", {"i": i})
+        is_valid, error = logger.verify_chain()
+        assert is_valid is True, f"Chain invalid after {count} events: {error}"
+        assert logger.get_event_count() == count
+
+
+class TestParametrizedGetRecentEventsCounts:
+    """Parametrized: get_recent_events with various count values."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("requested,expected", [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (4, 4),
+        (10, 4),
+        (100, 4),
+    ], ids=["req1", "req2", "req3", "req4", "req10", "req100"])
+    def test_get_recent_events_count(self, requested, expected, temp_log_file):
+        """get_recent_events returns correct number of events."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        for i in range(4):
+            logger.log_event(EventType.HEALTH_CHECK, f"Event {i}")
+        events = logger.get_recent_events(requested)
+        assert len(events) == expected
+
+
+class TestParametrizedSecurePermissions:
+    """Parametrized: Secure vs insecure permission modes."""
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("secure,expected_perm", [
+        (True, 0o600),
+        (False, None),
+    ], ids=["secure", "insecure"])
+    def test_file_permissions_mode(self, secure, expected_perm, temp_dir):
+        """Log file permissions respect secure_permissions flag."""
+        log_file = temp_dir / "perm_test.log"
+        logger = EventLogger(str(log_file), secure_permissions=secure)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        st = os.stat(log_file)
+        mode = stat.S_IMODE(st.st_mode)
+        if expected_perm is not None:
+            assert mode == expected_perm

@@ -235,7 +235,7 @@ class ProcessEnforcer:
         if IS_WINDOWS:
             try:
                 self._has_root = ctypes.windll.shell32.IsUserAnAdmin() != 0
-            except Exception:
+            except (AttributeError, OSError):
                 self._has_root = False
         else:
             self._has_root = os.geteuid() == 0
@@ -259,7 +259,7 @@ class ProcessEnforcer:
                     use_immutable=True,  # Use chattr +i for extra protection
                 )
                 logger.info("Secure profile manager initialized with integrity verification")
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.warning(f"Secure profile manager failed, using legacy mode: {e}")
                 self._profile_manager = None
 
@@ -279,7 +279,7 @@ class ProcessEnforcer:
                     require_verification=True,
                 )
                 logger.info("Secure process terminator initialized (no pattern matching)")
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.warning(f"Secure process terminator failed to initialize: {e}")
         else:
             logger.warning("Secure process terminator not available - using legacy termination")
@@ -296,7 +296,7 @@ class ProcessEnforcer:
                 return True
             # Fallback: check if prctl is available
             return os.path.exists('/proc/self/status')
-        except Exception:
+        except OSError:
             return False
 
     def _detect_container_runtime(self) -> ContainerRuntime:
@@ -311,7 +311,7 @@ class ProcessEnforcer:
                 )
                 if result.returncode == 0:
                     return ContainerRuntime.PODMAN
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         # Fall back to docker
@@ -324,7 +324,7 @@ class ProcessEnforcer:
                 )
                 if result.returncode == 0:
                     return ContainerRuntime.DOCKER
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         return ContainerRuntime.NONE
@@ -537,7 +537,7 @@ class ProcessEnforcer:
                     json.dump(profile, f, indent=2)
                 os.chmod(profile_path, 0o600)
                 logger.debug(f"Installed seccomp profile (legacy): {profile_path}")
-            except Exception as e:
+            except OSError as e:
                 logger.warning(f"Failed to install seccomp profile: {e}")
 
         # Actually apply the seccomp filter to constrain syscalls
@@ -567,7 +567,7 @@ class ProcessEnforcer:
             profile_path = os.path.join(self.SECCOMP_PROFILE_DIR, f"{name}.json")
             if os.path.exists(profile_path):
                 os.unlink(profile_path)
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Failed to remove seccomp profile: {e}")
 
     def create_isolated_container(self, config: ContainerConfig,
@@ -641,7 +641,7 @@ class ProcessEnforcer:
             else:
                 logger.error(f"Failed to create container: {result.stderr.decode()}")
                 return None
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Container creation error: {e}")
             return None
 
@@ -667,7 +667,7 @@ class ProcessEnforcer:
             self._active_containers.discard(container_id)
             logger.info(f"Stopped container: {container_id}")
             return True
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to stop container: {e}")
             return False
 
@@ -691,7 +691,7 @@ class ProcessEnforcer:
                 for cid in container_ids:
                     if cid and self.stop_container(cid):
                         stopped += 1
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to stop managed containers: {e}")
 
         return stopped
@@ -811,7 +811,7 @@ class ProcessEnforcer:
                     try:
                         status = self.daemon.policy_engine.get_current_mode()
                         # Daemon is healthy
-                    except Exception:
+                    except (AttributeError, RuntimeError):
                         logger.error("Daemon health check failed in watchdog")
                         self._trigger_emergency_lockdown()
 
@@ -819,7 +819,7 @@ class ProcessEnforcer:
                 if self._current_mode and self._current_mode.value >= 4:  # COLDROOM+
                     self._check_unauthorized_processes()
 
-            except Exception as e:
+            except (AttributeError, RuntimeError, OSError) as e:
                 logger.error(f"Watchdog error: {e}")
 
             # Sleep for 1 second between checks
@@ -847,7 +847,7 @@ class ProcessEnforcer:
                         action="UNAUTHORIZED_NETWORK",
                         details=output[:500]
                     )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Error checking network processes: {e}")
 
     def _trigger_emergency_lockdown(self):
@@ -883,7 +883,7 @@ class ProcessEnforcer:
                 result_fwd = subprocess.run(['iptables', '-P', 'FORWARD', 'DROP'], timeout=5, capture_output=True)
                 if result_in.returncode != 0 or result_out.returncode != 0 or result_fwd.returncode != 0:
                     logger.error("One or more iptables policy commands failed during emergency lockdown")
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.error(f"Failed to set iptables policy: {e}")
         else:
             logger.warning("Network blocking via iptables not available on Windows")
@@ -954,7 +954,7 @@ class ProcessEnforcer:
                             terminated_count += 1
                             logger.info(f"Emergency lockdown: terminated PID {pid} ({proc_info.name})")
 
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Error during emergency process termination: {e}")
 
         else:
@@ -991,7 +991,7 @@ class ProcessEnforcer:
                                 'mem': parts[3],
                                 'command': parts[10]
                             })
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Error getting process info: {e}")
         return processes
 
@@ -1009,7 +1009,7 @@ class ProcessEnforcer:
                         **kwargs
                     }
                 )
-            except Exception as e:
+            except (ImportError, AttributeError, TypeError) as e:
                 logger.error(f"Failed to log process enforcement action: {e}")
 
     def get_status(self) -> Dict:
@@ -1056,7 +1056,7 @@ class ProcessEnforcer:
                     self._saved_iptables_rules = None
                 else:
                     logger.error(f"Failed to restore iptables rules: {result.stderr}")
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.error(f"Error restoring iptables rules: {e}")
 
     def cleanup(self):
@@ -1078,7 +1078,7 @@ class ProcessEnforcer:
             if self._profile_manager:
                 try:
                     self._profile_manager.cleanup()
-                except Exception as e:
+                except OSError as e:
                     logger.debug(f"Error cleaning up secure profiles: {e}")
             else:
                 # Fallback: legacy cleanup
@@ -1087,7 +1087,7 @@ class ProcessEnforcer:
                         for f in os.listdir(self.SECCOMP_PROFILE_DIR):
                             if f.startswith('boundary_'):
                                 os.unlink(os.path.join(self.SECCOMP_PROFILE_DIR, f))
-                except Exception as e:
+                except OSError as e:
                     logger.debug(f"Error cleaning up seccomp profiles: {e}")
 
             self._current_mode = None
@@ -1108,7 +1108,7 @@ class ProcessEnforcer:
             from ..policy_engine import BoundaryMode
             self.enforce_mode(BoundaryMode.LOCKDOWN, reason="Emergency lockdown triggered")
             return True
-        except Exception as e:
+        except (ProcessEnforcementError, ImportError) as e:
             logger.critical(f"Process emergency lockdown failed: {e}")
             return False
 
@@ -1144,7 +1144,7 @@ class ExternalWatchdog:
                     logger.critical("Daemon heartbeat timeout - triggering lockdown")
                     self._trigger_system_lockdown()
 
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.error(f"Watchdog error: {e}")
 
             threading.Event().wait(1.0)
@@ -1180,7 +1180,7 @@ class ExternalWatchdog:
 
             return age < self.heartbeat_timeout
 
-        except Exception:
+        except OSError:
             return False
 
     def _trigger_system_lockdown(self):
@@ -1212,7 +1212,7 @@ class ExternalWatchdog:
                 'logger', '-p', 'auth.crit',
                 'BOUNDARY-WATCHDOG: System lockdown triggered - daemon failure detected'
             ], capture_output=True, timeout=5)
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to log to syslog: {e}")
 
         # Could also: reboot, halt, etc. based on policy

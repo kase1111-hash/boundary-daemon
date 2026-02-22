@@ -49,7 +49,7 @@ def _is_elevated() -> bool:
         try:
             import ctypes
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, OSError):
             return False
     else:
         return os.geteuid() == 0
@@ -297,7 +297,7 @@ class DNSSecurityMonitor:
                 self._native_resolver = NativeDNSResolver()
                 self._secure_verifier = SecureDNSVerifier(event_logger=event_logger)
                 logger.info("Native DNS resolver initialized (no external tools)")
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 logger.warning(f"Native DNS resolver failed to initialize: {e}")
         else:
             logger.warning("Native DNS resolver not available, falling back to external tools")
@@ -320,7 +320,7 @@ class DNSSecurityMonitor:
             current_mode = self._get_mode()
             if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
                 return True
-        except Exception:
+        except (ValueError, RuntimeError, TypeError):
             pass
 
         return False
@@ -365,7 +365,7 @@ class DNSSecurityMonitor:
                 self._check_resolver_security()
                 self._cleanup_old_records()
                 time.sleep(10)  # Check every 10 seconds
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError) as e:
                 print(f"Error in DNS monitor loop: {e}")
                 time.sleep(10)
 
@@ -451,7 +451,7 @@ class DNSSecurityMonitor:
             if self._on_block_callback:
                 try:
                     self._on_block_callback(domain_lower, reason)
-                except Exception as e:
+                except (TypeError, ValueError, RuntimeError) as e:
                     logger.error(f"Block callback error: {e}")
 
         return (success, "; ".join(messages))
@@ -599,7 +599,7 @@ class DNSSecurityMonitor:
             logger.info(f"Blocked domain via hosts: {domain}")
             return (True, f"Added {domain} to hosts file")
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to block via hosts: {e}")
             return (False, str(e))
 
@@ -649,7 +649,7 @@ class DNSSecurityMonitor:
             logger.info(f"Unblocked domain from hosts: {domain}")
             return (True, f"Removed {domain} from hosts file")
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to unblock from hosts: {e}")
             return (False, str(e))
 
@@ -725,7 +725,7 @@ class DNSSecurityMonitor:
             else:
                 return (False, "Failed to add firewall rules")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to block via firewall: {e}")
             return (False, str(e))
 
@@ -764,7 +764,7 @@ class DNSSecurityMonitor:
             logger.info(f"Unblocked domain from firewall: {domain}")
             return (True, f"Removed firewall rules for {domain}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to unblock from firewall: {e}")
             return (False, str(e))
 
@@ -804,7 +804,7 @@ class DNSSecurityMonitor:
                         'timestamp': datetime.utcnow().isoformat() + "Z"
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
         logger.warning(f"DNS BLOCKED: {domain} - Reason: {reason} - Action: {action}")
@@ -822,7 +822,7 @@ class DNSSecurityMonitor:
                         'timestamp': datetime.utcnow().isoformat() + "Z"
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
         logger.info(f"DNS UNBLOCKED: {domain}")
@@ -851,7 +851,7 @@ class DNSSecurityMonitor:
                 os.chmod(temp_path, 0o644)
                 os.rename(temp_path, hosts_path)
                 logger.info("Cleaned up hosts file")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to cleanup hosts file: {e}")
 
         # Remove iptables chain
@@ -873,7 +873,7 @@ class DNSSecurityMonitor:
                         [iptables_cmd, '-X', self.IPTABLES_CHAIN],
                         capture_output=True, timeout=5
                     )
-                except Exception:
+                except (subprocess.SubprocessError, OSError):
                     pass
             logger.info("Cleaned up iptables rules")
 
@@ -1015,7 +1015,7 @@ class DNSSecurityMonitor:
                     for client in doh_clients:
                         if client in output:
                             return True, f"DoH client running: {client}"
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
             return False, "DoH detection limited on Windows"
 
@@ -1046,7 +1046,7 @@ class DNSSecurityMonitor:
                 for resolver in self.config.secure_resolvers:
                     if resolver in resolv_content:
                         return True, f"Using known secure resolver: {resolver}"
-        except Exception:
+        except OSError:
             pass
 
         # Check for running DoH clients
@@ -1081,7 +1081,7 @@ class DNSSecurityMonitor:
                     output = result.stdout.decode().lower()
                     if 'stubby' in output:
                         return True, "Stubby DoT client running"
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
             return False, "DoT detection limited on Windows"
 
@@ -1280,7 +1280,7 @@ class DNSSecurityMonitor:
                             if len(parts) >= 2:
                                 resolver = parts[1].strip().split()[0]
                                 break
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
         else:
             # Linux: Read /etc/resolv.conf
@@ -1290,7 +1290,7 @@ class DNSSecurityMonitor:
                         if line.startswith('nameserver'):
                             resolver = line.split()[1]
                             break
-            except Exception:
+            except OSError:
                 pass
 
         # Check DoH/DoT
@@ -1471,7 +1471,7 @@ class DNSSecurityMonitor:
 
                 return results
 
-            except Exception as e:
+            except (OSError, ValueError, KeyError, TypeError) as e:
                 logger.warning(f"Native DNS verification failed, using fallback: {e}")
                 # Fall through to legacy method
 

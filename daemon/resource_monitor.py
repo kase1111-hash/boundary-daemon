@@ -340,7 +340,7 @@ class ResourceMonitor:
 
                 time.sleep(self.config.sample_interval)
 
-            except Exception as e:
+            except (psutil.NoSuchProcess, psutil.AccessDenied, OSError) as e:
                 logger.error(f"Error in resource monitor loop: {e}")
                 time.sleep(self.config.sample_interval)
 
@@ -903,7 +903,7 @@ class ResourceMonitor:
                         **(metadata or {}),
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def _export_metrics(self, snapshot: ResourceSnapshot):
@@ -941,7 +941,7 @@ class ResourceMonitor:
                 self._telemetry_manager.set_gauge("resource.disk_percent", int(usage['percent']))
                 self._telemetry_manager.set_gauge("resource.disk_free_gb", int(usage['free_gb']))
 
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.debug(f"Failed to export resource metrics: {e}")
 
     def get_current_snapshot(self) -> Optional[ResourceSnapshot]:
@@ -1273,7 +1273,7 @@ if __name__ == '__main__':
             try:
                 f = open('/dev/null', 'r')
                 test_files.append(f)
-            except Exception:
+            except OSError:
                 pass
 
             time.sleep(2)

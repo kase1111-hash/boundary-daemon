@@ -668,7 +668,7 @@ class PIIDetector:
                     try:
                         if not pattern_def.validator(value):
                             continue
-                    except Exception:
+                    except (ValueError, TypeError):
                         continue
 
                 # Extract context

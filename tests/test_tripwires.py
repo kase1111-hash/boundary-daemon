@@ -26,10 +26,7 @@ from daemon.policy_engine import BoundaryMode
 # ===========================================================================
 
 class TestViolationType:
-    """Tests for ViolationType enum."""
-
     def test_violation_type_values(self):
-        """ViolationType should have expected values."""
         assert ViolationType.NETWORK_IN_AIRGAP.value == "network_in_airgap"
         assert ViolationType.USB_IN_COLDROOM.value == "usb_in_coldroom"
         assert ViolationType.UNAUTHORIZED_RECALL.value == "unauthorized_recall"
@@ -45,10 +42,7 @@ class TestViolationType:
 # ===========================================================================
 
 class TestTripwireViolation:
-    """Tests for TripwireViolation dataclass."""
-
     def test_violation_creation(self):
-        """TripwireViolation should be creatable."""
         violation = TripwireViolation(
             violation_id="test-001",
             timestamp=datetime.utcnow().isoformat() + "Z",
@@ -63,7 +57,6 @@ class TestTripwireViolation:
         assert violation.auto_lockdown is True
 
     def test_violation_all_fields(self):
-        """TripwireViolation should store all fields correctly."""
         snapshot = {'usb': ['device1'], 'network': 'offline'}
         violation = TripwireViolation(
             violation_id="v-123",
@@ -83,10 +76,7 @@ class TestTripwireViolation:
 # ===========================================================================
 
 class TestTripwireSystemInit:
-    """Tests for TripwireSystem initialization."""
-
     def test_init_default(self):
-        """TripwireSystem should initialize with defaults."""
         tripwire = TripwireSystem()
         assert tripwire._enabled is True
         assert tripwire._locked is False
@@ -95,26 +85,22 @@ class TestTripwireSystemInit:
         assert tripwire._callbacks == {}  # Dict for O(1) unregister
 
     def test_init_with_event_logger(self):
-        """TripwireSystem should accept an event logger."""
         mock_logger = MagicMock()
         tripwire = TripwireSystem(event_logger=mock_logger)
         assert tripwire._event_logger == mock_logger
 
     def test_init_generates_auth_token(self):
-        """TripwireSystem should generate an auth token on init."""
         tripwire = TripwireSystem()
         assert tripwire._auth_token_hash is not None
         assert len(tripwire._auth_token_hash) == 64  # SHA256 hex length
 
     def test_init_baseline_tracking(self):
-        """TripwireSystem should initialize baseline tracking."""
         tripwire = TripwireSystem()
         assert tripwire._baseline_usb_devices is None
         assert tripwire._previous_mode is None
         assert tripwire._previous_network_state is None
 
     def test_max_disable_attempts_default(self):
-        """TripwireSystem should have default max disable attempts."""
         tripwire = TripwireSystem()
         assert tripwire._max_disable_attempts == 3
         assert tripwire._failed_attempts == 0
@@ -125,10 +111,7 @@ class TestTripwireSystemInit:
 # ===========================================================================
 
 class TestTripwireSystemCallbacks:
-    """Tests for TripwireSystem callback functionality."""
-
     def test_register_callback(self):
-        """register_callback should add callback to dict values."""
         tripwire = TripwireSystem()
         callback = MagicMock()
         tripwire.register_callback(callback)
@@ -149,24 +132,19 @@ class TestTripwireSystemCallbacks:
 # ===========================================================================
 
 class TestTripwireSystemEnableDisable:
-    """Tests for TripwireSystem enable/disable functionality."""
-
     def test_enable(self):
-        """enable() should enable tripwire monitoring."""
         tripwire = TripwireSystem()
         tripwire._enabled = False
         tripwire.enable()
         assert tripwire._enabled is True
 
     def test_disable_requires_auth(self):
-        """disable() should require valid authentication."""
         tripwire = TripwireSystem()
         success, message = tripwire.disable("invalid_token")
         assert success is False
         assert "Invalid authentication" in message
 
     def test_disable_with_valid_token(self):
-        """disable() should work with valid token."""
         tripwire = TripwireSystem()
         # Get the actual token during initialization
         token = tripwire._generate_auth_token()
@@ -175,14 +153,12 @@ class TestTripwireSystemEnableDisable:
         assert tripwire._enabled is False
 
     def test_disable_tracks_failed_attempts(self):
-        """disable() should track failed attempts."""
         tripwire = TripwireSystem()
         initial_attempts = tripwire._failed_attempts
         tripwire.disable("bad_token")
         assert tripwire._failed_attempts == initial_attempts + 1
 
     def test_disable_locks_after_max_attempts(self):
-        """disable() should lock system after max failed attempts."""
         tripwire = TripwireSystem()
         tripwire._max_disable_attempts = 3
 
@@ -192,7 +168,6 @@ class TestTripwireSystemEnableDisable:
         assert tripwire._locked is True
 
     def test_disable_fails_when_locked(self):
-        """disable() should fail when system is locked."""
         tripwire = TripwireSystem()
         tripwire._locked = True
         token = tripwire._generate_auth_token()
@@ -206,43 +181,35 @@ class TestTripwireSystemEnableDisable:
 # ===========================================================================
 
 class TestTripwireSystemTokens:
-    """Tests for TripwireSystem token functionality."""
-
     def test_verify_token_valid(self):
-        """_verify_token should return True for valid token."""
         tripwire = TripwireSystem()
         token = tripwire._generate_auth_token()
         assert tripwire._verify_token(token) is True
 
     def test_verify_token_invalid(self):
-        """_verify_token should return False for invalid token."""
         tripwire = TripwireSystem()
         tripwire._generate_auth_token()
         assert tripwire._verify_token("invalid_token") is False
 
     def test_verify_token_empty(self):
-        """_verify_token should return False for empty token."""
         tripwire = TripwireSystem()
         assert tripwire._verify_token("") is False
         assert tripwire._verify_token(None) is False
 
     def test_get_new_auth_token_valid(self):
-        """get_new_auth_token should return new token with valid current token."""
         tripwire = TripwireSystem()
         current_token = tripwire._generate_auth_token()
         new_token = tripwire.get_new_auth_token(current_token)
-        assert new_token is not None
+        assert isinstance(new_token, str)
         assert new_token != current_token
 
     def test_get_new_auth_token_invalid(self):
-        """get_new_auth_token should return None with invalid token."""
         tripwire = TripwireSystem()
         tripwire._generate_auth_token()
         new_token = tripwire.get_new_auth_token("bad_token")
         assert new_token is None
 
     def test_token_generation_creates_hash(self):
-        """_generate_auth_token should create a hash."""
         tripwire = TripwireSystem()
         old_hash = tripwire._auth_token_hash
         tripwire._generate_auth_token()
@@ -254,10 +221,7 @@ class TestTripwireSystemTokens:
 # ===========================================================================
 
 class TestTripwireSystemFailedAttempts:
-    """Tests for failed attempt tracking."""
-
     def test_log_failed_attempt(self):
-        """_log_failed_attempt should track attempts."""
         tripwire = TripwireSystem()
         initial = len(tripwire._disable_attempts)
         tripwire._log_failed_attempt("test_op")
@@ -265,14 +229,12 @@ class TestTripwireSystemFailedAttempts:
         assert tripwire._disable_attempts[-1]['operation'] == "test_op"
 
     def test_log_failed_attempt_increments_counter(self):
-        """_log_failed_attempt should increment failed counter."""
         tripwire = TripwireSystem()
         initial = tripwire._failed_attempts
         tripwire._log_failed_attempt("test")
         assert tripwire._failed_attempts == initial + 1
 
     def test_log_failed_attempt_locks_on_max(self):
-        """_log_failed_attempt should lock on max attempts."""
         tripwire = TripwireSystem()
         tripwire._max_disable_attempts = 2
         tripwire._log_failed_attempt("test1")
@@ -281,7 +243,6 @@ class TestTripwireSystemFailedAttempts:
         assert tripwire._locked is True
 
     def test_failed_attempt_records_timestamp(self):
-        """Failed attempts should record timestamp."""
         tripwire = TripwireSystem()
         tripwire._log_failed_attempt("test")
         assert 'timestamp' in tripwire._disable_attempts[-1]
@@ -295,7 +256,6 @@ class TestTripwireSystemSecurity:
     """Tests for security properties."""
 
     def test_auth_required_cannot_be_disabled(self):
-        """_auth_required should remain True."""
         tripwire = TripwireSystem()
         assert tripwire._auth_required is True
         # Even if someone tries to set it...
@@ -304,7 +264,6 @@ class TestTripwireSystemSecurity:
         # For now, we just test the initial state
 
     def test_locked_state_persists(self):
-        """Locked state should persist after being set."""
         tripwire = TripwireSystem()
         tripwire._locked = True
         # Verify it stays locked
@@ -314,7 +273,6 @@ class TestTripwireSystemSecurity:
         assert tripwire._locked is True
 
     def test_token_hash_not_plaintext(self):
-        """Token hash should not be the plaintext token."""
         tripwire = TripwireSystem()
         token = tripwire._generate_auth_token()
         assert tripwire._auth_token_hash != token
@@ -326,10 +284,7 @@ class TestTripwireSystemSecurity:
 # ===========================================================================
 
 class TestTripwireSystemIntegration:
-    """Integration tests for TripwireSystem."""
-
     def test_full_auth_workflow(self):
-        """Test complete authentication workflow."""
         tripwire = TripwireSystem()
 
         # Get initial token
@@ -346,7 +301,7 @@ class TestTripwireSystemIntegration:
 
         # Get new token
         token2 = tripwire.get_new_auth_token(token1)
-        assert token2 is not None
+        assert isinstance(token2, str)
 
         # Old token should not work anymore
         success, _ = tripwire.disable(token1, reason="test with old token")
@@ -357,7 +312,6 @@ class TestTripwireSystemIntegration:
         assert success is True
 
     def test_lockout_workflow(self):
-        """Test lockout after failed attempts."""
         tripwire = TripwireSystem()
         tripwire._max_disable_attempts = 2
 
@@ -375,7 +329,6 @@ class TestTripwireSystemIntegration:
         assert "LOCKED" in message
 
     def test_multiple_tripwire_instances(self):
-        """Multiple TripwireSystem instances should be independent."""
         ts1 = TripwireSystem()
         ts2 = TripwireSystem()
 
@@ -396,28 +349,22 @@ class TestTripwireSystemIntegration:
 # ===========================================================================
 
 class TestTripwireEdgeCases:
-    """Edge case tests for TripwireSystem."""
-
     def test_empty_violations_list(self):
-        """Violations list should be empty initially."""
         tripwire = TripwireSystem()
         assert len(tripwire._violations) == 0  # May be deque or list
 
     def test_enable_when_already_enabled(self):
-        """enable() when already enabled should not error."""
         tripwire = TripwireSystem()
         assert tripwire._enabled is True
         tripwire.enable()  # Should not raise
         assert tripwire._enabled is True
 
     def test_callback_with_no_callbacks(self):
-        """System should work with no callbacks registered."""
         tripwire = TripwireSystem()
         # No callbacks registered - should not error
         assert len(tripwire._callbacks) == 0
 
     def test_token_constant_time_comparison(self):
-        """Token verification should use constant-time comparison."""
         tripwire = TripwireSystem()
         token = tripwire._generate_auth_token()
 
@@ -505,10 +452,7 @@ def _make_env_state(
 # ===========================================================================
 
 class TestViolationNetworkInAirgap:
-    """Tests for network-in-airgap violation detection."""
-
     def test_network_online_in_airgap_triggers_violation(self):
-        """Network online in AIRGAP mode should trigger violation."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
 
@@ -520,17 +464,16 @@ class TestViolationNetworkInAirgap:
         # Network comes online — should trigger
         env_online = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["eth0"])
         result = ts.check_violations(BoundaryMode.AIRGAP, env_online)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
     def test_network_already_online_in_airgap_triggers(self):
-        """Network already online when first checked in AIRGAP should trigger."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
 
         env_online = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["wlan0"])
         result = ts.check_violations(BoundaryMode.AIRGAP, env_online)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
     def test_network_online_in_coldroom_triggers(self):
@@ -540,7 +483,7 @@ class TestViolationNetworkInAirgap:
 
         env_online = _make_env_state(network=NetworkState.ONLINE)
         result = ts.check_violations(BoundaryMode.COLDROOM, env_online)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
     def test_network_online_in_lockdown_triggers(self):
@@ -550,11 +493,10 @@ class TestViolationNetworkInAirgap:
 
         env_online = _make_env_state(network=NetworkState.ONLINE)
         result = ts.check_violations(BoundaryMode.LOCKDOWN, env_online)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
     def test_network_online_in_open_does_not_trigger(self):
-        """Network online in OPEN mode should NOT trigger."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
 
@@ -581,7 +523,6 @@ class TestViolationNetworkInAirgap:
         assert result is None
 
     def test_violation_records_interface_details(self):
-        """Violation details should include which interfaces are active."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
 
@@ -595,10 +536,7 @@ class TestViolationNetworkInAirgap:
 # ===========================================================================
 
 class TestViolationUsbInColdroom:
-    """Tests for USB-in-coldroom violation detection."""
-
     def test_new_usb_device_in_coldroom_triggers(self):
-        """New USB device in COLDROOM should trigger violation."""
         ts = TripwireSystem()
 
         # First check sets baseline with no USB
@@ -608,7 +546,7 @@ class TestViolationUsbInColdroom:
         # USB inserted
         env_usb = _make_env_state(usb_devices={"usb-flash-drive"})
         result = ts.check_violations(BoundaryMode.COLDROOM, env_usb)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.USB_IN_COLDROOM
 
     def test_new_usb_device_in_lockdown_triggers(self):
@@ -620,7 +558,7 @@ class TestViolationUsbInColdroom:
 
         env_usb = _make_env_state(usb_devices={"usb-keyboard"})
         result = ts.check_violations(BoundaryMode.LOCKDOWN, env_usb)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.USB_IN_COLDROOM
 
     def test_usb_in_airgap_does_not_trigger(self):
@@ -636,7 +574,6 @@ class TestViolationUsbInColdroom:
         assert result is None
 
     def test_baseline_usb_devices_not_flagged(self):
-        """USB devices present at baseline should NOT trigger."""
         ts = TripwireSystem()
 
         # Baseline includes a device
@@ -648,7 +585,6 @@ class TestViolationUsbInColdroom:
         assert result is None
 
     def test_additional_usb_beyond_baseline_triggers(self):
-        """Only NEW devices beyond baseline should trigger."""
         ts = TripwireSystem()
 
         env_baseline = _make_env_state(usb_devices={"keyboard"})
@@ -657,7 +593,7 @@ class TestViolationUsbInColdroom:
         # Add a new device while keeping baseline device
         env_new = _make_env_state(usb_devices={"keyboard", "usb-storage"})
         result = ts.check_violations(BoundaryMode.COLDROOM, env_new)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert "usb-storage" in result.details
 
 
@@ -666,28 +602,23 @@ class TestViolationUsbInColdroom:
 # ===========================================================================
 
 class TestViolationExternalModel:
-    """Tests for external model violation detection."""
-
     def test_external_model_in_airgap_triggers(self):
-        """External model endpoints in AIRGAP should trigger."""
         ts = TripwireSystem()
 
         env = _make_env_state(external_model_endpoints=["http://api.openai.com"])
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
 
     def test_external_model_in_coldroom_triggers(self):
-        """External model endpoints in COLDROOM should trigger."""
         ts = TripwireSystem()
 
         env = _make_env_state(external_model_endpoints=["http://localhost:11434"])
         result = ts.check_violations(BoundaryMode.COLDROOM, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
 
     def test_external_model_in_open_does_not_trigger(self):
-        """External model endpoints in OPEN should NOT trigger."""
         ts = TripwireSystem()
 
         env = _make_env_state(external_model_endpoints=["http://api.openai.com"])
@@ -708,15 +639,13 @@ class TestViolationExternalModel:
 # ===========================================================================
 
 class TestViolationSuspiciousProcess:
-    """Tests for suspicious process detection."""
-
     def test_shell_escapes_above_threshold_triggers(self):
         """Shell escapes > 10 should trigger in any mode."""
         ts = TripwireSystem()
 
         env = _make_env_state(shell_escapes_detected=11)
         result = ts.check_violations(BoundaryMode.OPEN, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
     def test_shell_escapes_at_threshold_triggers(self):
@@ -725,11 +654,10 @@ class TestViolationSuspiciousProcess:
 
         env = _make_env_state(shell_escapes_detected=10)
         result = ts.check_violations(BoundaryMode.OPEN, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
     def test_shell_escapes_below_threshold_does_not_trigger(self):
-        """Shell escapes below threshold should NOT trigger."""
         ts = TripwireSystem()
 
         env = _make_env_state(shell_escapes_detected=9)
@@ -742,25 +670,23 @@ class TestViolationSuspiciousProcess:
 
         env = _make_env_state(suspicious_processes=["sudo", "pkexec"])
         result = ts.check_violations(BoundaryMode.TRUSTED, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
     def test_suspicious_processes_in_open_triggers(self):
-        """Suspicious processes should trigger in ALL modes (including OPEN)."""
         ts = TripwireSystem()
 
         env = _make_env_state(suspicious_processes=["sudo"])
         result = ts.check_violations(BoundaryMode.OPEN, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
     def test_suspicious_processes_in_restricted_triggers(self):
-        """Suspicious processes should trigger in ALL modes (including RESTRICTED)."""
         ts = TripwireSystem()
 
         env = _make_env_state(suspicious_processes=["su"])
         result = ts.check_violations(BoundaryMode.RESTRICTED, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
 
 
@@ -769,30 +695,25 @@ class TestViolationSuspiciousProcess:
 # ===========================================================================
 
 class TestViolationHardwareTrust:
-    """Tests for hardware trust degradation detection."""
-
     def test_low_trust_in_airgap_triggers(self):
-        """LOW hardware trust in AIRGAP should trigger."""
         from daemon.state_monitor import HardwareTrust
         ts = TripwireSystem()
 
         env = _make_env_state(hardware_trust=HardwareTrust.LOW)
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
 
     def test_low_trust_in_coldroom_triggers(self):
-        """LOW hardware trust in COLDROOM should trigger."""
         from daemon.state_monitor import HardwareTrust
         ts = TripwireSystem()
 
         env = _make_env_state(hardware_trust=HardwareTrust.LOW)
         result = ts.check_violations(BoundaryMode.COLDROOM, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
 
     def test_medium_trust_in_airgap_does_not_trigger(self):
-        """MEDIUM hardware trust in AIRGAP should NOT trigger (only LOW triggers)."""
         from daemon.state_monitor import HardwareTrust
         ts = TripwireSystem()
 
@@ -801,13 +722,12 @@ class TestViolationHardwareTrust:
         assert result is None
 
     def test_low_trust_in_trusted_triggers(self):
-        """LOW hardware trust in TRUSTED mode should trigger (expanded check)."""
         from daemon.state_monitor import HardwareTrust
         ts = TripwireSystem()
 
         env = _make_env_state(hardware_trust=HardwareTrust.LOW)
         result = ts.check_violations(BoundaryMode.TRUSTED, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
 
 
@@ -819,7 +739,6 @@ class TestViolationDetectionDisabled:
     """Tests that disabled tripwires don't detect violations."""
 
     def test_check_violations_returns_none_when_disabled(self):
-        """check_violations should return None when tripwires disabled."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
         token = ts._generate_auth_token()
@@ -839,7 +758,6 @@ class TestTripwireCallbacks:
     """Tests for callback registration, invocation, and error isolation."""
 
     def test_callback_invoked_on_violation(self):
-        """Registered callback should be called when violation is detected."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
         violations_received = []
@@ -851,7 +769,6 @@ class TestTripwireCallbacks:
         assert violations_received[0].violation_type == ViolationType.NETWORK_IN_AIRGAP
 
     def test_multiple_callbacks_all_invoked(self):
-        """All registered callbacks should be called on violation."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
         call_counts = [0, 0, 0]
@@ -880,7 +797,6 @@ class TestTripwireCallbacks:
         assert "third" in results
 
     def test_unregister_callback(self):
-        """Unregistered callback should not be invoked."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
         results = []
@@ -894,12 +810,10 @@ class TestTripwireCallbacks:
         assert len(results) == 0
 
     def test_unregister_invalid_id_returns_false(self):
-        """Unregister with invalid ID should return False."""
         ts = TripwireSystem()
         assert ts.unregister_callback(9999) is False
 
     def test_cleanup_clears_callbacks(self):
-        """cleanup() should remove all callbacks."""
         ts = TripwireSystem()
         ts.register_callback(lambda v: None)
         ts.register_callback(lambda v: None)
@@ -908,7 +822,6 @@ class TestTripwireCallbacks:
         assert len(ts._callbacks) == 0
 
     def test_callback_invoked_on_trigger_violation(self):
-        """Callbacks should fire for externally triggered violations too."""
         ts = TripwireSystem()
         violations_received = []
         ts.register_callback(lambda v: violations_received.append(v))
@@ -931,7 +844,6 @@ class TestTripwireLifecycle:
     """Tests for violation lifecycle: trigger, retrieve, clear, lock."""
 
     def test_trigger_violation_stores_record(self):
-        """trigger_violation should store the violation in history."""
         ts = TripwireSystem()
         v = ts.trigger_violation(
             ViolationType.CLOCK_MANIPULATION,
@@ -939,12 +851,11 @@ class TestTripwireLifecycle:
             BoundaryMode.AIRGAP,
             {"drift_seconds": 60},
         )
-        assert v is not None
+        assert isinstance(v, TripwireViolation)
         assert v.violation_type == ViolationType.CLOCK_MANIPULATION
         assert ts.get_violation_count() == 1
 
     def test_trigger_violation_returns_none_when_disabled(self):
-        """trigger_violation should return None when disabled."""
         ts = TripwireSystem()
         token = ts._generate_auth_token()
         ts.disable(token, reason="test")
@@ -972,7 +883,6 @@ class TestTripwireLifecycle:
         assert ts.get_violation_count() == 1
 
     def test_get_violation_count(self):
-        """get_violation_count should track accumulated violations."""
         ts = TripwireSystem()
         assert ts.get_violation_count() == 0
 
@@ -983,7 +893,6 @@ class TestTripwireLifecycle:
         assert ts.get_violation_count() == 2
 
     def test_clear_violations_with_valid_token(self):
-        """clear_violations should clear history with valid token."""
         ts = TripwireSystem()
         token = ts._generate_auth_token()
 
@@ -997,7 +906,6 @@ class TestTripwireLifecycle:
         assert ts.get_violation_count() == 0
 
     def test_clear_violations_with_invalid_token(self):
-        """clear_violations should refuse with invalid token."""
         ts = TripwireSystem()
         ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "x", BoundaryMode.OPEN, {})
 
@@ -1006,7 +914,6 @@ class TestTripwireLifecycle:
         assert ts.get_violation_count() == 1
 
     def test_clear_violations_tracks_failed_attempts(self):
-        """Failed clear_violations should increment failed attempt counter."""
         ts = TripwireSystem()
         ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "x", BoundaryMode.OPEN, {})
         initial = ts._failed_attempts
@@ -1014,7 +921,6 @@ class TestTripwireLifecycle:
         assert ts._failed_attempts == initial + 1
 
     def test_lock_prevents_disable(self):
-        """lock() should prevent disable even with valid token."""
         ts = TripwireSystem()
         token = ts._generate_auth_token()
         ts.lock()
@@ -1024,14 +930,12 @@ class TestTripwireLifecycle:
         assert "LOCKED" in msg
 
     def test_is_locked(self):
-        """is_locked() should reflect lock state."""
         ts = TripwireSystem()
         assert ts.is_locked() is False
         ts.lock()
         assert ts.is_locked() is True
 
     def test_is_enabled(self):
-        """is_enabled() should reflect enabled state."""
         ts = TripwireSystem()
         assert ts.is_enabled() is True
         token = ts._generate_auth_token()
@@ -1054,7 +958,6 @@ class TestTripwireLifecycle:
         assert status['max_attempts_before_lock'] == 3
 
     def test_check_daemon_health_returns_true_normally(self):
-        """check_daemon_health should return True under normal conditions."""
         ts = TripwireSystem()
         assert ts.check_daemon_health() is True
 
@@ -1073,17 +976,15 @@ class TestTripwireLifecycle:
         assert ts._failed_attempts == 2
 
     def test_violation_stores_environment_snapshot(self):
-        """Violations should store the environment snapshot for forensics."""
         from daemon.state_monitor import NetworkState
         ts = TripwireSystem()
 
         env = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["eth0"])
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert 'network' in result.environment_snapshot
 
     def test_violation_has_unique_id(self):
-        """Each violation should have a unique ID."""
         ts = TripwireSystem()
         v1 = ts.trigger_violation(ViolationType.DAEMON_TAMPERING, "a", BoundaryMode.OPEN, {})
         v2 = ts.trigger_violation(ViolationType.CLOCK_MANIPULATION, "b", BoundaryMode.OPEN, {})
@@ -1124,7 +1025,7 @@ class TestViolationPriorityOrdering:
             usb_devices={"rogue-usb-stick"},
         )
         result = ts.check_violations(BoundaryMode.COLDROOM, env_both)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         # Network check comes first in priority
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
@@ -1200,7 +1101,7 @@ class TestViolationPriorityOrdering:
         )
         result = ts.check_violations(BoundaryMode.COLDROOM, env_all_bad)
         # Should return exactly one violation (the highest priority)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
 
@@ -1213,7 +1114,6 @@ class TestTripwireLoggerFailure:
     even when the event logger is unavailable or throws."""
 
     def test_trigger_violation_with_none_logger(self):
-        """Violation should be recorded even if event_logger is None."""
         ts = TripwireSystem()
         # Default construction has _event_logger=None
         assert ts._event_logger is None
@@ -1222,11 +1122,10 @@ class TestTripwireLoggerFailure:
             ViolationType.DAEMON_TAMPERING, "binary modified",
             BoundaryMode.TRUSTED, {"hash": "different"},
         )
-        assert v is not None
+        assert isinstance(v, TripwireViolation)
         assert ts.get_violation_count() == 1
 
     def test_trigger_violation_with_broken_logger_still_records(self):
-        """Violation should be recorded even if event_logger raises."""
         from unittest.mock import MagicMock
         ts = TripwireSystem()
 
@@ -1239,11 +1138,10 @@ class TestTripwireLoggerFailure:
             ViolationType.CLOCK_MANIPULATION, "clock jumped",
             BoundaryMode.AIRGAP, {"drift": 60},
         )
-        assert v is not None
+        assert isinstance(v, TripwireViolation)
         assert ts.get_violation_count() == 1
 
     def test_trigger_violation_with_broken_logger_still_calls_callbacks(self):
-        """Callbacks should fire even when event logger raises."""
         from unittest.mock import MagicMock
         ts = TripwireSystem()
 
@@ -1298,3 +1196,323 @@ class TestTripwireLockout:
         success, msg = ts.disable(token, reason="legitimate")
         assert success is False
         assert "LOCKED" in msg
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+import pytest
+
+
+class TestTripwireErrorPaths:
+    """Error-path tests for TripwireSystem using pytest.raises."""
+
+    def test_violation_type_invalid_value_raises(self):
+        """ViolationType with invalid value should raise ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType("totally_fake_violation")
+
+    def test_disable_with_invalid_token_returns_false(self):
+        """Disabling with an invalid token returns (False, msg)."""
+        ts = TripwireSystem()
+        success, msg = ts.disable("completely-wrong-token", reason="test")
+        assert success is False
+        assert "Invalid" in msg
+
+    def test_disable_when_locked_returns_false(self):
+        """Disabling when locked returns (False, msg) mentioning LOCKED."""
+        ts = TripwireSystem()
+        ts.lock()
+        token = ts._generate_auth_token()
+        success, msg = ts.disable(token, reason="test")
+        assert success is False
+        assert "LOCKED" in msg
+
+    def test_clear_violations_invalid_token_returns_false(self):
+        """Clearing violations with invalid token returns (False, msg)."""
+        ts = TripwireSystem()
+        success, msg = ts.clear_violations("wrong-token", reason="test")
+        assert success is False
+        assert "Invalid" in msg
+
+    def test_get_new_auth_token_invalid_token_returns_none(self):
+        """Getting new auth token with invalid current token returns None."""
+        ts = TripwireSystem()
+        result = ts.get_new_auth_token("wrong-token")
+        assert result is None
+
+    def test_auto_lock_after_max_failed_attempts(self):
+        """System should auto-lock after max_disable_attempts failed auth."""
+        ts = TripwireSystem()
+        assert ts.is_locked() is False
+        for i in range(ts._max_disable_attempts):
+            ts.disable(f"bad-token-{i}")
+        assert ts.is_locked() is True
+
+    def test_auto_lock_prevents_disable_with_valid_token(self):
+        """After auto-lock, even valid tokens cannot disable."""
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        for i in range(ts._max_disable_attempts):
+            ts.disable(f"bad-token-{i}")
+        success, msg = ts.disable(token, reason="legitimate")
+        assert success is False
+        assert "LOCKED" in msg
+
+    def test_callback_exception_does_not_propagate(self):
+        """Callback exceptions during violation should not propagate."""
+        ts = TripwireSystem()
+
+        def bad_callback(violation):
+            raise RuntimeError("callback exploded")
+
+        ts.register_callback(bad_callback)
+        env = _make_env_state(shell_escapes_detected=100)
+        ts.check_violations(BoundaryMode.OPEN, env)
+
+    def test_trigger_violation_when_disabled_returns_none(self):
+        """trigger_violation when disabled returns None."""
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        ts.disable(token, reason="test")
+        result = ts.trigger_violation(
+            ViolationType.DAEMON_TAMPERING,
+            "test violation",
+            BoundaryMode.OPEN,
+            {},
+        )
+        assert result is None
+
+    def test_verify_token_empty_string_returns_false(self):
+        """Verifying empty token returns False."""
+        ts = TripwireSystem()
+        assert ts._verify_token("") is False
+
+    def test_verify_token_none_returns_false(self):
+        """Verifying None token returns False."""
+        ts = TripwireSystem()
+        assert ts._verify_token(None) is False
+
+    def test_disable_empty_token_returns_false(self):
+        """Disabling with empty token returns (False, msg)."""
+        ts = TripwireSystem()
+        success, msg = ts.disable("", reason="test")
+        assert success is False
+
+    def test_tripwire_violation_missing_all_fields_raises(self):
+        """TripwireViolation with no fields raises TypeError."""
+        with pytest.raises(TypeError):
+            TripwireViolation()
+
+    def test_tripwire_violation_missing_some_fields_raises(self):
+        """TripwireViolation with only some fields raises TypeError."""
+        with pytest.raises(TypeError):
+            TripwireViolation(violation_id="v1", timestamp="2024-01-01")
+
+    def test_tripwire_violation_missing_env_snapshot_raises(self):
+        """TripwireViolation without environment_snapshot raises TypeError."""
+        with pytest.raises(TypeError):
+            TripwireViolation(
+                violation_id="v1",
+                timestamp="2024-01-01",
+                violation_type=ViolationType.DAEMON_TAMPERING,
+                details="test",
+                current_mode=BoundaryMode.OPEN,
+                # missing environment_snapshot and auto_lockdown
+            )
+
+    def test_violation_type_wrong_type_raises(self):
+        """ViolationType with integer value raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType(42)
+
+    def test_violation_type_empty_string_raises(self):
+        """ViolationType with empty string raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType("")
+
+    def test_violation_type_none_raises(self):
+        """ViolationType with None raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType(None)
+
+    def test_violation_type_partial_match_raises(self):
+        """ViolationType with partial enum name raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType("network")
+
+    def test_clear_violations_empty_token_returns_false(self):
+        """Clearing violations with empty token returns (False, msg)."""
+        ts = TripwireSystem()
+        success, msg = ts.clear_violations("", reason="test")
+        assert success is False
+        assert "Invalid" in msg
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedViolationTypeValues:
+    """Parametrized: All ViolationType enum members have non-empty string values."""
+
+    @pytest.mark.parametrize("vtype", list(ViolationType),
+        ids=[v.name for v in ViolationType])
+    def test_violation_type_has_string_value(self, vtype):
+        """Each ViolationType must have a non-empty string value."""
+        assert isinstance(vtype.value, str)
+        assert len(vtype.value) > 0
+
+
+class TestParametrizedNetworkViolationByMode:
+    """Parametrized: Network-in-airgap triggers only in modes >= AIRGAP."""
+
+    NETWORK_CASES = [
+        (BoundaryMode.OPEN, True, False),
+        (BoundaryMode.RESTRICTED, True, False),
+        (BoundaryMode.TRUSTED, True, False),
+        (BoundaryMode.AIRGAP, True, True),
+        (BoundaryMode.COLDROOM, True, True),
+        (BoundaryMode.LOCKDOWN, True, True),
+        (BoundaryMode.AIRGAP, False, False),
+        (BoundaryMode.COLDROOM, False, False),
+    ]
+
+    @pytest.mark.parametrize("mode,online,should_trigger", NETWORK_CASES,
+        ids=[f"{m.name}-online{o}" for m, o, _ in NETWORK_CASES])
+    def test_network_violation_by_mode(self, mode, online, should_trigger):
+        """Network online triggers violation only in AIRGAP+ modes."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        net_state = NetworkState.ONLINE if online else NetworkState.OFFLINE
+        env = _make_env_state(network=net_state)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+        else:
+            assert result is None
+
+
+class TestParametrizedShellEscapeThresholds:
+    """Parametrized: Shell escape thresholds differ by mode."""
+
+    SHELL_CASES = [
+        (BoundaryMode.OPEN, 9, False),
+        (BoundaryMode.OPEN, 10, True),
+        (BoundaryMode.RESTRICTED, 9, False),
+        (BoundaryMode.RESTRICTED, 10, True),
+        (BoundaryMode.TRUSTED, 9, False),
+        (BoundaryMode.TRUSTED, 10, True),
+        (BoundaryMode.AIRGAP, 2, False),
+        (BoundaryMode.AIRGAP, 3, True),
+        (BoundaryMode.COLDROOM, 2, False),
+        (BoundaryMode.COLDROOM, 3, True),
+    ]
+
+    @pytest.mark.parametrize("mode,escapes,should_trigger", SHELL_CASES,
+        ids=[f"{m.name}-esc{e}" for m, e, _ in SHELL_CASES])
+    def test_shell_escape_threshold(self, mode, escapes, should_trigger):
+        """Shell escape threshold is 3 for AIRGAP+, 10 for lower modes."""
+        ts = TripwireSystem()
+        env = _make_env_state(shell_escapes_detected=escapes)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
+        else:
+            assert result is None
+
+
+class TestParametrizedHardwareTrustByMode:
+    """Parametrized: Hardware trust degradation triggers by mode."""
+
+    HW_CASES = [
+        (BoundaryMode.OPEN, "LOW", False),
+        (BoundaryMode.RESTRICTED, "LOW", False),
+        (BoundaryMode.TRUSTED, "LOW", True),
+        (BoundaryMode.AIRGAP, "LOW", True),
+        (BoundaryMode.COLDROOM, "LOW", True),
+        (BoundaryMode.TRUSTED, "MEDIUM", False),
+        (BoundaryMode.AIRGAP, "MEDIUM", False),
+        (BoundaryMode.COLDROOM, "HIGH", False),
+    ]
+
+    @pytest.mark.parametrize("mode,trust,should_trigger", HW_CASES,
+        ids=[f"{m.name}-{t}" for m, t, _ in HW_CASES])
+    def test_hardware_trust_violation(self, mode, trust, should_trigger):
+        """LOW trust triggers only in TRUSTED+ modes."""
+        from daemon.state_monitor import HardwareTrust
+        trust_level = HardwareTrust[trust]
+        ts = TripwireSystem()
+        env = _make_env_state(hardware_trust=trust_level)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
+        else:
+            assert result is None
+
+
+class TestParametrizedExternalModelByMode:
+    """Parametrized: External model endpoints trigger only in AIRGAP+ modes."""
+
+    MODEL_CASES = [
+        (BoundaryMode.OPEN, True, False),
+        (BoundaryMode.RESTRICTED, True, False),
+        (BoundaryMode.TRUSTED, True, False),
+        (BoundaryMode.AIRGAP, True, True),
+        (BoundaryMode.COLDROOM, True, True),
+        (BoundaryMode.AIRGAP, False, False),
+        (BoundaryMode.COLDROOM, False, False),
+    ]
+
+    @pytest.mark.parametrize("mode,has_ep,should_trigger", MODEL_CASES,
+        ids=[f"{m.name}-ep{e}" for m, e, _ in MODEL_CASES])
+    def test_external_model_violation(self, mode, has_ep, should_trigger):
+        """External model endpoints trigger only in AIRGAP+ modes."""
+        ts = TripwireSystem()
+        endpoints = ["http://api.openai.com"] if has_ep else []
+        env = _make_env_state(external_model_endpoints=endpoints)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
+        else:
+            assert result is None
+
+
+class TestParametrizedTriggerViolationAllTypes:
+    """Parametrized: trigger_violation works for every ViolationType."""
+
+    @pytest.mark.parametrize("vtype", list(ViolationType),
+        ids=[v.name for v in ViolationType])
+    def test_trigger_violation_type(self, vtype):
+        """trigger_violation should accept and record every ViolationType."""
+        ts = TripwireSystem()
+        v = ts.trigger_violation(vtype, f"Test {vtype.name}", BoundaryMode.OPEN, {})
+        assert isinstance(v, TripwireViolation)
+        assert v.violation_type == vtype
+        assert ts.get_violation_count() == 1
+
+
+class TestParametrizedDisabledTripwiresNoViolations:
+    """Parametrized: When disabled, no violations are detected for any mode."""
+
+    @pytest.mark.parametrize("mode", list(BoundaryMode),
+        ids=[m.name for m in BoundaryMode])
+    def test_disabled_returns_none(self, mode):
+        """Disabled tripwires return None for all modes."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        ts.disable(token, reason="testing")
+        env = _make_env_state(
+            network=NetworkState.ONLINE,
+            shell_escapes_detected=100,
+            external_model_endpoints=["http://evil.com"],
+        )
+        result = ts.check_violations(mode, env)
+        assert result is None

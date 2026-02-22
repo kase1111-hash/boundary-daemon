@@ -214,7 +214,7 @@ class ThreatIntelMonitor:
             current_mode = self._get_mode()
             if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
                 return True
-        except Exception:
+        except (ValueError, RuntimeError, TypeError):
             pass
 
         return False
@@ -463,7 +463,7 @@ class ThreatIntelMonitor:
                         'domain': result.get('domain', ''),
                     }
 
-        except (urllib.error.URLError, urllib.error.HTTPError, Exception):
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
             pass
 
         return None
@@ -512,7 +512,7 @@ class ThreatIntelMonitor:
                         'as_owner': attrs.get('as_owner', ''),
                     }
 
-        except (urllib.error.URLError, urllib.error.HTTPError, Exception):
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
             pass
 
         return None

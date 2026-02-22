@@ -507,7 +507,7 @@ class QueueMonitor:
                 self._check_all_queues()
 
                 time.sleep(self.config.sample_interval)
-            except Exception as e:
+            except (RuntimeError, OSError) as e:
                 logger.error(f"Error in queue monitor loop: {e}")
                 time.sleep(self.config.sample_interval)
 
@@ -531,7 +531,7 @@ class QueueMonitor:
                 # Export metrics
                 self._export_queue_metrics(snapshot)
 
-            except Exception as e:
+            except (AttributeError, TypeError, RuntimeError) as e:
                 logger.error(f"Error checking queue {name}: {e}")
 
     def _check_depth_thresholds(self, snapshot: QueueSnapshot, config: QueueConfig):
@@ -722,7 +722,7 @@ class QueueMonitor:
                         **(metadata or {}),
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def _export_queue_metrics(self, snapshot: QueueSnapshot):
@@ -744,7 +744,7 @@ class QueueMonitor:
                 int(snapshot.avg_latency_ms)
             )
 
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.debug(f"Failed to export queue metrics: {e}")
 
     # Public API
@@ -888,7 +888,7 @@ if __name__ == '__main__':
             for _ in range(items_to_add):
                 try:
                     test_queue.put(f"item_{i}", block=False)
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
             # Remove some items
@@ -896,7 +896,7 @@ if __name__ == '__main__':
             for _ in range(items_to_remove):
                 try:
                     test_queue.get_nowait()
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
             # Print stats

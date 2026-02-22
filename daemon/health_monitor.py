@@ -446,7 +446,7 @@ class HealthMonitor:
                         'new_status': new_status.value,
                     }
                 )
-            except Exception:
+            except (ImportError, OSError):
                 pass
 
     def _export_metrics(self, snapshot: HealthSnapshot):

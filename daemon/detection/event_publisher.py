@@ -452,7 +452,7 @@ class EventPublisher:
         try:
             dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
             return dt.timestamp()
-        except Exception:
+        except (ValueError, TypeError):
             return time.time()
 
     def _run_detections(self, event: SecurityEvent) -> List[DetectionResult]:

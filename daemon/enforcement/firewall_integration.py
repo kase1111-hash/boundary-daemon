@@ -227,7 +227,7 @@ class FirewallManager:
         try:
             import ctypes
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, OSError, ImportError):
             return False
 
     def _detect_backend(self) -> FirewallBackend:
@@ -513,7 +513,7 @@ class FirewallManager:
             else:
                 return False, f"Unsupported backend: {self._backend.value}"
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to apply firewall rules: {e}")
             return False, str(e)
 
@@ -636,7 +636,7 @@ class FirewallManager:
 
             return True, "Firewall rules cleared"
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def block_host(self, host: str) -> Tuple[bool, str]:
@@ -685,7 +685,7 @@ class FirewallManager:
                         **data,
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError, TypeError):
                 pass
 
         if self._siem:
@@ -697,7 +697,7 @@ class FirewallManager:
                         **data,
                     }
                 )
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
 

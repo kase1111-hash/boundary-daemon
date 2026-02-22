@@ -438,7 +438,7 @@ class EventLogger:
                     )
                     if result.returncode == 0:
                         logger.info(f"Sealed exported log with immutable attribute: {output_path}")
-                except Exception:
+                except (subprocess.SubprocessError, OSError):
                     logger.debug("Could not apply immutable attribute (requires root)")
 
             return True
@@ -496,7 +496,7 @@ class EventLogger:
                     if result.returncode == 0:
                         is_immutable = True
                         logger.info(f"Applied immutable attribute to sealed log")
-                except Exception:
+                except (subprocess.SubprocessError, OSError):
                     pass
 
                 # Compute final file hash
@@ -575,7 +575,7 @@ class EventLogger:
                     attrs = result.stdout.split()[0] if result.stdout else ""
                     status['is_append_only'] = 'a' in attrs
                     status['is_immutable'] = 'i' in attrs
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         except Exception as e:

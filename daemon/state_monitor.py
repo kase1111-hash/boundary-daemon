@@ -646,7 +646,7 @@ class StateMonitor:
                 if any(d in driver.lower() for d in ['qmi', 'mbim', 'option']):
                     # Additional check would need ModemManager D-Bus API
                     pass
-        except Exception:
+        except (OSError, ValueError):
             pass
 
         return False
@@ -703,7 +703,7 @@ class StateMonitor:
                     return NetworkType.WIFI
                 if driver in ['e1000', 'e1000e', 'igb', 'ixgbe', 'r8169']:
                     return NetworkType.ETHERNET
-        except Exception:
+        except (OSError, ValueError):
             pass
 
         return None
@@ -971,7 +971,7 @@ class StateMonitor:
                                 product = f.read().strip().lower()
                                 if any(x in product for x in ['lora', 'sx127', 'rfm9', 'semtech']):
                                     devices.append(f"USB: {product}")
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
             # Check for SPI-connected LoRa modules
@@ -985,7 +985,7 @@ class StateMonitor:
                             driver = os.path.basename(os.readlink(driver_path))
                             if 'lora' in driver.lower() or 'sx127' in driver.lower():
                                 devices.append(f"SPI: {spi}")
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
             # Check for LoRaWAN gateway interfaces
@@ -1034,7 +1034,7 @@ class StateMonitor:
                                 product = f.read().strip().lower()
                                 if any(x in product for x in ['thread', 'matter', '802.15.4', 'zigbee']):
                                     devices.append(f"USB: {product}")
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
             # Check for OpenThread daemon socket
@@ -1053,7 +1053,7 @@ class StateMonitor:
                     for line in result.stdout.decode().strip().split('\n'):
                         if line:
                             devices.append(f"Process: {line}")
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         except Exception as e:
@@ -1093,7 +1093,7 @@ class StateMonitor:
                                 product = f.read().strip().lower()
                                 if 'wimax' in product:
                                     interfaces.append(f"USB: {product}")
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
         except Exception as e:
@@ -1140,7 +1140,7 @@ class StateMonitor:
                                 product = f.read().strip().lower()
                                 if 'irda' in product or 'infrared' in product:
                                     devices.append(f"USB: {product}")
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
             # Check for IrDA kernel module
@@ -1149,7 +1149,7 @@ class StateMonitor:
                     modules = f.read().lower()
                     if 'irda' in modules or 'ircomm' in modules:
                         devices.append("Kernel: IrDA modules loaded")
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
         except Exception as e:
@@ -1209,7 +1209,7 @@ class StateMonitor:
                                 if 'ant+' in product or 'ant stick' in product or 'dynastream' in product:
                                     if f"USB: {product}" not in [d.lower() for d in devices]:
                                         devices.append(f"USB: {product}")
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
             # Check for ANT-related processes (Linux only - uses pgrep)
@@ -1222,7 +1222,7 @@ class StateMonitor:
                     for line in result.stdout.decode().strip().split('\n'):
                         if line:
                             devices.append(f"Process: {line}")
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
         except Exception as e:
@@ -1354,7 +1354,7 @@ class StateMonitor:
                             # Parse signal value (format varies by driver)
                             if content.isdigit():
                                 info['signal_strength'] = int(content)
-                    except Exception:
+                    except (OSError, ValueError):
                         pass
 
             # Try mmcli (ModemManager CLI) if available
@@ -1399,7 +1399,7 @@ class StateMonitor:
                 pass
             except subprocess.TimeoutExpired:
                 pass
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 pass
 
             return info if info else None
@@ -1461,7 +1461,7 @@ class StateMonitor:
             if os.path.exists('/dev'):
                 video_devs = [d for d in os.listdir('/dev') if d.startswith('video')]
                 camera = len(video_devs) > 0
-        except Exception:
+        except OSError:
             pass
 
         # Check for audio input devices (Linux)
@@ -1469,13 +1469,13 @@ class StateMonitor:
             if os.path.exists('/proc/asound'):
                 cards = os.listdir('/proc/asound')
                 mic = any(c.startswith('card') for c in cards)
-        except Exception:
+        except OSError:
             pass
 
         # Check for TPM (Linux)
         try:
             tpm = os.path.exists('/dev/tpm0') or os.path.exists('/sys/class/tpm')
-        except Exception:
+        except OSError:
             pass
 
         # Store baseline on first check

@@ -33,7 +33,6 @@ from daemon.storage.log_hardening import (
 
 @pytest.fixture
 def temp_log_dir():
-    """Provide a temporary directory for log files."""
     tmpdir = tempfile.mkdtemp(prefix="boundary_log_test_")
     yield Path(tmpdir)
     import shutil
@@ -42,13 +41,11 @@ def temp_log_dir():
 
 @pytest.fixture
 def temp_log_file(temp_log_dir):
-    """Provide a temporary log file path."""
     return temp_log_dir / "test.log"
 
 
 @pytest.fixture
 def log_hardener(temp_log_file):
-    """Provide a LogHardener instance with BASIC mode."""
     return LogHardener(
         log_path=str(temp_log_file),
         mode=HardeningMode.BASIC,
@@ -61,11 +58,8 @@ def log_hardener(temp_log_file):
 # ===========================================================================
 
 class TestHardeningMode:
-    """Tests for HardeningMode enum."""
-
     @pytest.mark.unit
     def test_mode_values(self):
-        """Test that modes have expected string values."""
         assert HardeningMode.NONE.value == "none"
         assert HardeningMode.BASIC.value == "basic"
         assert HardeningMode.STANDARD.value == "standard"
@@ -74,11 +68,8 @@ class TestHardeningMode:
 
 
 class TestProtectionStatus:
-    """Tests for ProtectionStatus enum."""
-
     @pytest.mark.unit
     def test_status_values(self):
-        """Test that statuses have expected string values."""
         assert ProtectionStatus.UNPROTECTED.value == "unprotected"
         assert ProtectionStatus.PARTIAL.value == "partial"
         assert ProtectionStatus.PROTECTED.value == "protected"
@@ -92,11 +83,8 @@ class TestProtectionStatus:
 # ===========================================================================
 
 class TestLogHardenerInitialization:
-    """Tests for LogHardener initialization."""
-
     @pytest.mark.unit
     def test_basic_initialization(self, temp_log_file):
-        """Test basic initialization."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.BASIC)
         assert hardener.log_path == temp_log_file
         assert hardener.mode == HardeningMode.BASIC
@@ -104,7 +92,6 @@ class TestLogHardenerInitialization:
 
     @pytest.mark.unit
     def test_strict_mode_initialization(self, temp_log_file):
-        """Test STRICT mode initialization."""
         hardener = LogHardener(
             str(temp_log_file),
             mode=HardeningMode.STRICT,
@@ -115,7 +102,6 @@ class TestLogHardenerInitialization:
 
     @pytest.mark.unit
     def test_custom_sig_dir(self, temp_log_file, temp_log_dir):
-        """Test custom signature directory."""
         sig_dir = temp_log_dir / "custom_sigs"
         hardener = LogHardener(
             str(temp_log_file),
@@ -126,7 +112,6 @@ class TestLogHardenerInitialization:
 
     @pytest.mark.unit
     def test_default_sig_dir(self, temp_log_file):
-        """Test default signature directory."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.PARANOID)
         expected_sig_dir = temp_log_file.parent / LogHardener.SIG_SUBDIR
         assert hardener.sig_dir == expected_sig_dir
@@ -137,18 +122,14 @@ class TestLogHardenerInitialization:
 # ===========================================================================
 
 class TestPermissions:
-    """Tests for permission management."""
-
     @pytest.mark.unit
     def test_permission_constants(self):
-        """Test permission constants."""
         assert LogHardener.PERM_ACTIVE == 0o600
         assert LogHardener.PERM_SEALED == 0o400
         assert LogHardener.PERM_DIR == 0o700
 
     @pytest.mark.unit
     def test_set_permissions(self, log_hardener, temp_log_file):
-        """Test setting file permissions."""
         temp_log_file.touch()
         ok, err = log_hardener._set_permissions(temp_log_file, 0o600)
         assert ok is True
@@ -160,7 +141,6 @@ class TestPermissions:
 
     @pytest.mark.unit
     def test_get_permissions(self, log_hardener, temp_log_file):
-        """Test getting file permissions."""
         temp_log_file.touch()
         os.chmod(temp_log_file, 0o644)
 
@@ -173,11 +153,8 @@ class TestPermissions:
 # ===========================================================================
 
 class TestHardening:
-    """Tests for log hardening."""
-
     @pytest.mark.unit
     def test_harden_basic_mode(self, temp_log_file):
-        """Test hardening in BASIC mode."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.BASIC)
         status = hardener.harden()
 
@@ -187,7 +164,6 @@ class TestHardening:
 
     @pytest.mark.unit
     def test_harden_none_mode(self, temp_log_file):
-        """Test hardening in NONE mode."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.NONE)
         status = hardener.harden()
 
@@ -195,7 +171,6 @@ class TestHardening:
 
     @pytest.mark.unit
     def test_harden_creates_directory(self, temp_log_dir):
-        """Test that hardening creates parent directory."""
         log_path = temp_log_dir / "subdir" / "test.log"
         hardener = LogHardener(str(log_path), mode=HardeningMode.BASIC)
 
@@ -204,7 +179,6 @@ class TestHardening:
 
     @pytest.mark.unit
     def test_harden_sets_directory_permissions(self, temp_log_file):
-        """Test that hardening sets directory permissions."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.BASIC)
         hardener.harden()
 
@@ -214,7 +188,6 @@ class TestHardening:
 
     @pytest.mark.unit
     def test_harden_with_callback(self, temp_log_file):
-        """Test hardening with protection change callback."""
         callbacks_received = []
 
         def callback(path, status):
@@ -232,7 +205,6 @@ class TestHardening:
 
     @pytest.mark.unit
     def test_harden_paranoid_creates_sig_dir(self, temp_log_file):
-        """Test PARANOID mode creates signature directory."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.PARANOID)
         status = hardener.harden()
 
@@ -245,11 +217,8 @@ class TestHardening:
 # ===========================================================================
 
 class TestSealing:
-    """Tests for log sealing."""
-
     @pytest.mark.unit
     def test_seal_nonexistent_file_returns_errors(self, temp_log_file):
-        """Test sealing a non-existent file returns errors."""
         hardener = LogHardener(
             str(temp_log_file),
             mode=HardeningMode.BASIC,
@@ -274,7 +243,6 @@ class TestSealing:
 
     @pytest.mark.unit
     def test_seal_existing_file(self, log_hardener, temp_log_file):
-        """Test sealing an existing file."""
         log_hardener.harden()
 
         with open(temp_log_file, 'w') as f:
@@ -285,7 +253,6 @@ class TestSealing:
 
     @pytest.mark.unit
     def test_seal_creates_checkpoint(self, log_hardener, temp_log_file):
-        """Test that sealing creates a checkpoint file."""
         log_hardener.harden()
 
         with open(temp_log_file, 'w') as f:
@@ -309,18 +276,14 @@ class TestSealing:
 # ===========================================================================
 
 class TestIntegrityVerification:
-    """Tests for integrity verification."""
-
     @pytest.mark.unit
     def test_verify_nonexistent_file(self, log_hardener):
-        """Test verification of non-existent file."""
         is_valid, issues = log_hardener.verify_integrity()
         assert is_valid is False
         assert any("does not exist" in issue for issue in issues)
 
     @pytest.mark.unit
     def test_verify_basic_file(self, log_hardener, temp_log_file):
-        """Test verification of basic hardened file."""
         log_hardener.harden()
 
         is_valid, issues = log_hardener.verify_integrity()
@@ -329,7 +292,6 @@ class TestIntegrityVerification:
 
     @pytest.mark.unit
     def test_verify_wrong_permissions(self, log_hardener, temp_log_file):
-        """Test verification detects wrong permissions."""
         log_hardener.harden()
         os.chmod(temp_log_file, 0o777)
 
@@ -343,11 +305,8 @@ class TestIntegrityVerification:
 # ===========================================================================
 
 class TestStatus:
-    """Tests for HardeningStatus."""
-
     @pytest.mark.unit
     def test_get_status_after_harden(self, log_hardener, temp_log_file):
-        """Test status after hardening."""
         log_hardener.harden()
         status = log_hardener.get_status()
 
@@ -357,7 +316,6 @@ class TestStatus:
 
     @pytest.mark.unit
     def test_status_to_dict(self, log_hardener, temp_log_file):
-        """Test HardeningStatus to_dict method."""
         log_hardener.harden()
         status = log_hardener.get_status()
         d = status.to_dict()
@@ -374,11 +332,8 @@ class TestStatus:
 # ===========================================================================
 
 class TestEdgeCases:
-    """Tests for edge cases."""
-
     @pytest.mark.unit
     def test_harden_idempotent(self, log_hardener, temp_log_file):
-        """Test that hardening is idempotent."""
         status1 = log_hardener.harden()
         status2 = log_hardener.harden()
         status3 = log_hardener.harden()
@@ -387,16 +342,269 @@ class TestEdgeCases:
 
     @pytest.mark.unit
     def test_get_signature_path_basic(self, log_hardener, temp_log_file):
-        """Test signature path in BASIC mode."""
         sig_path = log_hardener.get_signature_path()
         expected = temp_log_file.with_suffix('.log.sig')
         assert sig_path == expected
 
     @pytest.mark.unit
     def test_get_signature_path_paranoid(self, temp_log_file):
-        """Test signature path in PARANOID mode."""
         hardener = LogHardener(str(temp_log_file), mode=HardeningMode.PARANOID)
         hardener.harden()
 
         sig_path = hardener.get_signature_path()
         assert hardener.sig_dir.name in str(sig_path.parent)
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedHardeningModeValues:
+    """Parametrized: All HardeningMode enum members."""
+
+    MODE_VALUES = [
+        (HardeningMode.NONE, "none"),
+        (HardeningMode.BASIC, "basic"),
+        (HardeningMode.STANDARD, "standard"),
+        (HardeningMode.STRICT, "strict"),
+        (HardeningMode.PARANOID, "paranoid"),
+    ]
+
+    @pytest.mark.parametrize("mode,expected_value", MODE_VALUES,
+        ids=[m.name for m, _ in MODE_VALUES])
+    def test_mode_value(self, mode, expected_value):
+        """Each HardeningMode should have its expected string value."""
+        assert mode.value == expected_value
+
+
+class TestParametrizedProtectionStatusValues:
+    """Parametrized: All ProtectionStatus enum members."""
+
+    STATUS_VALUES = [
+        (ProtectionStatus.UNPROTECTED, "unprotected"),
+        (ProtectionStatus.PARTIAL, "partial"),
+        (ProtectionStatus.PROTECTED, "protected"),
+        (ProtectionStatus.SEALED, "sealed"),
+        (ProtectionStatus.DEGRADED, "degraded"),
+        (ProtectionStatus.FAILED, "failed"),
+    ]
+
+    @pytest.mark.parametrize("status,expected_value", STATUS_VALUES,
+        ids=[s.name for s, _ in STATUS_VALUES])
+    def test_status_value(self, status, expected_value):
+        """Each ProtectionStatus should have its expected string value."""
+        assert status.value == expected_value
+
+
+class TestParametrizedHardenWithAllModes:
+    """Parametrized: LogHardener can harden in every mode."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("mode", list(HardeningMode),
+        ids=[m.name for m in HardeningMode])
+    def test_harden_mode(self, mode, temp_log_dir):
+        """harden() should succeed in every HardeningMode."""
+        log_file = temp_log_dir / f"test_{mode.name}.log"
+        hardener = LogHardener(str(log_file), mode=mode)
+        status = hardener.harden()
+        assert log_file.exists()
+        assert status is not None
+
+
+class TestParametrizedPermissionConstants:
+    """Parametrized: Permission constants are correct octal values."""
+
+    PERM_CASES = [
+        ("PERM_ACTIVE", 0o600),
+        ("PERM_SEALED", 0o400),
+        ("PERM_DIR", 0o700),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("attr,expected", PERM_CASES,
+        ids=[a for a, _ in PERM_CASES])
+    def test_permission_constant(self, attr, expected):
+        """Permission constants should have correct octal values."""
+        assert getattr(LogHardener, attr) == expected
+
+
+class TestParametrizedSetPermissions:
+    """Parametrized: Setting various file permission modes."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("perm", [0o400, 0o600, 0o644, 0o700, 0o755],
+        ids=["400", "600", "644", "700", "755"])
+    def test_set_permission_mode(self, perm, temp_log_dir):
+        """_set_permissions should apply various modes correctly."""
+        log_file = temp_log_dir / "perm_test.log"
+        log_file.touch()
+        hardener = LogHardener(str(log_file), mode=HardeningMode.BASIC)
+        ok, err = hardener._set_permissions(log_file, perm)
+        assert ok is True
+        st = os.stat(log_file)
+        actual_mode = stat.S_IMODE(st.st_mode)
+        assert actual_mode == perm
+
+
+class TestParametrizedHardenIdempotent:
+    """Parametrized: Hardening is idempotent in every mode."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("mode", [
+        HardeningMode.NONE, HardeningMode.BASIC, HardeningMode.STANDARD,
+    ], ids=["NONE", "BASIC", "STANDARD"])
+    def test_harden_idempotent_per_mode(self, mode, temp_log_dir):
+        """Hardening the same file multiple times should be idempotent."""
+        log_file = temp_log_dir / f"idem_{mode.name}.log"
+        hardener = LogHardener(str(log_file), mode=mode)
+        s1 = hardener.harden()
+        s2 = hardener.harden()
+        s3 = hardener.harden()
+        assert s1.permissions == s2.permissions == s3.permissions
+
+
+class TestParametrizedVerifyIntegrityWithPermChanges:
+    """Parametrized: Integrity verification detects various wrong permissions."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("bad_perm", [0o644, 0o666, 0o755, 0o777],
+        ids=["644", "666", "755", "777"])
+    def test_wrong_permission_detected(self, bad_perm, temp_log_dir):
+        """verify_integrity should detect wrong permissions."""
+        log_file = temp_log_dir / "verify_test.log"
+        hardener = LogHardener(str(log_file), mode=HardeningMode.BASIC)
+        hardener.harden()
+        os.chmod(log_file, bad_perm)
+        is_valid, issues = hardener.verify_integrity()
+        assert is_valid is False
+        assert any("permission" in issue.lower() for issue in issues)
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+class TestLogHardeningErrorPaths:
+    """Error-path tests for LogHardener using pytest.raises."""
+
+    def test_seal_nonexistent_file_strict_raises(self, tmp_path):
+        """Sealing a nonexistent file with fail_on_degraded raises LogHardeningError."""
+        hardener = LogHardener(
+            str(tmp_path / "missing.log"),
+            mode=HardeningMode.STRICT,
+            fail_on_degraded=True,
+        )
+        with pytest.raises(LogHardeningError, match="Cannot seal"):
+            hardener.seal()
+
+    def test_seal_nonexistent_file_message_content(self, tmp_path):
+        """LogHardeningError should mention 'log file does not exist'."""
+        hardener = LogHardener(
+            str(tmp_path / "missing.log"),
+            mode=HardeningMode.STRICT,
+            fail_on_degraded=True,
+        )
+        with pytest.raises(LogHardeningError, match="log file does not exist"):
+            hardener.seal()
+
+    def test_harden_strict_no_chattr_raises(self, tmp_path):
+        """STRICT mode with unavailable chattr raises LogHardeningError."""
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(
+            str(log_file),
+            mode=HardeningMode.STRICT,
+            fail_on_degraded=True,
+        )
+        hardener._has_chattr = False
+        hardener._is_root = False
+        with pytest.raises(LogHardeningError, match="Log hardening failed"):
+            hardener.harden()
+
+    def test_harden_paranoid_no_chattr_raises(self, tmp_path):
+        """PARANOID mode with unavailable chattr raises LogHardeningError."""
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(
+            str(log_file),
+            mode=HardeningMode.PARANOID,
+            fail_on_degraded=True,
+        )
+        hardener._has_chattr = False
+        hardener._is_root = False
+        with pytest.raises(LogHardeningError):
+            hardener.harden()
+
+    def test_harden_strict_chattr_not_root_raises(self, tmp_path):
+        """STRICT mode without root privileges raises LogHardeningError."""
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(
+            str(log_file),
+            mode=HardeningMode.STRICT,
+            fail_on_degraded=True,
+        )
+        hardener._has_chattr = True
+        hardener._is_root = False
+        with pytest.raises(LogHardeningError, match="Log hardening failed"):
+            hardener.harden()
+
+    def test_run_chattr_not_available_returns_false(self, tmp_path):
+        """_run_chattr returns (False, msg) when chattr is not available."""
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(str(log_file), mode=HardeningMode.STANDARD)
+        hardener._has_chattr = False
+        ok, msg = hardener._run_chattr('+a', log_file)
+        assert ok is False
+        assert "not available" in msg
+
+    def test_run_chattr_not_root_returns_false(self, tmp_path):
+        """_run_chattr returns (False, msg) when not root."""
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(str(log_file), mode=HardeningMode.STANDARD)
+        hardener._has_chattr = True
+        hardener._is_root = False
+        ok, msg = hardener._run_chattr('+a', log_file)
+        assert ok is False
+        assert "root" in msg
+
+    def test_run_chattr_subprocess_timeout_returns_false(self, tmp_path):
+        """_run_chattr returns (False, msg) on subprocess timeout."""
+        from unittest.mock import patch
+        import subprocess
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(str(log_file), mode=HardeningMode.STANDARD)
+        hardener._has_chattr = True
+        hardener._is_root = True
+        with patch('subprocess.run', side_effect=subprocess.TimeoutExpired(cmd='chattr', timeout=5)):
+            ok, msg = hardener._run_chattr('+a', log_file)
+            assert ok is False
+            assert "timed out" in msg
+
+    def test_run_chattr_oserror_returns_false(self, tmp_path):
+        """_run_chattr returns (False, msg) on OSError."""
+        from unittest.mock import patch
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(str(log_file), mode=HardeningMode.STANDARD)
+        hardener._has_chattr = True
+        hardener._is_root = True
+        with patch('subprocess.run', side_effect=OSError("Permission denied")):
+            ok, msg = hardener._run_chattr('+a', log_file)
+            assert ok is False
+            assert "Permission denied" in msg
+
+    def test_set_permissions_oserror_returns_false(self, tmp_path):
+        """_set_permissions returns (False, msg) on OSError."""
+        from unittest.mock import patch
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        hardener = LogHardener(str(log_file), mode=HardeningMode.STANDARD)
+        with patch('os.chmod', side_effect=OSError("Operation not permitted")):
+            ok, msg = hardener._set_permissions(log_file, 0o600)
+            assert ok is False
+            assert "Operation not permitted" in msg

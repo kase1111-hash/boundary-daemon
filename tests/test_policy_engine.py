@@ -34,7 +34,6 @@ from daemon.state_monitor import (
 
 @pytest.fixture
 def mock_env_state() -> EnvironmentState:
-    """Provide a default mock environment state."""
     return EnvironmentState(
         timestamp=datetime.utcnow().isoformat() + "Z",
         network=NetworkState.OFFLINE,
@@ -75,7 +74,6 @@ def mock_env_state() -> EnvironmentState:
 
 @pytest.fixture
 def online_env_state(mock_env_state) -> EnvironmentState:
-    """Provide an online environment state."""
     mock_env_state.network = NetworkState.ONLINE
     mock_env_state.has_internet = True
     mock_env_state.active_interfaces = ['eth0']
@@ -84,7 +82,6 @@ def online_env_state(mock_env_state) -> EnvironmentState:
 
 @pytest.fixture
 def vpn_env_state(mock_env_state) -> EnvironmentState:
-    """Provide an environment with VPN active."""
     mock_env_state.network = NetworkState.ONLINE
     mock_env_state.has_internet = True
     mock_env_state.vpn_active = True
@@ -97,11 +94,8 @@ def vpn_env_state(mock_env_state) -> EnvironmentState:
 # ===========================================================================
 
 class TestBoundaryMode:
-    """Tests for BoundaryMode enum and ordering."""
-
     @pytest.mark.unit
     def test_mode_ordering(self):
-        """Test that modes have correct numeric ordering."""
         assert BoundaryMode.OPEN < BoundaryMode.RESTRICTED
         assert BoundaryMode.RESTRICTED < BoundaryMode.TRUSTED
         assert BoundaryMode.TRUSTED < BoundaryMode.AIRGAP
@@ -110,7 +104,6 @@ class TestBoundaryMode:
 
     @pytest.mark.unit
     def test_mode_values(self):
-        """Test that modes have expected integer values."""
         assert BoundaryMode.OPEN.value == 0
         assert BoundaryMode.RESTRICTED.value == 1
         assert BoundaryMode.TRUSTED.value == 2
@@ -120,23 +113,18 @@ class TestBoundaryMode:
 
 
 class TestPolicyEngineInitialization:
-    """Tests for PolicyEngine initialization."""
-
     @pytest.mark.unit
     def test_default_initialization(self):
-        """Test default initialization."""
         engine = PolicyEngine()
         assert engine.get_current_mode() == BoundaryMode.OPEN
 
     @pytest.mark.unit
     def test_custom_initial_mode(self):
-        """Test initialization with custom mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.RESTRICTED)
         assert engine.get_current_mode() == BoundaryMode.RESTRICTED
 
     @pytest.mark.unit
     def test_get_current_state(self, policy_engine):
-        """Test getting complete state."""
         state = policy_engine.get_current_state()
         assert isinstance(state, BoundaryState)
         assert state.mode == BoundaryMode.OPEN
@@ -145,11 +133,8 @@ class TestPolicyEngineInitialization:
 
 
 class TestModeTransitions:
-    """Tests for mode transitions."""
-
     @pytest.mark.unit
     def test_transition_success(self, policy_engine):
-        """Test successful mode transition."""
         success, msg = policy_engine.transition_mode(
             BoundaryMode.RESTRICTED,
             Operator.HUMAN,
@@ -161,7 +146,6 @@ class TestModeTransitions:
 
     @pytest.mark.unit
     def test_transition_callback(self, policy_engine):
-        """Test that transition callbacks are called."""
         callback_calls = []
 
         def callback(old_mode, new_mode, operator, reason):
@@ -181,7 +165,6 @@ class TestModeTransitions:
 
     @pytest.mark.unit
     def test_lockdown_exit_requires_human(self, policy_engine_lockdown):
-        """Test that LOCKDOWN exit requires human intervention."""
         success, msg = policy_engine_lockdown.transition_mode(
             BoundaryMode.OPEN,
             Operator.SYSTEM,
@@ -193,7 +176,6 @@ class TestModeTransitions:
 
     @pytest.mark.unit
     def test_lockdown_exit_with_human(self, policy_engine_lockdown):
-        """Test that LOCKDOWN exit works with human intervention."""
         success, msg = policy_engine_lockdown.transition_mode(
             BoundaryMode.OPEN,
             Operator.HUMAN,
@@ -204,7 +186,6 @@ class TestModeTransitions:
 
     @pytest.mark.unit
     def test_transition_all_modes(self, policy_engine):
-        """Test transitions to all modes."""
         modes = [
             BoundaryMode.RESTRICTED,
             BoundaryMode.TRUSTED,
@@ -225,11 +206,8 @@ class TestModeTransitions:
 
 
 class TestMemoryRecallPolicy:
-    """Tests for memory recall policy evaluation."""
-
     @pytest.mark.unit
     def test_public_memory_in_open_mode(self, policy_engine, mock_env_state):
-        """Test that PUBLIC memory is accessible in OPEN mode."""
         request = PolicyRequest(
             request_type='recall',
             memory_class=MemoryClass.PUBLIC
@@ -239,7 +217,6 @@ class TestMemoryRecallPolicy:
 
     @pytest.mark.unit
     def test_confidential_memory_denied_in_open(self, policy_engine, mock_env_state):
-        """Test that CONFIDENTIAL memory is denied in OPEN mode."""
         request = PolicyRequest(
             request_type='recall',
             memory_class=MemoryClass.CONFIDENTIAL
@@ -251,7 +228,6 @@ class TestMemoryRecallPolicy:
     def test_confidential_memory_allowed_in_restricted(
         self, policy_engine_restricted, mock_env_state
     ):
-        """Test that CONFIDENTIAL memory is allowed in RESTRICTED mode."""
         request = PolicyRequest(
             request_type='recall',
             memory_class=MemoryClass.CONFIDENTIAL
@@ -261,7 +237,6 @@ class TestMemoryRecallPolicy:
 
     @pytest.mark.unit
     def test_secret_memory_requires_trusted(self, policy_engine, mock_env_state):
-        """Test that SECRET memory requires TRUSTED mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(
             request_type='recall',
@@ -272,7 +247,6 @@ class TestMemoryRecallPolicy:
 
     @pytest.mark.unit
     def test_top_secret_requires_airgap(self, mock_env_state):
-        """Test that TOP_SECRET memory requires AIRGAP mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='recall',
@@ -283,7 +257,6 @@ class TestMemoryRecallPolicy:
 
     @pytest.mark.unit
     def test_crown_jewel_requires_coldroom(self, mock_env_state):
-        """Test that CROWN_JEWEL memory requires COLDROOM mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(
             request_type='recall',
@@ -294,7 +267,6 @@ class TestMemoryRecallPolicy:
 
     @pytest.mark.unit
     def test_recall_with_none_memory_class(self, policy_engine, mock_env_state):
-        """Test that recall with None memory class is denied."""
         request = PolicyRequest(
             request_type='recall',
             memory_class=None
@@ -304,7 +276,6 @@ class TestMemoryRecallPolicy:
 
     @pytest.mark.unit
     def test_all_memory_denied_in_lockdown(self, policy_engine_lockdown, mock_env_state):
-        """Test that all memory is denied in LOCKDOWN mode."""
         for mem_class in MemoryClass:
             request = PolicyRequest(
                 request_type='recall',
@@ -315,11 +286,8 @@ class TestMemoryRecallPolicy:
 
 
 class TestToolPolicy:
-    """Tests for tool execution policy evaluation."""
-
     @pytest.mark.unit
     def test_basic_tool_allowed_in_open(self, policy_engine, mock_env_state):
-        """Test that basic tools are allowed in OPEN mode."""
         request = PolicyRequest(
             request_type='tool',
             tool_name='file_read',
@@ -331,7 +299,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_network_tool_denied_in_airgap(self, mock_env_state):
-        """Test that network tools are denied in AIRGAP mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='tool',
@@ -343,7 +310,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_usb_tool_denied_in_airgap(self, mock_env_state):
-        """Test that USB tools are denied in AIRGAP mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='tool',
@@ -355,7 +321,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_filesystem_allowed_in_airgap(self, mock_env_state):
-        """Test that filesystem tools are allowed in AIRGAP mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='tool',
@@ -367,7 +332,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_all_io_denied_in_coldroom(self, mock_env_state):
-        """Test that all IO is denied in COLDROOM mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
 
         # Network
@@ -386,7 +350,6 @@ class TestToolPolicy:
     def test_usb_requires_ceremony_in_restricted(
         self, policy_engine_restricted, mock_env_state
     ):
-        """Test that USB access requires ceremony in RESTRICTED mode."""
         request = PolicyRequest(
             request_type='tool',
             tool_name='usb_write',
@@ -397,7 +360,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_network_tool_in_trusted_offline(self, mock_env_state):
-        """Test network tool in TRUSTED mode when offline."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         mock_env_state.network = NetworkState.OFFLINE
 
@@ -411,7 +373,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_network_tool_in_trusted_with_vpn(self, vpn_env_state):
-        """Test network tool in TRUSTED mode with VPN."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
 
         request = PolicyRequest(
@@ -424,7 +385,6 @@ class TestToolPolicy:
 
     @pytest.mark.unit
     def test_network_tool_in_trusted_without_vpn(self, online_env_state):
-        """Test network tool in TRUSTED mode without VPN."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
 
         request = PolicyRequest(
@@ -437,25 +397,20 @@ class TestToolPolicy:
 
 
 class TestModelPolicy:
-    """Tests for external model access policy."""
-
     @pytest.mark.unit
     def test_model_allowed_in_open_online(self, policy_engine, online_env_state):
-        """Test that external model access is allowed in OPEN mode online."""
         request = PolicyRequest(request_type='model')
         decision = policy_engine.evaluate_policy(request, online_env_state)
         assert decision == PolicyDecision.ALLOW
 
     @pytest.mark.unit
     def test_model_denied_in_open_offline(self, policy_engine, mock_env_state):
-        """Test that external model access is denied when offline."""
         request = PolicyRequest(request_type='model')
         decision = policy_engine.evaluate_policy(request, mock_env_state)
         assert decision == PolicyDecision.DENY
 
     @pytest.mark.unit
     def test_model_denied_in_airgap(self, mock_env_state):
-        """Test that external models are denied in AIRGAP mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(request_type='model')
         decision = engine.evaluate_policy(request, mock_env_state)
@@ -463,7 +418,6 @@ class TestModelPolicy:
 
     @pytest.mark.unit
     def test_model_denied_in_coldroom(self, mock_env_state):
-        """Test that external models are denied in COLDROOM mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(request_type='model')
         decision = engine.evaluate_policy(request, mock_env_state)
@@ -471,11 +425,8 @@ class TestModelPolicy:
 
 
 class TestIOPolicy:
-    """Tests for IO operation policy."""
-
     @pytest.mark.unit
     def test_filesystem_denied_in_coldroom(self, mock_env_state):
-        """Test that filesystem IO is denied in COLDROOM mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(
             request_type='io',
@@ -486,7 +437,6 @@ class TestIOPolicy:
 
     @pytest.mark.unit
     def test_network_denied_in_airgap(self, mock_env_state):
-        """Test that network IO is denied in AIRGAP mode."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='io',
@@ -497,7 +447,6 @@ class TestIOPolicy:
 
     @pytest.mark.unit
     def test_io_allowed_in_open(self, policy_engine, mock_env_state):
-        """Test that IO is generally allowed in OPEN mode."""
         request = PolicyRequest(
             request_type='io',
             requires_network=True,
@@ -508,8 +457,6 @@ class TestIOPolicy:
 
 
 class TestUnknownRequests:
-    """Tests for unknown request types."""
-
     @pytest.mark.unit
     def test_unknown_request_type_denied(self, policy_engine, mock_env_state):
         """Test that unknown request types are denied (fail-closed)."""
@@ -519,58 +466,46 @@ class TestUnknownRequests:
 
     @pytest.mark.unit
     def test_invalid_request_type_denied(self, policy_engine, mock_env_state):
-        """Test that invalid request types are denied."""
         request = PolicyRequest(request_type='')
         decision = policy_engine.evaluate_policy(request, mock_env_state)
         assert decision == PolicyDecision.DENY
 
 
 class TestMinimumModeForMemory:
-    """Tests for get_minimum_mode_for_memory method."""
-
     @pytest.mark.unit
     def test_public_minimum_mode(self, policy_engine):
-        """Test minimum mode for PUBLIC memory."""
         mode = policy_engine.get_minimum_mode_for_memory(MemoryClass.PUBLIC)
         assert mode == BoundaryMode.OPEN
 
     @pytest.mark.unit
     def test_internal_minimum_mode(self, policy_engine):
-        """Test minimum mode for INTERNAL memory."""
         mode = policy_engine.get_minimum_mode_for_memory(MemoryClass.INTERNAL)
         assert mode == BoundaryMode.OPEN
 
     @pytest.mark.unit
     def test_confidential_minimum_mode(self, policy_engine):
-        """Test minimum mode for CONFIDENTIAL memory."""
         mode = policy_engine.get_minimum_mode_for_memory(MemoryClass.CONFIDENTIAL)
         assert mode == BoundaryMode.RESTRICTED
 
     @pytest.mark.unit
     def test_secret_minimum_mode(self, policy_engine):
-        """Test minimum mode for SECRET memory."""
         mode = policy_engine.get_minimum_mode_for_memory(MemoryClass.SECRET)
         assert mode == BoundaryMode.TRUSTED
 
     @pytest.mark.unit
     def test_top_secret_minimum_mode(self, policy_engine):
-        """Test minimum mode for TOP_SECRET memory."""
         mode = policy_engine.get_minimum_mode_for_memory(MemoryClass.TOP_SECRET)
         assert mode == BoundaryMode.AIRGAP
 
     @pytest.mark.unit
     def test_crown_jewel_minimum_mode(self, policy_engine):
-        """Test minimum mode for CROWN_JEWEL memory."""
         mode = policy_engine.get_minimum_mode_for_memory(MemoryClass.CROWN_JEWEL)
         assert mode == BoundaryMode.COLDROOM
 
 
 class TestEnvironmentCompatibility:
-    """Tests for environment compatibility checks."""
-
     @pytest.mark.unit
     def test_airgap_compatible_offline(self, mock_env_state):
-        """Test that AIRGAP is compatible with offline environment."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         is_compatible, violation = engine.check_mode_environment_compatibility(
             mock_env_state
@@ -580,7 +515,6 @@ class TestEnvironmentCompatibility:
 
     @pytest.mark.unit
     def test_airgap_incompatible_online(self, online_env_state):
-        """Test that AIRGAP is incompatible with online environment."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         is_compatible, violation = engine.check_mode_environment_compatibility(
             online_env_state
@@ -590,7 +524,6 @@ class TestEnvironmentCompatibility:
 
     @pytest.mark.unit
     def test_open_mode_always_compatible(self, policy_engine, online_env_state):
-        """Test that OPEN mode is compatible with any environment."""
         is_compatible, violation = policy_engine.check_mode_environment_compatibility(
             online_env_state
         )
@@ -598,11 +531,8 @@ class TestEnvironmentCompatibility:
 
 
 class TestThreadSafety:
-    """Tests for thread safety of PolicyEngine."""
-
     @pytest.mark.unit
     def test_concurrent_policy_evaluation(self, mock_env_state):
-        """Test concurrent policy evaluation."""
         engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
         results = []
 
@@ -627,7 +557,6 @@ class TestThreadSafety:
 
     @pytest.mark.unit
     def test_concurrent_mode_transitions(self):
-        """Test concurrent mode transitions."""
         engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
         transition_results = []
 
@@ -649,11 +578,8 @@ class TestThreadSafety:
 
 
 class TestBoundaryStateToDict:
-    """Tests for BoundaryState serialization."""
-
     @pytest.mark.unit
     def test_state_to_dict(self, policy_engine):
-        """Test that state converts to dictionary correctly."""
         state = policy_engine.get_current_state()
         d = state.to_dict()
 
@@ -669,11 +595,8 @@ class TestBoundaryStateToDict:
 # ===========================================================================
 
 class TestToolPolicyMultiIO:
-    """Tests for tool requests requiring multiple IO types simultaneously."""
-
     @pytest.mark.unit
     def test_network_and_filesystem_denied_in_coldroom(self, mock_env_state):
-        """COLDROOM should deny tool requiring both network and filesystem."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(
             request_type='tool',
@@ -684,7 +607,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_network_and_usb_denied_in_coldroom(self, mock_env_state):
-        """COLDROOM should deny tool requiring both network and USB."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(
             request_type='tool',
@@ -707,7 +629,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_no_io_allowed_in_coldroom(self, mock_env_state):
-        """COLDROOM should allow tool requiring no IO (keyboard/display only)."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(
             request_type='tool',
@@ -720,7 +641,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_network_and_usb_denied_in_airgap(self, mock_env_state):
-        """AIRGAP should deny tool requiring both network and USB."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='tool',
@@ -731,7 +651,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_filesystem_and_usb_denied_in_airgap(self, mock_env_state):
-        """AIRGAP should deny tool requiring USB even with filesystem."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='tool',
@@ -742,7 +661,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_filesystem_only_allowed_in_airgap(self, mock_env_state):
-        """AIRGAP should allow tool that only requires filesystem."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(
             request_type='tool',
@@ -756,7 +674,6 @@ class TestToolPolicyMultiIO:
     def test_network_and_filesystem_denied_in_trusted_online_no_vpn(
         self, online_env_state
     ):
-        """TRUSTED online without VPN should deny network-requiring tools."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(
             request_type='tool',
@@ -780,7 +697,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_all_io_allowed_in_open(self, mock_env_state):
-        """OPEN should allow tool requiring all IO types."""
         engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
         request = PolicyRequest(
             request_type='tool',
@@ -792,7 +708,6 @@ class TestToolPolicyMultiIO:
 
     @pytest.mark.unit
     def test_usb_and_filesystem_ceremony_in_restricted(self, mock_env_state):
-        """RESTRICTED should require ceremony for USB even with filesystem."""
         engine = PolicyEngine(initial_mode=BoundaryMode.RESTRICTED)
         request = PolicyRequest(
             request_type='tool',
@@ -866,8 +781,6 @@ class TestLockdownDeniesAll:
 # ===========================================================================
 
 class TestModelPolicyGaps:
-    """Tests for model policy edge cases not covered by existing tests."""
-
     @pytest.mark.unit
     def test_model_in_restricted_online(self, online_env_state):
         """RESTRICTED online should allow model access (mode <= RESTRICTED and online)."""
@@ -878,7 +791,6 @@ class TestModelPolicyGaps:
 
     @pytest.mark.unit
     def test_model_in_restricted_offline(self, mock_env_state):
-        """RESTRICTED offline should deny model access (needs network)."""
         engine = PolicyEngine(initial_mode=BoundaryMode.RESTRICTED)
         request = PolicyRequest(request_type='model')
         decision = engine.evaluate_policy(request, mock_env_state)
@@ -886,7 +798,6 @@ class TestModelPolicyGaps:
 
     @pytest.mark.unit
     def test_model_in_trusted_online_with_vpn(self, vpn_env_state):
-        """TRUSTED with VPN should allow model access."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(request_type='model')
         decision = engine.evaluate_policy(request, vpn_env_state)
@@ -894,7 +805,6 @@ class TestModelPolicyGaps:
 
     @pytest.mark.unit
     def test_model_in_trusted_online_no_vpn(self, online_env_state):
-        """TRUSTED online without VPN should deny model access."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(request_type='model')
         decision = engine.evaluate_policy(request, online_env_state)
@@ -927,39 +837,32 @@ class TestModelPolicyGaps:
 # ===========================================================================
 
 class TestIOPolicyGaps:
-    """Tests for IO policy edge cases."""
-
     @pytest.mark.unit
     def test_usb_denied_in_airgap(self, mock_env_state):
-        """AIRGAP should deny USB IO."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(request_type='io', requires_usb=True)
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.DENY
 
     @pytest.mark.unit
     def test_filesystem_allowed_in_airgap(self, mock_env_state):
-        """AIRGAP should allow filesystem IO."""
         engine = PolicyEngine(initial_mode=BoundaryMode.AIRGAP)
         request = PolicyRequest(request_type='io', requires_filesystem=True)
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
 
     @pytest.mark.unit
     def test_no_io_allowed_in_coldroom(self, mock_env_state):
-        """COLDROOM should allow IO with no requirements (keyboard/display)."""
         engine = PolicyEngine(initial_mode=BoundaryMode.COLDROOM)
         request = PolicyRequest(request_type='io')
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
 
     @pytest.mark.unit
     def test_network_io_allowed_in_trusted(self, mock_env_state):
-        """TRUSTED (lower modes) should allow network IO."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(request_type='io', requires_network=True)
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
 
     @pytest.mark.unit
     def test_all_io_allowed_in_open(self, mock_env_state):
-        """OPEN should allow all IO types."""
         engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
         request = PolicyRequest(
             request_type='io',
@@ -975,11 +878,8 @@ class TestIOPolicyGaps:
 # ===========================================================================
 
 class TestUpdateEnvironment:
-    """Tests for environment state propagation into policy engine."""
-
     @pytest.mark.unit
     def test_update_environment_sets_network(self, policy_engine, mock_env_state):
-        """update_environment should propagate network state."""
         mock_env_state.network = NetworkState.ONLINE
         policy_engine.update_environment(mock_env_state)
         state = policy_engine.get_current_state()
@@ -987,7 +887,6 @@ class TestUpdateEnvironment:
 
     @pytest.mark.unit
     def test_update_environment_sets_hardware_trust(self, policy_engine, mock_env_state):
-        """update_environment should propagate hardware trust."""
         mock_env_state.hardware_trust = HardwareTrust.LOW
         policy_engine.update_environment(mock_env_state)
         state = policy_engine.get_current_state()
@@ -995,7 +894,6 @@ class TestUpdateEnvironment:
 
     @pytest.mark.unit
     def test_update_environment_sets_external_models(self, policy_engine, mock_env_state):
-        """update_environment should set external_models flag from endpoints."""
         mock_env_state.external_model_endpoints = ['api.openai.com']
         policy_engine.update_environment(mock_env_state)
         state = policy_engine.get_current_state()
@@ -1003,7 +901,6 @@ class TestUpdateEnvironment:
 
     @pytest.mark.unit
     def test_update_environment_clears_external_models(self, policy_engine, mock_env_state):
-        """update_environment should clear external_models when no endpoints."""
         mock_env_state.external_model_endpoints = []
         policy_engine.update_environment(mock_env_state)
         state = policy_engine.get_current_state()
@@ -1011,7 +908,6 @@ class TestUpdateEnvironment:
 
     @pytest.mark.unit
     def test_update_environment_does_not_change_mode(self, policy_engine, mock_env_state):
-        """update_environment should not change the boundary mode."""
         policy_engine.transition_mode(BoundaryMode.AIRGAP, Operator.HUMAN, "test")
         mock_env_state.network = NetworkState.ONLINE
         policy_engine.update_environment(mock_env_state)
@@ -1023,11 +919,8 @@ class TestUpdateEnvironment:
 # ===========================================================================
 
 class TestCallbackManagement:
-    """Tests for transition callback registration and cleanup."""
-
     @pytest.mark.unit
     def test_unregister_callback(self, policy_engine):
-        """Unregistering a callback should prevent it from being called."""
         calls = []
         cb_id = policy_engine.register_transition_callback(
             lambda old, new, op, reason: calls.append(1)
@@ -1038,12 +931,10 @@ class TestCallbackManagement:
 
     @pytest.mark.unit
     def test_unregister_invalid_id_returns_false(self, policy_engine):
-        """Unregistering a non-existent callback ID should return False."""
         assert policy_engine.unregister_transition_callback(9999) is False
 
     @pytest.mark.unit
     def test_cleanup_clears_callbacks(self, policy_engine):
-        """cleanup() should remove all callbacks."""
         policy_engine.register_transition_callback(lambda *args: None)
         policy_engine.register_transition_callback(lambda *args: None)
         policy_engine.cleanup()
@@ -1051,7 +942,6 @@ class TestCallbackManagement:
 
     @pytest.mark.unit
     def test_callback_error_isolation(self, policy_engine):
-        """A failing callback should not prevent other callbacks from running."""
         calls = []
 
         def bad_callback(old, new, op, reason):
@@ -1267,7 +1157,6 @@ class TestFailClosedEdgeCases:
 
     @pytest.mark.security
     def test_tool_no_requirements_allowed_in_open(self, policy_engine, mock_env_state):
-        """Tool with no IO requirements should be allowed in OPEN."""
         request = PolicyRequest(
             request_type='tool',
             requires_network=False,
@@ -1291,7 +1180,6 @@ class TestFailClosedEdgeCases:
 
     @pytest.mark.security
     def test_trusted_filesystem_without_network_allowed(self, mock_env_state):
-        """TRUSTED should allow filesystem-only tools (no network check needed)."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(
             request_type='tool',
@@ -1302,7 +1190,6 @@ class TestFailClosedEdgeCases:
 
     @pytest.mark.security
     def test_trusted_usb_without_network_allowed(self, mock_env_state):
-        """TRUSTED should allow USB-only tools (USB restriction is COLDROOM)."""
         engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
         request = PolicyRequest(
             request_type='tool',
@@ -1310,3 +1197,270 @@ class TestFailClosedEdgeCases:
             requires_network=False,
         )
         assert engine.evaluate_policy(request, mock_env_state) == PolicyDecision.ALLOW
+
+
+# ===========================================================================
+# Error-Path Tests
+# ===========================================================================
+
+class TestPolicyEngineErrorPaths:
+    """Error-path tests for PolicyEngine using pytest.raises."""
+
+    def test_invalid_boundary_mode_value_raises(self):
+        """Creating a BoundaryMode with invalid int value raises ValueError."""
+        with pytest.raises(ValueError):
+            BoundaryMode(99)
+
+    def test_invalid_memory_class_value_raises(self):
+        """Creating a MemoryClass with invalid int value raises ValueError."""
+        with pytest.raises(ValueError):
+            MemoryClass(99)
+
+    def test_invalid_operator_value_raises(self):
+        """Creating an Operator with invalid string raises ValueError."""
+        with pytest.raises(ValueError):
+            Operator("robot")
+
+    def test_invalid_policy_decision_value_raises(self):
+        """Creating a PolicyDecision with invalid string raises ValueError."""
+        with pytest.raises(ValueError):
+            PolicyDecision("maybe")
+
+    def test_boundary_mode_name_case_sensitivity(self):
+        """BoundaryMode should not accept lowercase string values."""
+        with pytest.raises(ValueError):
+            BoundaryMode("open")
+
+    def test_evaluate_policy_unknown_request_type_denies(self, mock_env_state):
+        """Unknown request_type should return DENY (fail-closed)."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
+        request = PolicyRequest(request_type='unknown_type')
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY
+
+    def test_evaluate_policy_empty_request_type_denies(self, mock_env_state):
+        """Empty request_type should return DENY."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
+        request = PolicyRequest(request_type='')
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY
+
+    def test_evaluate_policy_none_memory_class_denies(self, mock_env_state):
+        """Recall with None memory_class should return DENY."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
+        request = PolicyRequest(request_type='recall', memory_class=None)
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY
+
+    def test_evaluate_policy_custom_policy_crash_denies(self, mock_env_state):
+        """Custom policy evaluation crash should result in DENY (fail-closed)."""
+        from unittest.mock import MagicMock
+        engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
+        engine._custom_policies = MagicMock()
+        request = PolicyRequest(request_type='recall', memory_class=MemoryClass.PUBLIC)
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY
+
+    def test_transition_callback_exception_does_not_propagate(self):
+        """Exceptions in transition callbacks should be caught."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.OPEN)
+
+        def bad_callback(old, new, operator, reason):
+            raise RuntimeError("callback exploded")
+
+        engine.register_transition_callback(bad_callback)
+        success, msg = engine.transition_mode(
+            BoundaryMode.RESTRICTED, Operator.HUMAN, "test"
+        )
+        assert success is True
+
+    def test_boundary_state_missing_all_fields_raises(self):
+        """BoundaryState with no fields raises TypeError."""
+        with pytest.raises(TypeError):
+            BoundaryState()
+
+    def test_boundary_state_missing_some_fields_raises(self):
+        """BoundaryState with only mode raises TypeError."""
+        with pytest.raises(TypeError):
+            BoundaryState(mode=BoundaryMode.OPEN)
+
+    def test_policy_decision_empty_string_raises(self):
+        """PolicyDecision('') raises ValueError."""
+        with pytest.raises(ValueError):
+            PolicyDecision("")
+
+    def test_memory_class_negative_raises(self):
+        """MemoryClass with negative value raises ValueError."""
+        with pytest.raises(ValueError):
+            MemoryClass(-1)
+
+    def test_boundary_mode_none_raises(self):
+        """BoundaryMode(None) raises ValueError."""
+        with pytest.raises(ValueError):
+            BoundaryMode(None)
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedLockdownDeniesAllRequestTypes:
+    """Parametrized: LOCKDOWN must deny every request type unconditionally."""
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("request_type", [
+        "recall", "tool", "model", "io", "unknown", "", "shell", "admin",
+    ], ids=lambda x: f"req-{x or 'empty'}")
+    def test_lockdown_denies_request_type(self, request_type, mock_env_state):
+        """LOCKDOWN denies all request types including unknown ones."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.LOCKDOWN)
+        request = PolicyRequest(request_type=request_type)
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY, (
+            f"LOCKDOWN must deny request_type={request_type!r}"
+        )
+
+
+class TestParametrizedMemoryClassMinimumMode:
+    """Parametrized: MemoryClass -> minimum BoundaryMode mapping."""
+
+    MEMORY_MODE_MAP = [
+        (MemoryClass.PUBLIC, BoundaryMode.OPEN),
+        (MemoryClass.INTERNAL, BoundaryMode.OPEN),
+        (MemoryClass.CONFIDENTIAL, BoundaryMode.RESTRICTED),
+        (MemoryClass.SECRET, BoundaryMode.TRUSTED),
+        (MemoryClass.TOP_SECRET, BoundaryMode.AIRGAP),
+        (MemoryClass.CROWN_JEWEL, BoundaryMode.COLDROOM),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("mem_class,expected_mode", MEMORY_MODE_MAP,
+        ids=[f"{mc.name}->{bm.name}" for mc, bm in MEMORY_MODE_MAP])
+    def test_minimum_mode_for_memory(self, mem_class, expected_mode):
+        """get_minimum_mode_for_memory returns correct mode for each class."""
+        engine = PolicyEngine()
+        assert engine.get_minimum_mode_for_memory(mem_class) == expected_mode
+
+
+class TestParametrizedModeTransitionFromLockdown:
+    """Parametrized: LOCKDOWN exit requires HUMAN operator for all target modes."""
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("target_mode", [
+        BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+        BoundaryMode.AIRGAP, BoundaryMode.COLDROOM,
+    ], ids=[m.name for m in [
+        BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+        BoundaryMode.AIRGAP, BoundaryMode.COLDROOM,
+    ]])
+    def test_system_cannot_exit_lockdown(self, target_mode, mock_env_state):
+        """SYSTEM operator cannot exit LOCKDOWN to any mode."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.LOCKDOWN)
+        success, msg = engine.transition_mode(target_mode, Operator.SYSTEM, "auto")
+        assert success is False, (
+            f"SYSTEM should not exit LOCKDOWN to {target_mode.name}"
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("target_mode", [
+        BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+        BoundaryMode.AIRGAP, BoundaryMode.COLDROOM,
+    ], ids=[m.name for m in [
+        BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+        BoundaryMode.AIRGAP, BoundaryMode.COLDROOM,
+    ]])
+    def test_human_can_exit_lockdown(self, target_mode, mock_env_state):
+        """HUMAN operator can exit LOCKDOWN to any non-LOCKDOWN mode."""
+        engine = PolicyEngine(initial_mode=BoundaryMode.LOCKDOWN)
+        success, msg = engine.transition_mode(target_mode, Operator.HUMAN, "recovery")
+        assert success is True, (
+            f"HUMAN should exit LOCKDOWN to {target_mode.name}"
+        )
+        assert engine.get_current_mode() == target_mode
+
+
+class TestParametrizedModeDowngradeRequiresHuman:
+    """Parametrized: Mode downgrades require HUMAN operator."""
+
+    DOWNGRADE_CASES = [
+        (BoundaryMode.COLDROOM, BoundaryMode.AIRGAP),
+        (BoundaryMode.COLDROOM, BoundaryMode.OPEN),
+        (BoundaryMode.AIRGAP, BoundaryMode.TRUSTED),
+        (BoundaryMode.AIRGAP, BoundaryMode.OPEN),
+        (BoundaryMode.TRUSTED, BoundaryMode.RESTRICTED),
+        (BoundaryMode.TRUSTED, BoundaryMode.OPEN),
+        (BoundaryMode.RESTRICTED, BoundaryMode.OPEN),
+    ]
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("from_mode,to_mode", DOWNGRADE_CASES,
+        ids=[f"{f.name}->{t.name}" for f, t in DOWNGRADE_CASES])
+    def test_system_cannot_downgrade(self, from_mode, to_mode):
+        """SYSTEM operator cannot downgrade mode."""
+        engine = PolicyEngine(initial_mode=from_mode)
+        success, msg = engine.transition_mode(to_mode, Operator.SYSTEM, "auto")
+        assert success is False, (
+            f"SYSTEM should not downgrade {from_mode.name} -> {to_mode.name}"
+        )
+
+
+class TestParametrizedToolBlockedAlways:
+    """Parametrized: Blocked tools are denied in ALL modes."""
+
+    BLOCKED_TOOLS = ['raw_shell', 'arbitrary_exec', 'kernel_module_load',
+                     'ptrace_attach', 'debug_attach']
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("tool_name", BLOCKED_TOOLS)
+    @pytest.mark.parametrize("mode", [
+        BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+        BoundaryMode.AIRGAP, BoundaryMode.COLDROOM,
+    ], ids=[m.name for m in [
+        BoundaryMode.OPEN, BoundaryMode.RESTRICTED, BoundaryMode.TRUSTED,
+        BoundaryMode.AIRGAP, BoundaryMode.COLDROOM,
+    ]])
+    def test_blocked_tool_denied(self, tool_name, mode, mock_env_state):
+        """Blocked tools must be denied in every mode."""
+        engine = PolicyEngine(initial_mode=mode)
+        request = PolicyRequest(request_type='tool', tool_name=tool_name)
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == PolicyDecision.DENY, (
+            f"Blocked tool {tool_name} should be DENY in {mode.name}"
+        )
+
+
+class TestParametrizedIOPolicyMatrix:
+    """Parametrized: IO policy across modes and requirement types."""
+
+    IO_MATRIX = [
+        (BoundaryMode.COLDROOM, True, False, False, PolicyDecision.DENY),
+        (BoundaryMode.COLDROOM, False, True, False, PolicyDecision.DENY),
+        (BoundaryMode.COLDROOM, False, False, True, PolicyDecision.DENY),
+        (BoundaryMode.COLDROOM, False, False, False, PolicyDecision.ALLOW),
+        (BoundaryMode.AIRGAP, True, False, False, PolicyDecision.DENY),
+        (BoundaryMode.AIRGAP, False, False, True, PolicyDecision.DENY),
+        (BoundaryMode.AIRGAP, False, True, False, PolicyDecision.ALLOW),
+        (BoundaryMode.AIRGAP, False, False, False, PolicyDecision.ALLOW),
+        (BoundaryMode.TRUSTED, True, True, True, PolicyDecision.ALLOW),
+        (BoundaryMode.RESTRICTED, True, True, True, PolicyDecision.ALLOW),
+        (BoundaryMode.OPEN, True, True, True, PolicyDecision.ALLOW),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("mode,net,fs,usb,expected", IO_MATRIX,
+        ids=[f"{m.name}-net{n}-fs{f}-usb{u}" for m, n, f, u, _ in IO_MATRIX])
+    def test_io_policy(self, mode, net, fs, usb, expected, mock_env_state):
+        """IO decision for every (mode, requirement) combination."""
+        engine = PolicyEngine(initial_mode=mode)
+        request = PolicyRequest(
+            request_type='io',
+            requires_network=net,
+            requires_filesystem=fs,
+            requires_usb=usb,
+        )
+        decision = engine.evaluate_policy(request, mock_env_state)
+        assert decision == expected, (
+            f"IO in {mode.name}: net={net} fs={fs} usb={usb} "
+            f"expected {expected.value}, got {decision.value}"
+        )

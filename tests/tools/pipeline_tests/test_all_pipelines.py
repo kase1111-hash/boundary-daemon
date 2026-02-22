@@ -162,13 +162,13 @@ class ComprehensivePipelineTests:
             # Test 6: Enum types exist
             self.logger.verbose("Test 6: Enum types verification")
             try:
-                assert NetworkState.ONLINE is not None
-                assert NetworkState.OFFLINE is not None
-                assert NetworkType.ETHERNET is not None
-                assert NetworkType.WIFI is not None
-                assert HardwareTrust.LOW is not None
-                assert HardwareTrust.MEDIUM is not None
-                assert HardwareTrust.HIGH is not None
+                assert NetworkState.ONLINE.value == "online"
+                assert NetworkState.OFFLINE.value == "offline"
+                assert NetworkType.ETHERNET.value == "ethernet"
+                assert NetworkType.WIFI.value == "wifi"
+                assert HardwareTrust.LOW.value == "low"
+                assert HardwareTrust.MEDIUM.value == "medium"
+                assert HardwareTrust.HIGH.value == "high"
                 passed += 1
                 details['enum_types'] = 'all defined'
             except Exception as e:
@@ -277,7 +277,7 @@ class ComprehensivePipelineTests:
             try:
                 engine = PolicyEngine(initial_mode=BoundaryMode.TRUSTED)
                 state = engine.get_current_state()
-                assert state is not None and hasattr(state, 'mode')
+                assert hasattr(state, 'mode')
                 passed += 1
                 details['current_state'] = 'available'
             except Exception as e:
@@ -413,7 +413,7 @@ class ComprehensivePipelineTests:
             self.logger.verbose("Test 6: LockdownManager")
             try:
                 manager = LockdownManager()
-                assert manager is not None
+                assert isinstance(manager, LockdownManager)
                 assert hasattr(manager, 'trigger_lockdown')
                 passed += 1
                 details['lockdown_manager'] = 'available'
@@ -478,7 +478,7 @@ class ComprehensivePipelineTests:
                         f"Test event: {event_type.name}",
                         {"test": True}
                     )
-                    assert event_id is not None
+                    assert isinstance(event_id, str)
                 passed += 1
                 details['event_types_logged'] = len(list(EventType))
             except Exception as e:
@@ -822,10 +822,10 @@ class ComprehensivePipelineTests:
             # Test 1: HealthStatus enum
             self.logger.verbose("Test 1: HealthStatus enum")
             try:
-                assert HealthStatus.HEALTHY is not None
-                assert HealthStatus.DEGRADED is not None
-                assert HealthStatus.UNHEALTHY is not None
-                assert HealthStatus.UNKNOWN is not None
+                assert HealthStatus.HEALTHY.value == "healthy"
+                assert HealthStatus.DEGRADED.value == "degraded"
+                assert HealthStatus.UNHEALTHY.value == "unhealthy"
+                assert HealthStatus.UNKNOWN.value == "unknown"
                 passed += 1
                 details['health_status_enum'] = 'defined'
             except Exception as e:
@@ -835,9 +835,9 @@ class ComprehensivePipelineTests:
             # Test 2: ComponentStatus enum
             self.logger.verbose("Test 2: ComponentStatus enum")
             try:
-                assert ComponentStatus.OK is not None
-                assert ComponentStatus.WARNING is not None
-                assert ComponentStatus.ERROR is not None
+                assert ComponentStatus.OK.value == "ok"
+                assert ComponentStatus.WARNING.value == "warning"
+                assert ComponentStatus.ERROR.value == "error"
                 passed += 1
                 details['component_status_enum'] = 'defined'
             except Exception as e:
@@ -1009,7 +1009,7 @@ class ComprehensivePipelineTests:
             # Test 3: State monitor available
             self.logger.verbose("Test 3: State monitor available")
             try:
-                assert daemon.state_monitor is not None
+                assert hasattr(daemon, 'state_monitor') and daemon.state_monitor
                 passed += 1
             except Exception as e:
                 failed += 1
@@ -1018,7 +1018,7 @@ class ComprehensivePipelineTests:
             # Test 4: Event logger available
             self.logger.verbose("Test 4: Event logger available")
             try:
-                assert daemon.event_logger is not None
+                assert hasattr(daemon, 'event_logger') and daemon.event_logger
                 passed += 1
             except Exception as e:
                 failed += 1
@@ -1027,7 +1027,7 @@ class ComprehensivePipelineTests:
             # Test 5: Tripwire system available
             self.logger.verbose("Test 5: Tripwire system available")
             try:
-                assert daemon.tripwire_system is not None
+                assert hasattr(daemon, 'tripwire_system') and daemon.tripwire_system
                 passed += 1
             except Exception as e:
                 failed += 1

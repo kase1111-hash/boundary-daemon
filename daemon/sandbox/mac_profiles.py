@@ -407,7 +407,7 @@ profile {profile_name} flags=(attach_disconnected,mediate_deleted) {{
                 f.write(profile_content)
             logger.info(f"Wrote AppArmor profile to {profile_path}")
             return profile_path
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to write AppArmor profile: {e}")
             raise
 
@@ -425,7 +425,7 @@ profile {profile_name} flags=(attach_disconnected,mediate_deleted) {{
             return False, result.stderr
         except FileNotFoundError:
             return False, "apparmor_parser not found"
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def unload_profile(self, profile_name: str) -> Tuple[bool, str]:
@@ -440,7 +440,7 @@ profile {profile_name} flags=(attach_disconnected,mediate_deleted) {{
             if result.returncode == 0:
                 return True, "Profile unloaded successfully"
             return False, result.stderr
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def get_cached_profile(self, sandbox_id: str) -> Optional[str]:
@@ -663,7 +663,7 @@ domain_entry_file({type_name}, {type_name}_exec_t)
                 f.write(fc_content)
             logger.info(f"Wrote SELinux policy to {te_path}")
             return te_path, fc_path
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to write SELinux policy: {e}")
             raise
 
@@ -697,7 +697,7 @@ domain_entry_file({type_name}, {type_name}_exec_t)
             return True, str(pp_path)
         except FileNotFoundError as e:
             return False, f"SELinux tools not found: {e}"
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def load_policy(self, module_name: str) -> Tuple[bool, str]:
@@ -714,7 +714,7 @@ domain_entry_file({type_name}, {type_name}_exec_t)
             if result.returncode == 0:
                 return True, "Policy loaded successfully"
             return False, result.stderr
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def unload_policy(self, module_name: str) -> Tuple[bool, str]:
@@ -729,7 +729,7 @@ domain_entry_file({type_name}, {type_name}_exec_t)
             if result.returncode == 0:
                 return True, "Policy unloaded successfully"
             return False, result.stderr
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
 
@@ -757,7 +757,7 @@ class MACProfileGenerator:
                 with open('/sys/kernel/security/apparmor/profiles', 'r') as f:
                     if f.read().strip():
                         return MACSystem.APPARMOR
-            except Exception:
+            except OSError:
                 pass
 
         # Check for SELinux
@@ -765,7 +765,7 @@ class MACProfileGenerator:
             try:
                 with open('/sys/fs/selinux/enforce', 'r') as f:
                     return MACSystem.SELINUX
-            except Exception:
+            except OSError:
                 pass
 
         return MACSystem.NONE
@@ -836,7 +836,7 @@ class MACProfileGenerator:
                 self._applied_profiles[sandbox_id] = config.profile_name
 
             return success, message
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def _apply_selinux(
@@ -869,7 +869,7 @@ class MACProfileGenerator:
                 self._applied_profiles[sandbox_id] = module_name
 
             return success, message
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def remove_profile(self, sandbox_id: str) -> Tuple[bool, str]:
