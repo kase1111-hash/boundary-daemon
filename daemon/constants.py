@@ -32,10 +32,6 @@ logger = logging.getLogger(__name__)
 IS_WINDOWS = sys.platform == 'win32'
 
 
-# =============================================================================
-# ENVIRONMENT VARIABLE OVERRIDE UTILITIES
-# =============================================================================
-
 T = TypeVar('T')
 
 
@@ -160,10 +156,6 @@ def _is_valid_ip(ip: str) -> bool:
     return False
 
 
-# =============================================================================
-# TIMEOUT CONSTANTS
-# =============================================================================
-
 @dataclass(frozen=True)
 class Timeouts:
     """
@@ -219,10 +211,6 @@ class Timeouts:
     SLEEP_LONG: float = 10.0            # Extended pause
 
 
-# =============================================================================
-# BUFFER SIZE CONSTANTS
-# =============================================================================
-
 @dataclass(frozen=True)
 class BufferSizes:
     """
@@ -255,10 +243,6 @@ class BufferSizes:
     MAX_FILE_SIZE_CODE: int = 1048576           # 1 MB for code analysis
 
 
-# =============================================================================
-# FILE PERMISSION CONSTANTS
-# =============================================================================
-
 class Permissions(IntEnum):
     """
     Centralized file permission modes.
@@ -288,10 +272,6 @@ class Permissions(IntEnum):
     SGID_BIT = 0o2000                   # Set-group-ID
     STICKY_BIT = 0o1000                 # Sticky bit
 
-
-# =============================================================================
-# PATH CONSTANTS
-# =============================================================================
 
 @dataclass(frozen=True)
 class Paths:
@@ -464,10 +444,6 @@ class Paths:
         return os.path.join(cls.get_config_dir(), 'signing.key')
 
 
-# =============================================================================
-# CRYPTOGRAPHIC CONSTANTS
-# =============================================================================
-
 @dataclass(frozen=True)
 class Crypto:
     """
@@ -509,10 +485,6 @@ class Crypto:
     NONCE_SIZE: int = 16                # 128-bit nonces
 
 
-# =============================================================================
-# TIME THRESHOLD CONSTANTS
-# =============================================================================
-
 @dataclass(frozen=True)
 class TimeThresholds:
     """
@@ -541,10 +513,6 @@ class TimeThresholds:
     ALERT_COOLDOWN_DEFAULT: int = 300   # 5 minutes
     ALERT_COOLDOWN_LONG: int = 3600     # 1 hour
 
-
-# =============================================================================
-# RATE LIMITING CONSTANTS
-# =============================================================================
 
 @dataclass(frozen=True)
 class RateLimits:
@@ -589,10 +557,6 @@ class RateLimits:
         }
 
 
-# =============================================================================
-# RETRY CONSTANTS
-# =============================================================================
-
 @dataclass(frozen=True)
 class Retries:
     """
@@ -618,10 +582,6 @@ class Retries:
     MAX_DELAY: float = 60.0             # Maximum backoff delay
     MAX_TOTAL_TIME: float = 300.0       # Maximum total retry time
 
-
-# =============================================================================
-# NETWORK CONSTANTS
-# =============================================================================
 
 @dataclass(frozen=True)
 class NetworkConstants:
@@ -672,10 +632,6 @@ class NetworkConstants:
     )
 
 
-# =============================================================================
-# DETECTION THRESHOLDS
-# =============================================================================
-
 @dataclass(frozen=True)
 class DetectionThresholds:
     """
@@ -705,10 +661,6 @@ class DetectionThresholds:
     PII_CONFIDENCE_MEDIUM: float = 0.8      # Medium confidence
     PII_CONFIDENCE_LOW: float = 0.6         # Low confidence
 
-
-# =============================================================================
-# LIMIT CONSTANTS
-# =============================================================================
 
 @dataclass(frozen=True)
 class Limits:
@@ -761,10 +713,6 @@ class Limits:
     MIN_HEALTHY_BACKENDS: int = 1           # Minimum loggers required
 
 
-# =============================================================================
-# ESSENTIAL PROCESS LIST
-# =============================================================================
-
 class EssentialProcesses:
     """
     List of essential system processes that should never be terminated.
@@ -793,10 +741,6 @@ class EssentialProcesses:
         return any(pn in name_lower for pn in cls.PROTECTED_NAMES)
 
 
-# =============================================================================
-# VERSION AND METADATA
-# =============================================================================
-
 @dataclass(frozen=True)
 class Version:
     """Version and metadata constants."""
@@ -804,10 +748,6 @@ class Version:
     MANIFEST_VERSION: str = "1.0"
     PROTOCOL_VERSION: str = "1.0"
 
-
-# =============================================================================
-# ENVIRONMENT VARIABLE OVERRIDES
-# =============================================================================
 
 def _get_env_int(name: str, default: int) -> int:
     """Get integer from environment variable."""
@@ -854,10 +794,6 @@ class RuntimeConfig:
         """Get health check interval."""
         return _get_env_float("HEALTH_CHECK_INTERVAL", Timeouts.HEALTH_CHECK_INTERVAL)
 
-
-# =============================================================================
-# CONVENIENCE EXPORTS
-# =============================================================================
 
 # Commonly used constants can be imported directly
 DEFAULT_TIMEOUT = Timeouts.SUBPROCESS_DEFAULT

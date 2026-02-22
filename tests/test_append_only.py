@@ -26,10 +26,6 @@ from daemon.storage.append_only import (
 )
 
 
-# ===========================================================================
-# Enum Tests
-# ===========================================================================
-
 class TestAppendOnlyMode:
     def test_append_only_mode_values(self):
         assert AppendOnlyMode.NONE.value == "none"
@@ -60,10 +56,6 @@ class TestSyslogSeverity:
         assert SyslogSeverity.INFO.value == 6
         assert SyslogSeverity.DEBUG.value == 7
 
-
-# ===========================================================================
-# Dataclass Tests
-# ===========================================================================
 
 class TestRemoteSyslogConfig:
     def test_remote_syslog_config_creation(self):
@@ -143,10 +135,6 @@ class TestAppendOnlyConfig:
         assert config.remote_syslog.host == "syslog.example.com"
 
 
-# ===========================================================================
-# AppendOnlyStorage Initialization Tests
-# ===========================================================================
-
 class TestAppendOnlyStorageInit:
     def test_init_default(self):
         storage = AppendOnlyStorage()
@@ -163,10 +151,6 @@ class TestAppendOnlyStorageInit:
         storage = AppendOnlyStorage()
         assert storage._lock is not None
 
-
-# ===========================================================================
-# AppendOnlyStorage Mode Tests
-# ===========================================================================
 
 class TestAppendOnlyStorageModes:
     def test_mode_none(self):
@@ -185,10 +169,6 @@ class TestAppendOnlyStorageModes:
         assert storage.config.mode == AppendOnlyMode.FULL
 
 
-# ===========================================================================
-# Syslog Priority Calculation Tests
-# ===========================================================================
-
 class TestSyslogPriority:
     def test_facility_codes(self):
         # Priority = (facility * 8) + severity
@@ -202,10 +182,6 @@ class TestSyslogPriority:
                 priority = facility.value * 8 + severity.value
                 assert 0 <= priority <= 191
 
-
-# ===========================================================================
-# Integration Tests
-# ===========================================================================
 
 class TestAppendOnlyStorageIntegration:
     def test_create_storage_with_temp_path(self):
@@ -229,10 +205,6 @@ class TestAppendOnlyStorageIntegration:
         assert storage1.config.mode != storage2.config.mode
 
 
-# ===========================================================================
-# Edge Cases
-# ===========================================================================
-
 class TestAppendOnlyStorageEdgeCases:
     def test_none_config(self):
         storage = AppendOnlyStorage(config=None)
@@ -248,10 +220,6 @@ class TestAppendOnlyStorageEdgeCases:
         assert isinstance(config.wal_path, str)
         assert isinstance(config.checkpoint_path, str)
 
-
-# ===========================================================================
-# Remote Syslog Configuration Tests
-# ===========================================================================
 
 class TestRemoteSyslogIntegration:
     def test_syslog_udp_config(self):
@@ -283,10 +251,6 @@ class TestRemoteSyslogIntegration:
         assert config.use_tls is True
         assert config.tls_verify is True
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 class TestAppendOnlyErrorPaths:
     """Error-path tests for AppendOnlyStorage using pytest.raises."""
@@ -432,10 +396,6 @@ class TestAppendOnlyErrorPaths:
         with pytest.raises(TypeError):
             RemoteSyslogConfig(port=514)
 
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 import pytest
 

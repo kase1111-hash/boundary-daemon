@@ -33,10 +33,6 @@ from daemon.integrations import (
 from daemon.state_monitor import NetworkState
 
 
-# ===========================================================================
-# Fixtures
-# ===========================================================================
-
 @pytest.fixture
 def mock_daemon():
     daemon = MagicMock()
@@ -81,10 +77,6 @@ def mock_daemon_airgap():
     daemon.state_monitor.get_current_state.return_value = mock_state
     return daemon
 
-
-# ===========================================================================
-# RecallGate Tests
-# ===========================================================================
 
 class TestRecallGate:
     def test_recall_gate_import(self):
@@ -181,10 +173,6 @@ class TestRecallGate:
         call_args = mock_daemon_restricted.event_logger.log_event.call_args
         assert call_args[1]['metadata']['permitted'] is False
 
-
-# ===========================================================================
-# ToolGate Tests
-# ===========================================================================
 
 class TestToolGate:
     def test_tool_gate_init(self, mock_daemon):
@@ -302,10 +290,6 @@ class TestToolGateAllowedTools:
         caps = gate.get_allowed_tools()
         assert isinstance(caps, dict)
 
-
-# ===========================================================================
-# MessageGate Tests
-# ===========================================================================
 
 class TestMessageGate:
     def test_message_gate_init_with_checker(self, mock_daemon):
@@ -499,10 +483,6 @@ class TestMessageGateWithChecker:
         assert 'violations' in data
 
 
-# ===========================================================================
-# CeremonyManager Tests
-# ===========================================================================
-
 class TestCeremonyManager:
     def test_ceremony_manager_init(self, mock_daemon):
         manager = CeremonyManager(mock_daemon)
@@ -622,10 +602,6 @@ class TestCeremonyManager:
         assert "lockdown" in message.lower() or "override_lockdown" in message.lower()
 
 
-# ===========================================================================
-# Cross-Gate Security Invariant Tests
-# ===========================================================================
-
 class TestCrossGateInvariants:
     """
     Security invariants that span multiple integration gates.
@@ -701,10 +677,6 @@ class TestCrossGateInvariants:
             )
 
 
-# ===========================================================================
-# Integration Module Level Tests
-# ===========================================================================
-
 class TestIntegrationsModule:
     def test_module_imports(self):
         assert callable(RecallGate)
@@ -724,11 +696,6 @@ class TestIntegrationsModule:
 
     def test_message_checker_available_flag(self):
         assert isinstance(MESSAGE_CHECKER_AVAILABLE, bool)
-
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 
 class TestParametrizedRecallGateAllMemoryClasses:

@@ -376,6 +376,7 @@ class MemoryBackend(LogBackend):
         return len(self._buffer)
 
 
+# TODO: RemoteBackend does not support TLS — all remote log traffic is sent in plaintext
 class RemoteBackend(LogBackend):
     """Remote logging backend for off-site event storage."""
 
@@ -725,6 +726,7 @@ class RedundantEventLogger:
 
     def _handle_all_backends_failed(self, event: BoundaryEvent, priority: LogPriority):
         """Handle case where all backends fail."""
+        # TODO: add circuit breaker for failing log backends to avoid retry storms
         self._stats['backend_failures'] += 1
 
         # Try emergency fallback: write to stderr and temp file

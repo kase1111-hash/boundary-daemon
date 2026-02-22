@@ -241,6 +241,7 @@ class SignatureVerifier:
             # Check if hash matches
             # Note: The actual implementation may use a different hash scheme
             # This is a simplified version for demonstration
+            # FIXME: hash chain verification uses partial match (16 chars) — should do full comparison
             if not current_hash.startswith(expected_hash[:16]):
                 # Allow partial match for different hash schemes
                 pass  # Don't fail on hash format differences
@@ -267,10 +268,14 @@ class SignatureVerificationAPI:
         host: str = "127.0.0.1",
         port: int = 8765,
         trusted_keys: Optional[Dict[str, str]] = None,
+        tls_certfile: Optional[str] = None,
+        tls_keyfile: Optional[str] = None,
     ):
         self.host = host
         self.port = port
         self.verifier = SignatureVerifier(trusted_keys)
+        self.tls_certfile = tls_certfile
+        self.tls_keyfile = tls_keyfile
         self._server: Optional[HTTPServer] = None
         self._server_thread: Optional[threading.Thread] = None
 
@@ -396,6 +401,10 @@ class SignatureVerificationAPI:
             def _send_json(self, status: int, data: Any):
                 self.send_response(status)
                 self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('X-Frame-Options', 'DENY')
+                self.send_header('Content-Security-Policy', "default-src 'none'")
                 self.end_headers()
                 self.wfile.write(json.dumps(data).encode('utf-8'))
 
@@ -460,6 +469,7 @@ class SignatureVerificationAPI:
                     })
 
                 elif self.path == '/keys':
+                    # TODO: POST /keys should require authentication — currently unauthenticated
                     key_id = data.get('key_id')
                     public_key = data.get('public_key')
                     if not key_id or not public_key:
@@ -479,12 +489,23 @@ class SignatureVerificationAPI:
         """Start the HTTP API server."""
         handler = self._create_handler()
         self._server = HTTPServer((self.host, self.port), handler)
+
+        if self.tls_certfile and self.tls_keyfile:
+            from daemon.api.tls import create_ssl_context
+            ssl_ctx = create_ssl_context(self.tls_certfile, self.tls_keyfile)
+            self._server.socket = ssl_ctx.wrap_socket(
+                self._server.socket, server_side=True
+            )
+            protocol = "https"
+        else:
+            protocol = "http"
+
         self._server_thread = threading.Thread(
             target=self._server.serve_forever,
             daemon=True,
         )
         self._server_thread.start()
-        logger.info(f"Verification API started on http://{self.host}:{self.port}")
+        logger.info(f"Verification API started on {protocol}://{self.host}:{self.port}")
 
     def stop(self) -> None:
         """Stop the HTTP API server."""

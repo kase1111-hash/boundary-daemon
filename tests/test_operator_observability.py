@@ -86,9 +86,7 @@ def _make_env(**overrides) -> EnvironmentState:
     return EnvironmentState(**defaults)
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -175,9 +173,7 @@ def console(fake_daemon):
     return OperatorConsole(fake_daemon)
 
 
-# ---------------------------------------------------------------------------
 # Test: Decision Tracing
-# ---------------------------------------------------------------------------
 
 
 class TestDecisionTracing:
@@ -350,9 +346,7 @@ class TestDecisionTracing:
         json.dumps(d)
 
 
-# ---------------------------------------------------------------------------
 # Test: Integration Health Registry
-# ---------------------------------------------------------------------------
 
 
 class TestIntegrationHealthRegistry:
@@ -438,9 +432,7 @@ class TestIntegrationHealthRegistry:
         assert len(status["silent"]) == 1
 
 
-# ---------------------------------------------------------------------------
 # Test: Operator Snapshot
-# ---------------------------------------------------------------------------
 
 
 class TestOperatorSnapshot:
@@ -508,9 +500,7 @@ class TestOperatorSnapshot:
         json.dumps(snapshot, default=str)
 
 
-# ---------------------------------------------------------------------------
 # Test: Log Chain Verification
-# ---------------------------------------------------------------------------
 
 
 class TestLogChainVerification:
@@ -535,9 +525,7 @@ class TestLogChainVerification:
         assert snapshot["log_health"]["chain_valid"] is True
 
 
-# ---------------------------------------------------------------------------
 # Test: Decision Log Querying
-# ---------------------------------------------------------------------------
 
 
 class TestDecisionLogQuerying:
@@ -609,9 +597,7 @@ class TestDecisionLogQuerying:
         assert len(console._decision_log) <= 5
 
 
-# ---------------------------------------------------------------------------
 # Test: Evidence Bundle Export
-# ---------------------------------------------------------------------------
 
 
 class TestEvidenceBundleExport:
@@ -680,9 +666,7 @@ class TestEvidenceBundleExport:
         json.dumps(bundle, default=str)
 
 
-# ---------------------------------------------------------------------------
 # Test: TraceVerdict coverage across all policy paths
-# ---------------------------------------------------------------------------
 
 
 class TestTraceVerdictCoverage:
@@ -738,9 +722,7 @@ class TestTraceVerdictCoverage:
         engine.cleanup()
 
 
-# ---------------------------------------------------------------------------
 # Test: Edge cases
-# ---------------------------------------------------------------------------
 
 
 class TestEdgeCases:

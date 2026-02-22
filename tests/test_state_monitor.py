@@ -28,10 +28,6 @@ from daemon.state_monitor import (
 )
 
 
-# ===========================================================================
-# Enum Tests
-# ===========================================================================
-
 class TestNetworkState:
     def test_network_state_values(self):
         assert NetworkState.OFFLINE.value == "offline"
@@ -78,10 +74,6 @@ class TestHardwareTrust:
         assert HardwareTrust.HIGH.value == "high"
 
 
-# ===========================================================================
-# MonitoringConfig Tests
-# ===========================================================================
-
 class TestMonitoringConfig:
     def test_default_config(self):
         config = MonitoringConfig()
@@ -123,10 +115,6 @@ class TestMonitoringConfig:
         assert isinstance(d['monitor_lora'], bool)
 
 
-# ===========================================================================
-# SpecialtyNetworkStatus Tests
-# ===========================================================================
-
 class TestSpecialtyNetworkStatus:
     def test_creation(self):
         status = SpecialtyNetworkStatus(
@@ -155,10 +143,6 @@ class TestSpecialtyNetworkStatus:
         assert 'thread_devices' in d
         assert d['thread_devices'] == ['thread0']
 
-
-# ===========================================================================
-# EnvironmentState Tests
-# ===========================================================================
 
 class TestEnvironmentState:
     @pytest.fixture
@@ -218,10 +202,6 @@ class TestEnvironmentState:
         assert isinstance(d['usb_devices'], list)
 
 
-# ===========================================================================
-# StateMonitor Initialization Tests
-# ===========================================================================
-
 class TestStateMonitorInit:
     def test_init_default(self):
         monitor = StateMonitor()
@@ -242,10 +222,6 @@ class TestStateMonitorInit:
         monitor = StateMonitor()
         assert isinstance(monitor.monitoring_config, MonitoringConfig)
 
-
-# ===========================================================================
-# StateMonitor Configuration Tests
-# ===========================================================================
 
 class TestStateMonitorConfig:
     def test_get_monitoring_config(self):
@@ -333,10 +309,6 @@ class TestStateMonitorConfig:
         assert monitor.monitoring_config.monitor_process_security is False
 
 
-# ===========================================================================
-# StateMonitor Callback Tests
-# ===========================================================================
-
 class TestStateMonitorCallbacks:
     def test_register_callback(self):
         monitor = StateMonitor()
@@ -353,10 +325,6 @@ class TestStateMonitorCallbacks:
         monitor.register_callback(callback2)
         assert len(monitor._callbacks) == 2
 
-
-# ===========================================================================
-# StateMonitor Start/Stop Tests
-# ===========================================================================
 
 class TestStateMonitorLifecycle:
     def test_start_sets_running(self):
@@ -397,10 +365,6 @@ class TestStateMonitorLifecycle:
         monitor.stop()  # Should not raise
 
 
-# ===========================================================================
-# StateMonitor State Access Tests
-# ===========================================================================
-
 class TestStateMonitorStateAccess:
     def test_get_current_state_initially_none(self):
         monitor = StateMonitor()
@@ -431,10 +395,6 @@ class TestStateMonitorStateAccess:
         # Should have 30 results (10 per thread)
         assert len(results) == 30
 
-
-# ===========================================================================
-# StateMonitor Lazy Initialization Tests
-# ===========================================================================
 
 class TestStateMonitorLazyInit:
     """Tests for lazy initialization of security monitors."""
@@ -476,10 +436,6 @@ class TestStateMonitorLazyInit:
         assert monitor._process_security_monitor is None
 
 
-# ===========================================================================
-# StateMonitor Baseline Tracking Tests
-# ===========================================================================
-
 class TestStateMonitorBaseline:
     def test_baseline_usb_initially_none(self):
         monitor = StateMonitor()
@@ -500,10 +456,6 @@ class TestStateMonitorBaseline:
         assert len(monitor._cell_tower_history) == 0  # May be deque or list
         assert len(monitor._signal_strength_history) == 0  # May be deque or list
 
-
-# ===========================================================================
-# Integration Tests
-# ===========================================================================
 
 class TestStateMonitorIntegration:
     def test_full_lifecycle(self):
@@ -545,10 +497,6 @@ class TestStateMonitorIntegration:
         monitor.stop()
 
 
-# ===========================================================================
-# Edge Cases
-# ===========================================================================
-
 class TestStateMonitorEdgeCases:
     def test_zero_poll_interval(self):
         monitor = StateMonitor(poll_interval=0.01)
@@ -580,10 +528,6 @@ class TestStateMonitorEdgeCases:
         # Should not crash or leak threads
         assert monitor._running is False
 
-
-# ===========================================================================
-# Hardware Trust Calculation Tests
-# ===========================================================================
 
 class TestHardwareTrustCalculation:
     """Tests for _calculate_hardware_trust logic.
@@ -736,10 +680,6 @@ class TestHardwareTrustCalculation:
         assert trust == HardwareTrust.LOW
 
 
-# ===========================================================================
-# Interface Type Detection Tests
-# ===========================================================================
-
 class TestInterfaceTypeDetection:
     def test_ethernet_interfaces(self):
         monitor = StateMonitor()
@@ -777,10 +717,6 @@ class TestInterfaceTypeDetection:
         assert result == NetworkType.CELLULAR_4G
 
 
-# ===========================================================================
-# Callback Unregister Tests
-# ===========================================================================
-
 class TestStateMonitorUnregister:
     def test_unregister_callback_returns_true(self):
         monitor = StateMonitor()
@@ -805,10 +741,6 @@ class TestStateMonitorUnregister:
         assert len(monitor._callbacks) == 0
 
 
-# ===========================================================================
-# get_usb_changes Tests
-# ===========================================================================
-
 class TestGetUsbChanges:
     def test_get_usb_changes_before_baseline_returns_empty(self):
         monitor = StateMonitor()
@@ -824,10 +756,6 @@ class TestGetUsbChanges:
         assert added == set()
         assert removed == set()
 
-
-# ===========================================================================
-# SECURITY INVARIANT: Interface Type Detection Completeness
-# ===========================================================================
 
 class TestInterfaceTypeUnknown:
     """Tests that unknown interface names safely return UNKNOWN type."""
@@ -847,10 +775,6 @@ class TestInterfaceTypeUnknown:
         result = monitor._detect_interface_type('')
         assert result == NetworkType.UNKNOWN
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 class TestStateMonitorErrorPaths:
     """Error-path tests for StateMonitor using pytest.raises."""
@@ -910,11 +834,6 @@ class TestStateMonitorErrorPaths:
         monitor = StateMonitor()
         # Should not raise
         monitor.stop()
-
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 
 class TestParametrizedInterfaceTypeDetection:

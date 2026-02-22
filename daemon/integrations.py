@@ -718,18 +718,15 @@ class CeremonyManager:
             }
         )
 
-        # Step 1: Verify human presence
         print("\nStep 1/3: Verifying human presence...")
         if not self._verify_human_presence(confirmation_callback):
             self._log_ceremony_failed(action, "Human presence verification failed")
             return (False, "Human presence verification failed")
 
-        # Step 2: Cooldown delay
         print(f"\nStep 2/3: Mandatory cooldown ({self.cooldown_seconds} seconds)...")
         print("This delay ensures deliberate action, not impulse.")
         self._cooldown_delay()
 
-        # Step 3: Final confirmation
         print("\nStep 3/3: Final confirmation required...")
         if not self._final_confirmation(action, confirmation_callback):
             self._log_ceremony_failed(action, "Final confirmation denied")

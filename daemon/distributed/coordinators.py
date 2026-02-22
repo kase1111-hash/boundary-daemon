@@ -362,6 +362,7 @@ class FileCoordinator(Coordinator):
         Simple watch implementation using polling.
         Not efficient but works for testing.
         """
+        # TODO: FileCoordinator.watch uses busy-polling (1s sleep) — replace with inotify for efficiency
         def poll():
             last_value = self.get(key)
             while True:
@@ -390,7 +391,7 @@ class FileCoordinator(Coordinator):
                 logger.error(f"Error in TTL cleanup: {e}")
 
 
-# Placeholder for future etcd implementation
+# TODO: EtcdCoordinator not implemented — only FileCoordinator works; etcd3 dependency is optional and untested
 class EtcdCoordinator(Coordinator):
     """
     Etcd-based coordinator for production deployments.

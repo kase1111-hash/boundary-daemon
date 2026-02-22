@@ -196,7 +196,6 @@ class EnhancedCeremonyManager(CeremonyManager):
             }
         )
 
-        # Step 1: Biometric verification (if enabled and available)
         if require_biometric and self.biometric_config.enabled and self.biometric:
             print("\nStep 1/3: Biometric verification...")
 
@@ -228,7 +227,6 @@ class EnhancedCeremonyManager(CeremonyManager):
                 print(f"⚠ {message}")
                 print("→ Falling back to keyboard ceremony...")
 
-        # Step 2 (or 1 if no biometric): Verify human presence via keyboard
         step_num = 2 if (require_biometric and self.biometric_config.enabled and self.biometric) else 1
         print(f"\nStep {step_num}/3: Verifying human presence...")
         print("Type the following phrase exactly:")
@@ -258,7 +256,6 @@ class EnhancedCeremonyManager(CeremonyManager):
 
         print("✓ Human presence verified")
 
-        # Step 3: Cooldown period
         step_num += 1
         print(f"\nStep {step_num}/3: Mandatory cooldown period...")
         print(f"Please wait {self.cooldown_seconds} seconds to confirm intent...")

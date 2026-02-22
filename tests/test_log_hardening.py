@@ -27,10 +27,6 @@ from daemon.storage.log_hardening import (
 )
 
 
-# ===========================================================================
-# Fixtures
-# ===========================================================================
-
 @pytest.fixture
 def temp_log_dir():
     tmpdir = tempfile.mkdtemp(prefix="boundary_log_test_")
@@ -53,10 +49,6 @@ def log_hardener(temp_log_file):
     )
 
 
-# ===========================================================================
-# HardeningMode Tests
-# ===========================================================================
-
 class TestHardeningMode:
     @pytest.mark.unit
     def test_mode_values(self):
@@ -77,10 +69,6 @@ class TestProtectionStatus:
         assert ProtectionStatus.DEGRADED.value == "degraded"
         assert ProtectionStatus.FAILED.value == "failed"
 
-
-# ===========================================================================
-# LogHardener Initialization Tests
-# ===========================================================================
 
 class TestLogHardenerInitialization:
     @pytest.mark.unit
@@ -117,10 +105,6 @@ class TestLogHardenerInitialization:
         assert hardener.sig_dir == expected_sig_dir
 
 
-# ===========================================================================
-# Permission Tests
-# ===========================================================================
-
 class TestPermissions:
     @pytest.mark.unit
     def test_permission_constants(self):
@@ -147,10 +131,6 @@ class TestPermissions:
         perms = log_hardener._get_permissions(temp_log_file)
         assert perms == "644"
 
-
-# ===========================================================================
-# Hardening Tests
-# ===========================================================================
 
 class TestHardening:
     @pytest.mark.unit
@@ -212,10 +192,6 @@ class TestHardening:
         assert status.signature_separated is True
 
 
-# ===========================================================================
-# Sealing Tests
-# ===========================================================================
-
 class TestSealing:
     @pytest.mark.unit
     def test_seal_nonexistent_file_returns_errors(self, temp_log_file):
@@ -271,10 +247,6 @@ class TestSealing:
         assert 'log_size' in checkpoint
 
 
-# ===========================================================================
-# Integrity Verification Tests
-# ===========================================================================
-
 class TestIntegrityVerification:
     @pytest.mark.unit
     def test_verify_nonexistent_file(self, log_hardener):
@@ -300,10 +272,6 @@ class TestIntegrityVerification:
         assert any("permission" in issue.lower() for issue in issues)
 
 
-# ===========================================================================
-# Status Tests
-# ===========================================================================
-
 class TestStatus:
     @pytest.mark.unit
     def test_get_status_after_harden(self, log_hardener, temp_log_file):
@@ -327,10 +295,6 @@ class TestStatus:
         assert 'is_immutable' in d
 
 
-# ===========================================================================
-# Edge Cases
-# ===========================================================================
-
 class TestEdgeCases:
     @pytest.mark.unit
     def test_harden_idempotent(self, log_hardener, temp_log_file):
@@ -353,11 +317,6 @@ class TestEdgeCases:
 
         sig_path = hardener.get_signature_path()
         assert hardener.sig_dir.name in str(sig_path.parent)
-
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 
 class TestParametrizedHardeningModeValues:
@@ -480,10 +439,6 @@ class TestParametrizedVerifyIntegrityWithPermChanges:
         assert is_valid is False
         assert any("permission" in issue.lower() for issue in issues)
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 class TestLogHardeningErrorPaths:
     """Error-path tests for LogHardener using pytest.raises."""

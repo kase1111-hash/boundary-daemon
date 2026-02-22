@@ -261,6 +261,7 @@ class LogWatchdog:
 
     async def _analyze_with_llm(self, log_entry: str, source_file: str) -> Optional[dict]:
         """Analyze log entry with LLM"""
+        # TODO: Ollama client.generate() is synchronous — should be wrapped in asyncio.to_thread()
         client = self._get_ollama_client()
         if not client:
             return None
@@ -401,6 +402,7 @@ JSON Response:"""
 
         try:
             # Start from end of file
+            # FIXME: blocking file I/O in async context — should use asyncio.to_thread() or aiofiles
             with open(path, 'r') as f:
                 f.seek(0, 2)  # Seek to end
                 line_num = sum(1 for _ in open(path))

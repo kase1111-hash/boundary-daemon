@@ -30,10 +30,6 @@ from typing import Optional, Dict, Any, Set, Callable, List
 from dataclasses import dataclass, field
 
 
-# =============================================================================
-# LOGGING LEVELS AND FEATURES
-# =============================================================================
-
 class LogLevel(Enum):
     """Extended logging levels for boundary daemon."""
     TRACE = 5       # Ultra-verbose tracing
@@ -76,10 +72,6 @@ logging.addLevelName(25, 'NOTICE')
 logging.addLevelName(55, 'SECURITY')
 
 
-# =============================================================================
-# THREAD-SAFE CONFIGURATION STATE
-# =============================================================================
-
 @dataclass
 class LoggingState:
     """Thread-safe logging configuration state."""
@@ -105,10 +97,6 @@ class LoggingState:
 
 _state = LoggingState()
 
-
-# =============================================================================
-# CUSTOM FORMATTER
-# =============================================================================
 
 class BoundaryFormatter(logging.Formatter):
     """Custom formatter with color support and structured output."""
@@ -190,10 +178,6 @@ class BoundaryFormatter(logging.Formatter):
             return parts[1] if parts[0] == 'daemon' else parts[0]
         return parts[0] if parts else 'core'
 
-
-# =============================================================================
-# CUSTOM LOGGER CLASS
-# =============================================================================
 
 class BoundaryLogger(logging.Logger):
     """Extended logger with additional methods and feature tracking."""
@@ -280,10 +264,6 @@ class BoundaryLogger(logging.Logger):
 # Set our custom logger class
 logging.setLoggerClass(BoundaryLogger)
 
-
-# =============================================================================
-# SETUP AND CONFIGURATION
-# =============================================================================
 
 def setup_logging(
     verbose: bool = False,
@@ -452,10 +432,6 @@ def get_logging_state() -> Dict[str, Any]:
         }
 
 
-# =============================================================================
-# LOG CALLBACK SYSTEM
-# =============================================================================
-
 def add_log_callback(callback: Callable[[str, int, str, Dict], None]) -> None:
     """
     Add a callback for log events.
@@ -472,10 +448,6 @@ def remove_log_callback(callback: Callable[[str, int, str, Dict], None]) -> None
         if callback in _state.callbacks:
             _state.callbacks.remove(callback)
 
-
-# =============================================================================
-# CONTEXT MANAGER FOR TEMPORARY VERBOSE
-# =============================================================================
 
 class VerboseContext:
     """Context manager for temporary verbose logging."""
@@ -510,10 +482,6 @@ def verbose_for(feature: Optional[FeatureArea] = None) -> VerboseContext:
     """Get a context manager for temporary verbose logging."""
     return VerboseContext(feature)
 
-
-# =============================================================================
-# FEATURE-SPECIFIC LOGGER SHORTCUTS
-# =============================================================================
 
 def get_core_logger() -> BoundaryLogger:
     """Get logger for core daemon operations."""
@@ -565,10 +533,6 @@ def get_integration_logger() -> BoundaryLogger:
     return get_logger('daemon.integration')
 
 
-# =============================================================================
-# ENVIRONMENT VARIABLE CONFIGURATION
-# =============================================================================
-
 def configure_from_environment() -> None:
     """Configure logging from environment variables."""
     verbose = os.environ.get('BOUNDARY_VERBOSE', '').lower() in ('1', 'true', 'yes')
@@ -597,10 +561,6 @@ def configure_from_environment() -> None:
         features=enabled_features,
     )
 
-
-# =============================================================================
-# EXPORTS
-# =============================================================================
 
 __all__ = [
     # Enums

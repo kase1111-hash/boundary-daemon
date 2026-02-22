@@ -38,10 +38,6 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Policy Decision Tracing
-# ---------------------------------------------------------------------------
-
 class TraceVerdict(Enum):
     """Why a decision was reached."""
     MODE_LOCKDOWN = auto()          # LOCKDOWN denies everything
@@ -170,7 +166,7 @@ def trace_policy_decision(
         vpn_active=getattr(env_state, 'vpn_active', False),
     )
 
-    # Step 1: Check LOCKDOWN
+    # LOCKDOWN denies everything — check first before evaluating specifics
     steps.append({
         "check": f"Is mode LOCKDOWN? (mode={mode.name})",
         "result": "yes — deny all" if mode == BoundaryMode.LOCKDOWN else "no — continue",
@@ -181,7 +177,6 @@ def trace_policy_decision(
         trace.steps = steps
         return trace
 
-    # Step 2: Dispatch by request type
     steps.append({
         "check": f"Request type: {request.request_type}",
         "result": f"evaluating {request.request_type} policy",
@@ -203,7 +198,7 @@ def trace_policy_decision(
         trace.decision = PolicyDecision.DENY.value
         trace.verdict = TraceVerdict.UNKNOWN_REQUEST_TYPE.name
 
-    # Step 3: Check custom policies
+    # Custom policies can only tighten the base decision, never loosen it
     custom_policies = policy_engine.get_custom_policies()
     if custom_policies is not None:
         steps.append({
@@ -461,10 +456,6 @@ def _trace_io(trace, steps, request, mode, env_state):
     trace.verdict = TraceVerdict.TOOL_ALLOWED.name
 
 
-# ---------------------------------------------------------------------------
-# Integration Health Registry
-# ---------------------------------------------------------------------------
-
 @dataclass
 class IntegrationCheckin:
     """Record of an integration checking in with the daemon."""
@@ -608,10 +599,6 @@ class IntegrationHealthRegistry:
             "threshold_seconds": self._threshold,
         }
 
-
-# ---------------------------------------------------------------------------
-# Operator Console — unified operator view
-# ---------------------------------------------------------------------------
 
 class OperatorConsole:
     """

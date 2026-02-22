@@ -466,10 +466,6 @@ class TestEventLoggerEdgeCases:
         assert events == []
 
 
-# ===========================================================================
-# Crash Recovery and Tamper Detection Tests
-# ===========================================================================
-
 class TestEventLoggerCrashRecovery:
     @pytest.mark.security
     def test_truncated_last_line_raises_on_corruption(self, temp_log_file):
@@ -729,10 +725,6 @@ class TestEventLoggerCrashRecovery:
         assert logger2.get_event_count() == 4
 
 
-# ===========================================================================
-# SECURITY INVARIANT: Hash Chain Tamper Detection
-# ===========================================================================
-
 class TestHashChainInvariants:
     """Security invariant: Any modification to any single event in the chain
     must be detectable by verify_chain(). These tests document the exact
@@ -849,10 +841,6 @@ class TestHashChainInvariants:
                 f.writelines(original_lines)
 
 
-# ===========================================================================
-# Event Logger Retrieval Edge Cases
-# ===========================================================================
-
 class TestEventLoggerRetrievalEdgeCases:
     @pytest.mark.unit
     def test_get_recent_events_count_zero(self, populated_event_logger):
@@ -896,10 +884,6 @@ class TestEventLoggerRetrievalEdgeCases:
         assert is_valid is True
         assert error is None
 
-
-# ===========================================================================
-# Error-Path Tests
-# ===========================================================================
 
 class TestEventLoggerErrorPaths:
     """Error-path tests for EventLogger using pytest.raises."""
@@ -1012,11 +996,6 @@ class TestEventLoggerErrorPaths:
         """Creating an EventType with invalid value raises ValueError."""
         with pytest.raises(ValueError):
             EventType("nonexistent_event_type")
-
-
-# ===========================================================================
-# PARAMETRIZED TESTS - Added for comprehensive coverage
-# ===========================================================================
 
 
 class TestParametrizedAllEventTypesLoggable:
