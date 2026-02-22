@@ -404,6 +404,75 @@ The following security issues have been addressed:
 
 ---
 
+## API Threat Model
+
+The daemon exposes four API surfaces. This section documents the attack surface, threats, and mitigations for each.
+
+### Attack Surface Summary
+
+| API | Transport | Bind Address | Auth | Rate Limited | TLS |
+|-----|-----------|-------------|------|-------------|-----|
+| Boundary API | Unix socket (`boundary.sock`) | N/A (filesystem) | Token + SO_PEERCRED | Yes (per-token + global) | N/A |
+| Health Check | HTTP | 0.0.0.0:8080 | None | No | Optional |
+| Verification API | HTTP | 127.0.0.1:8765 | None | No | Optional |
+| Prometheus Metrics | HTTP | 0.0.0.0:9090 | None | No | No |
+
+### Boundary API (Unix Socket)
+
+- **Reachability**: Local only — requires filesystem access to socket path
+- **Authentication**: Token-based with capability checks
+- **Rate limiting**: Per-token and global, persistent across restarts
+- **Peer credential check**: Only root (UID 0) or daemon owner via SO_PEERCRED
+- **Request size limit**: 65 KB
+- **Threats mitigated**: Unauthorized access, brute force, DoS
+- **Residual risks**: Socket path hijacking if parent directory permissions are lax; token compromise if token file permissions are misconfigured
+
+### Health Check Server (HTTP)
+
+- **Reachability**: Network-accessible on 0.0.0.0:8080 (configurable)
+- **Authentication**: None — by design for orchestrator probes
+- **TLS**: Optional (configurable via `--tls-cert` / `--tls-key`)
+- **What an attacker sees**: Process health status, component names, uptime, memory/disk usage percentages
+- **Threats**: Information disclosure (version, uptime, component status), DoS via request flooding
+- **Mitigations**: Bind to localhost if Kubernetes probes are not needed; deploy behind reverse proxy; enable TLS in production
+- **Recommendation**: In production, restrict to internal network or bind to 127.0.0.1
+
+### Verification API (HTTP)
+
+- **Reachability**: Localhost only (127.0.0.1:8765 default)
+- **Authentication**: None
+- **TLS**: Optional (configurable)
+- **What an attacker sees**: Trusted public key list, event verification results
+- **Threats**: Key enumeration (`GET /keys`), unauthorized key addition (`POST /keys`), verification oracle
+- **Mitigations**: Bind to loopback only; add API token authentication for key management; enable TLS
+- **Recommendation**: `POST /keys` should require authentication; restrict network access
+
+### Prometheus Metrics (HTTP)
+
+- **Reachability**: Network-accessible on 0.0.0.0:9090
+- **Authentication**: None
+- **What an attacker sees**: Daemon operational metrics (event counts, mode changes, violations, error rates)
+- **Threats**: Information disclosure, metrics DoS
+- **Mitigations**: Bind to internal network; deploy behind reverse proxy; enable TLS
+- **Recommendation**: Restrict to Prometheus scraper IPs only
+
+### Lockdown Behavior
+
+- LOCKDOWN mode does **not** shut down API servers — they continue serving for monitoring
+- Rate limiting continues to enforce even during LOCKDOWN
+- Mode transition commands are rejected without valid ceremony
+
+### General Recommendations
+
+1. Enable TLS on all HTTP endpoints in production
+2. Bind health/metrics servers to internal IPs, not 0.0.0.0
+3. Use Unix domain sockets for the primary API (default)
+4. Rotate API tokens periodically
+5. Monitor rate limiter blocks as potential attack indicators
+6. Set restrictive parent directory permissions on socket paths
+
+---
+
 ## Security Contacts
 
 | Role | Contact | Responsibility |

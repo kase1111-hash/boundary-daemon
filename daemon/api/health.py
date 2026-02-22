@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -367,7 +367,10 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
         """Send JSON response."""
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
-        self.send_header('Cache-Control', 'no-cache, no-store')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Content-Security-Policy', "default-src 'none'")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode('utf-8'))
 
@@ -436,12 +439,15 @@ class HealthCheckServer:
         self._port = 8080
         self._systemd_watchdog = False
 
-    def start(self, port: int = 8080, host: str = "0.0.0.0") -> bool:  # nosec B104 - health endpoint needs network access
+    def start(self, port: int = 8080, host: str = "0.0.0.0",
+              tls_certfile: Optional[str] = None,
+              tls_keyfile: Optional[str] = None) -> bool:  # nosec B104 - health endpoint needs network access
         """Start the health check server."""
         if self._running:
             return True
 
         self._port = port
+        self._tls_enabled = bool(tls_certfile and tls_keyfile)
 
         try:
             # Create handler factory with checker
@@ -449,6 +455,15 @@ class HealthCheckServer:
                 return HealthRequestHandler(*args, checker=self.checker, **kwargs)
 
             self._server = HTTPServer((host, port), handler_factory)
+
+            if tls_certfile and tls_keyfile:
+                from daemon.api.tls import create_ssl_context
+                ssl_ctx = create_ssl_context(tls_certfile, tls_keyfile)
+                self._server.socket = ssl_ctx.wrap_socket(
+                    self._server.socket, server_side=True
+                )
+                logger.info(f"Health check server TLS enabled ({tls_certfile})")
+
             self._running = True
 
             self._thread = threading.Thread(

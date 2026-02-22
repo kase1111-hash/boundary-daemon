@@ -384,11 +384,15 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.send_header('Content-Length', str(len(content)))
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(content.encode('utf-8'))
         elif self.path == '/health':
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(b'OK')
         else:
@@ -407,10 +411,14 @@ class MetricsExporter:
     Starts an HTTP server that exposes metrics at /metrics endpoint.
     """
 
-    def __init__(self, port: int = 9090, host: str = "0.0.0.0"):
+    def __init__(self, port: int = 9090, host: str = "0.0.0.0",
+                 tls_certfile: Optional[str] = None,
+                 tls_keyfile: Optional[str] = None):
         self.port = port
         self.host = host
         self.metrics = BoundaryMetrics()
+        self.tls_certfile = tls_certfile
+        self.tls_keyfile = tls_keyfile
         self._server: Optional[HTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._start_time = time.time()
@@ -424,6 +432,14 @@ class MetricsExporter:
                 (self.host, self.port),
                 MetricsHandler,
             )
+
+            if self.tls_certfile and self.tls_keyfile:
+                from daemon.api.tls import create_ssl_context
+                ssl_ctx = create_ssl_context(self.tls_certfile, self.tls_keyfile)
+                self._server.socket = ssl_ctx.wrap_socket(
+                    self._server.socket, server_side=True
+                )
+                logger.info(f"Prometheus metrics server TLS enabled ({self.tls_certfile})")
 
             self._thread = threading.Thread(
                 target=self._server.serve_forever,
