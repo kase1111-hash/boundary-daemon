@@ -35,6 +35,9 @@ from enum import Enum
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, List, Optional, Any, Callable, Tuple
 
+from daemon.api.response import ok_response, error_response
+from daemon.api.error_codes import NOT_FOUND
+
 logger = logging.getLogger(__name__)
 
 
@@ -364,7 +367,14 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
         pass
 
     def _send_json_response(self, status_code: int, data: Dict[str, Any]) -> None:
-        """Send JSON response."""
+        """Send JSON response wrapped in APIResponse envelope."""
+        if status_code < 400:
+            envelope = ok_response(data)
+        else:
+            envelope = error_response(
+                NOT_FOUND.code, NOT_FOUND.message,
+            )
+        body = envelope.to_json().encode('utf-8')
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Cache-Control', 'no-store')
@@ -372,29 +382,36 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
         self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Content-Security-Policy', "default-src 'none'")
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode('utf-8'))
+        self.wfile.write(body)
+
+    def _route(self, path: str) -> str:
+        """Normalise path: strip /v1 prefix and trailing slash."""
+        if path.startswith('/v1'):
+            path = path[3:]
+        return path.rstrip('/') or '/'
 
     def do_GET(self) -> None:
-        """Handle GET requests."""
-        if self.path == '/health' or self.path == '/':
+        """Handle GET requests (versioned and legacy routes)."""
+        route = self._route(self.path)
+        if route in ('/health', '/'):
             self._handle_health()
-        elif self.path == '/health/live' or self.path == '/livez':
+        elif route in ('/health/live', '/livez'):
             self._handle_liveness()
-        elif self.path == '/health/ready' or self.path == '/readyz':
+        elif route in ('/health/ready', '/readyz'):
             self._handle_readiness()
-        elif self.path == '/health/startup' or self.path == '/startupz':
+        elif route in ('/health/startup', '/startupz'):
             self._handle_startup()
         else:
-            self.send_error(404, "Not Found")
+            self._send_json_response(404, {})
 
     def _handle_health(self) -> None:
-        """Handle /health endpoint."""
+        """Handle /v1/health endpoint."""
         result = self.checker.run_checks()
         status_code = 200 if result.status != HealthStatus.UNHEALTHY else 503
         self._send_json_response(status_code, result.to_dict())
 
     def _handle_liveness(self) -> None:
-        """Handle /health/live endpoint."""
+        """Handle /v1/health/live endpoint."""
         is_alive, message = self.checker.check_liveness()
         status_code = 200 if is_alive else 503
         self._send_json_response(status_code, {
@@ -403,7 +420,7 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_readiness(self) -> None:
-        """Handle /health/ready endpoint."""
+        """Handle /v1/health/ready endpoint."""
         is_ready, message = self.checker.check_readiness()
         status_code = 200 if is_ready else 503
         self._send_json_response(status_code, {
@@ -412,7 +429,7 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_startup(self) -> None:
-        """Handle /health/startup endpoint."""
+        """Handle /v1/health/startup endpoint."""
         is_started, message = self.checker.check_startup()
         status_code = 200 if is_started else 503
         self._send_json_response(status_code, {

@@ -378,8 +378,16 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
     metrics: Optional[BoundaryMetrics] = None
 
+    @staticmethod
+    def _route(path: str) -> str:
+        """Strip /v1 prefix for versioned routing."""
+        if path.startswith('/v1'):
+            path = path[3:]
+        return path.rstrip('/') or '/'
+
     def do_GET(self):
-        if self.path == '/metrics':
+        route = self._route(self.path)
+        if route == '/metrics':
             content = self.metrics.collect_all()
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
@@ -388,7 +396,7 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(content.encode('utf-8'))
-        elif self.path == '/health':
+        elif route == '/health':
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
             self.send_header('X-Content-Type-Options', 'nosniff')

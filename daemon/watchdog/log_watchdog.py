@@ -259,9 +259,26 @@ class LogWatchdog:
         random_bytes = os.urandom(4).hex()
         return hashlib.sha256(f"{timestamp}-{random_bytes}".encode()).hexdigest()[:12]
 
+    def _generate_llm_sync(self, client, prompt: str) -> Optional[dict]:
+        """Synchronous LLM call — run via asyncio.to_thread()."""
+        try:
+            response = client.generate(
+                model=self.model,
+                prompt=prompt,
+                format="json"
+            )
+            result_text = response.get('response', '{}')
+            if '```json' in result_text:
+                result_text = result_text.split('```json')[1].split('```')[0]
+            elif '```' in result_text:
+                result_text = result_text.split('```')[1].split('```')[0]
+            return json.loads(result_text.strip())
+        except Exception as e:
+            logger.error(f"LLM analysis failed: {e}")
+            return None
+
     async def _analyze_with_llm(self, log_entry: str, source_file: str) -> Optional[dict]:
-        """Analyze log entry with LLM"""
-        # TODO: Ollama client.generate() is synchronous — should be wrapped in asyncio.to_thread()
+        """Analyze log entry with LLM (non-blocking)."""
         client = self._get_ollama_client()
         if not client:
             return None
@@ -280,26 +297,7 @@ Provide your analysis in JSON format with these fields:
 
 JSON Response:"""
 
-        try:
-            response = client.generate(
-                model=self.model,
-                prompt=prompt,
-                format="json"
-            )
-
-            # Parse JSON response
-            result_text = response.get('response', '{}')
-            # Clean up response (handle markdown code blocks)
-            if '```json' in result_text:
-                result_text = result_text.split('```json')[1].split('```')[0]
-            elif '```' in result_text:
-                result_text = result_text.split('```')[1].split('```')[0]
-
-            return json.loads(result_text.strip())
-
-        except Exception as e:
-            logger.error(f"LLM analysis failed: {e}")
-            return None
+        return await asyncio.to_thread(self._generate_llm_sync, client, prompt)
 
     def _classify_severity_heuristic(self, message: str) -> AlertSeverity:
         """Classify severity using heuristics when LLM unavailable"""
@@ -392,8 +390,19 @@ JSON Response:"""
         if recommendation:
             print(f"  Recommendation: {recommendation}")
 
+    @staticmethod
+    def _count_lines_sync(path: str) -> int:
+        """Count lines in a file (synchronous helper)."""
+        with open(path, 'r') as f:
+            return sum(1 for _ in f)
+
+    @staticmethod
+    def _read_new_line_sync(file_handle) -> str:
+        """Read a single line from an open file handle (synchronous helper)."""
+        return file_handle.readline()
+
     async def _tail_log_file(self, log_path: str):
-        """Tail a log file and process new entries"""
+        """Tail a log file and process new entries (non-blocking)."""
         path = Path(log_path)
 
         if not path.exists():
@@ -401,19 +410,18 @@ JSON Response:"""
             return
 
         try:
-            # Start from end of file
-            # FIXME: blocking file I/O in async context — should use asyncio.to_thread() or aiofiles
+            line_num = await asyncio.to_thread(self._count_lines_sync, log_path)
+
             with open(path, 'r') as f:
                 f.seek(0, 2)  # Seek to end
-                line_num = sum(1 for _ in open(path))
 
                 while self._running:
-                    line = f.readline()
+                    line = await asyncio.to_thread(self._read_new_line_sync, f)
                     if line:
                         line_num += 1
                         await self._process_log_entry(line.strip(), log_path, line_num)
                     else:
-                        await asyncio.sleep(0.5)  # Wait for new content
+                        await asyncio.sleep(0.5)
 
         except Exception as e:
             logger.error(f"Error tailing {log_path}: {e}")
@@ -453,23 +461,29 @@ JSON Response:"""
         logger.info(f"Log watchdog started, monitoring {len(self.log_paths)} file(s)")
 
     def stop(self):
-        """Stop log monitoring and cleanup resources"""
+        """Stop log monitoring and cleanup resources."""
         if not self._running:
             return
 
         self._running = False
 
-        # Cancel tasks
-        for task in self._monitor_tasks:
-            task.cancel()
+        # Cancel async tasks
+        if self._loop and not self._loop.is_closed():
+            for task in self._monitor_tasks:
+                self._loop.call_soon_threadsafe(task.cancel)
 
         # Wait for thread
         if self._thread:
             self._thread.join(timeout=5.0)
 
+        self._monitor_tasks.clear()
+
         # Clear callbacks to prevent memory leaks
         with self._callback_lock:
             self._alert_callbacks.clear()
+
+        # Release Ollama client
+        self._ollama_client = None
 
         logger.info("Log watchdog stopped")
 

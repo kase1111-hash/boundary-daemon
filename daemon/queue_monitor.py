@@ -493,10 +493,16 @@ class QueueMonitor:
         logger.info(f"Queue monitor started (interval: {self.config.sample_interval}s)")
 
     def stop(self):
-        """Stop queue monitoring"""
+        """Stop queue monitoring and release resources."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=5.0)
+        self._queues.clear()
+        self._queue_configs.clear()
+        self._history.clear()
+        self._alerts.clear()
+        self._last_alert.clear()
+        self._backpressure_state.clear()
         logger.info("Queue monitor stopped")
 
     def _monitor_loop(self):

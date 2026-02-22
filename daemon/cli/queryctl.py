@@ -43,6 +43,13 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional, Iterator
 
+def _print_cli_error(code: str, message: str, hint: str = "") -> None:
+    """Print a structured CLI error with code and optional hint."""
+    print(f"{code}: {message}", file=sys.stderr)
+    if hint:
+        print(f"  Hint: {hint}", file=sys.stderr)
+
+
 # ANSI colors
 class Colors:
     RESET = '\033[0m'

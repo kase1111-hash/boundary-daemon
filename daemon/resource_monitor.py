@@ -298,10 +298,13 @@ class ResourceMonitor:
         logger.info(f"Resource monitor started (interval: {self.config.sample_interval}s)")
 
     def stop(self):
-        """Stop resource monitoring"""
+        """Stop resource monitoring and release resources."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=5.0)
+        self._history.clear()
+        self._alerts.clear()
+        self._last_alert_time.clear()
         logger.info("Resource monitor stopped")
 
     def _monitor_loop(self):
