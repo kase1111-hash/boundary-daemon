@@ -1910,3 +1910,59 @@ python -m daemon.features
 # Run tests
 pytest tests/ -v
 ```
+
+---
+
+## Lock Ordering & Thread Safety
+
+The daemon uses multiple locks across components. To prevent deadlocks,
+all code **must** acquire locks in the order listed below (lower number
+first). Never hold a higher-numbered lock while acquiring a lower-numbered
+one.
+
+### Lock Hierarchy
+
+| Priority | Component | Lock attribute | Type | Purpose |
+|----------|-----------|---------------|------|---------|
+| 1 | `EventLogger` | `_lock` | `Lock` | Event log append (serialises all writes) |
+| 2 | `PolicyEngine` | `_state_lock` | `Lock` | Policy mode and state transitions |
+| 3 | `TripwireSystem` | `_lock` | `Lock` | Violation detection state |
+| 4 | `StateMonitor` | `_state_lock` | `Lock` | Environment state snapshots |
+| 5 | `PIIFilter` | `_lock` | `RLock` | PII filtering state (reentrant) |
+| 6 | `APIAuthManager` | `_lock` | `RLock` | Token management (reentrant) |
+| 7 | `YARAEngine` | `_lock` | `Lock` | Rule compilation and scan state |
+| 8 | `IntegrationManager` | `_agent_rate_lock` | `Lock` | Agent rate limiting |
+| 8 | `IntegrationManager` | `_channel_lock` | `Lock` | Channel synchronisation |
+
+### Callback Locks (always acquired last)
+
+Every component that supports callbacks uses a dedicated `_callback_lock`.
+Callback locks are **always** acquired after the component's data lock.
+Callbacks must **never** be invoked while holding a data lock — copy the
+callback list under the callback lock, release both locks, then invoke.
+
+| Component | Lock attribute | Type |
+|-----------|---------------|------|
+| `PolicyEngine` | `_callback_lock` | `Lock` |
+| `StateMonitor` | `_callback_lock` | `Lock` |
+| `TripwireSystem` | `_callback_lock` | `Lock` |
+| `PromptInjectionDetector` | `_callback_lock` | `Lock` |
+| `LogWatchdog` | `_callback_lock` | `Lock` |
+
+### Deadlock Prevention Patterns
+
+1. **Callbacks outside locks:** Copy callbacks under lock, release lock,
+   then invoke. This is already followed in `PolicyEngine.transition_mode()`
+   and `TripwireSystem.check_all()`.
+
+2. **RLock for re-entrant paths:** `PIIFilter` and `APIAuthManager` use
+   `RLock` because their public API may be called recursively (e.g., a
+   filter callback that triggers another filter check).
+
+3. **Lock-free reads where possible:** `StateMonitor.get_current_state()`
+   reads a single reference (atomic in CPython due to the GIL), avoiding
+   the overhead of acquiring `_state_lock` on the hot path.
+
+4. **Short critical sections:** All locks protect only the minimum data
+   mutation. I/O, network calls, and subprocess execution happen outside
+   locked regions.

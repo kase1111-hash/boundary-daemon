@@ -610,6 +610,168 @@ class SettingsScreen(Screen):
 # MAIN APPLICATION
 # =============================================================================
 
+class PolicyScreen(Screen):
+    """Active policy rules and enforcement status."""
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", "Back"),
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+
+        with Container(id="policy-screen"):
+            yield Label("ACTIVE POLICY RULES", classes="screen-title")
+
+            with Horizontal(id="policy-summary"):
+                with Vertical(classes="panel"):
+                    yield Label("Current Mode", classes="panel-title")
+                    yield Label("UNKNOWN", id="policy-mode")
+                with Vertical(classes="panel"):
+                    yield Label("Enforcement Modules", classes="panel-title")
+                    yield Label("...", id="policy-enforcement")
+                with Vertical(classes="panel"):
+                    yield Label("Violations (24h)", classes="panel-title")
+                    yield Label("0", id="policy-violations")
+
+            yield Rule()
+            yield Label("Policy Decision Matrix", classes="section-title")
+            yield DataTable(id="policy-table", zebra_stripes=True)
+
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#policy-table", DataTable)
+        table.add_columns("Resource", "Action", "Allowed", "Condition")
+        self.refresh_data()
+
+    @work(exclusive=True)
+    async def refresh_data(self) -> None:
+        app = self.app
+        if not isinstance(app, BoundaryDaemonTUI) or not app.daemon:
+            return
+
+        try:
+            pe = app.daemon.policy_engine
+            mode = pe.get_current_mode()
+            self.query_one("#policy-mode", Label).update(
+                f"[bold]{mode.name}[/]"
+            )
+
+            # Enforcement status
+            enforcer_lines = []
+            if getattr(app.daemon, 'network_enforcer', None):
+                enforcer_lines.append("Network: active")
+            if getattr(app.daemon, 'usb_enforcer', None):
+                enforcer_lines.append("USB: active")
+            if getattr(app.daemon, 'process_enforcer', None):
+                enforcer_lines.append("Process: active")
+            self.query_one("#policy-enforcement", Label).update(
+                "\n".join(enforcer_lines) if enforcer_lines else "None active"
+            )
+
+            # Policy rules for current mode
+            table = self.query_one("#policy-table", DataTable)
+            table.clear()
+            rules = [
+                ("Network outbound", "connect", mode.value <= 1, "open/restricted"),
+                ("Network inbound", "listen", mode.value == 0, "open only"),
+                ("USB storage", "mount", mode.value <= 2, "open/restricted/trusted"),
+                ("File write", "write", mode.value <= 3, "not airgap+"),
+                ("Process spawn", "exec", mode.value <= 4, "not lockdown"),
+                ("Memory access", "mmap", True, "always (monitored)"),
+            ]
+            for resource, action, allowed, condition in rules:
+                icon = "[green]YES[/]" if allowed else "[red]NO[/]"
+                table.add_row(resource, action, icon, condition)
+        except Exception as e:
+            self.notify(f"Error: {e}", severity="error")
+
+    def action_refresh(self) -> None:
+        self.refresh_data()
+
+
+class RateLimiterScreen(Screen):
+    """Rate limiter status dashboard."""
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", "Back"),
+        Binding("r", "refresh", "Refresh"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+
+        with Container(id="ratelimit-screen"):
+            yield Label("RATE LIMITER STATUS", classes="screen-title")
+
+            with Horizontal(id="rl-summary"):
+                with Vertical(classes="panel"):
+                    yield Label("Active Tokens", classes="panel-title")
+                    yield Label("0", id="rl-tokens")
+                with Vertical(classes="panel"):
+                    yield Label("Requests (window)", classes="panel-title")
+                    yield Label("0", id="rl-requests")
+                with Vertical(classes="panel"):
+                    yield Label("Rejected", classes="panel-title")
+                    yield Label("0", id="rl-rejected")
+
+            yield Rule()
+            yield Label("Per-Token Usage", classes="section-title")
+            yield DataTable(id="rl-table", zebra_stripes=True)
+
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#rl-table", DataTable)
+        table.add_columns("Token", "Requests", "Remaining", "Window Resets")
+        self.refresh_data()
+
+    @work(exclusive=True)
+    async def refresh_data(self) -> None:
+        app = self.app
+        if not isinstance(app, BoundaryDaemonTUI) or not app.daemon:
+            return
+
+        try:
+            api = getattr(app.daemon, 'api_server', None)
+            if not api:
+                self.query_one("#rl-tokens", Label).update("N/A")
+                return
+
+            rl = getattr(api, 'rate_limiter', None)
+            if not rl:
+                self.query_one("#rl-tokens", Label).update("No rate limiter")
+                return
+
+            status = rl.get_status() if hasattr(rl, 'get_status') else {}
+            self.query_one("#rl-tokens", Label).update(
+                str(status.get('active_tokens', '?'))
+            )
+            self.query_one("#rl-requests", Label).update(
+                str(status.get('total_requests', '?'))
+            )
+            self.query_one("#rl-rejected", Label).update(
+                str(status.get('rejected', '?'))
+            )
+
+            table = self.query_one("#rl-table", DataTable)
+            table.clear()
+            for entry in status.get('entries', []):
+                table.add_row(
+                    str(entry.get('token', '?'))[:12] + "...",
+                    str(entry.get('count', 0)),
+                    str(entry.get('remaining', '?')),
+                    str(entry.get('resets_at', '?')),
+                )
+        except Exception as e:
+            self.notify(f"Error: {e}", severity="error")
+
+    def action_refresh(self) -> None:
+        self.refresh_data()
+
+
 class BoundaryDaemonTUI(App):
     """Boundary Daemon Terminal User Interface."""
 
@@ -618,7 +780,8 @@ class BoundaryDaemonTUI(App):
         background: $surface;
     }
 
-    #dashboard, #mode-control, #event-log, #tripwire-screen, #settings-screen {
+    #dashboard, #mode-control, #event-log, #tripwire-screen, #settings-screen,
+    #policy-screen, #ratelimit-screen {
         padding: 1;
     }
 
@@ -775,7 +938,9 @@ class BoundaryDaemonTUI(App):
         Binding("d", "show_dashboard", "Dashboard", show=True),
         Binding("m", "show_mode", "Mode Control", show=True),
         Binding("e", "show_events", "Events", show=True),
+        Binding("p", "show_policy", "Policy", show=True),
         Binding("t", "show_tripwires", "Tripwires", show=True),
+        Binding("r", "show_ratelimiter", "Rate Limiter", show=True),
         Binding("s", "show_settings", "Settings", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
@@ -792,7 +957,9 @@ class BoundaryDaemonTUI(App):
         "dashboard": DashboardScreen,
         "mode": ModeControlScreen,
         "events": EventLogScreen,
+        "policy": PolicyScreen,
         "tripwires": TripwireScreen,
+        "ratelimiter": RateLimiterScreen,
         "settings": SettingsScreen,
     }
 
@@ -824,10 +991,20 @@ class BoundaryDaemonTUI(App):
             self.action_show_dashboard()
             self.push_screen("events")
 
+    def action_show_policy(self) -> None:
+        if not isinstance(self.screen, PolicyScreen):
+            self.action_show_dashboard()
+            self.push_screen("policy")
+
     def action_show_tripwires(self) -> None:
         if not isinstance(self.screen, TripwireScreen):
             self.action_show_dashboard()
             self.push_screen("tripwires")
+
+    def action_show_ratelimiter(self) -> None:
+        if not isinstance(self.screen, RateLimiterScreen):
+            self.action_show_dashboard()
+            self.push_screen("ratelimiter")
 
     def action_show_settings(self) -> None:
         if not isinstance(self.screen, SettingsScreen):
