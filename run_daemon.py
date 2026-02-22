@@ -82,6 +82,7 @@ def main():
     # Now import and run the daemon
     try:
         from daemon.boundary_daemon import BoundaryDaemon, BoundaryMode
+        from daemon.constants import RuntimeConfig
     except ImportError as e:
         print(f"Import error: {e}")
         print("Attempting alternative import...")
@@ -90,18 +91,27 @@ def main():
             import daemon.boundary_daemon as bd
             BoundaryDaemon = bd.BoundaryDaemon
             BoundaryMode = bd.BoundaryMode
+            from daemon.constants import RuntimeConfig
         except ImportError as e2:
             print(f"Failed to import daemon: {e2}")
             sys.exit(1)
 
     import argparse
 
+    # Resolve env var defaults so CLI flags override env vars override hardcoded defaults
+    env_log_dir = RuntimeConfig.get_log_path()
+    env_mode = RuntimeConfig.get_initial_mode()
+    env_log_level = RuntimeConfig.get_log_level()
+
     parser = argparse.ArgumentParser(description='Boundary Daemon - Trust Boundary Enforcement')
     parser.add_argument('--mode', choices=['open', 'restricted', 'trusted', 'airgap', 'coldroom', 'lockdown'],
-                        default='open', help='Initial boundary mode')
-    parser.add_argument('--log-dir', default='./logs', help='Directory for log files')
+                        default=env_mode, help='Initial boundary mode (env: BOUNDARY_INITIAL_MODE)')
+    parser.add_argument('--log-dir', default=env_log_dir,
+                        help='Directory for log files (env: BOUNDARY_LOG_PATH)')
     parser.add_argument('--skip-integrity-check', action='store_true',
                         help='Skip integrity verification (DANGEROUS - dev only)')
+    parser.add_argument('--dev-mode', action='store_true',
+                        help='Enable development mode (relaxed integrity checks)')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable verbose logging')
     parser.add_argument('--trace', '-t', action='store_true',
@@ -127,11 +137,19 @@ def main():
         handle_service_command(args)
         sys.exit(0)
 
+    # Determine log level: --trace > --verbose > BOUNDARY_LOG_LEVEL > INFO
+    if args.trace:
+        effective_level = 'DEBUG'
+    elif args.verbose:
+        effective_level = 'DEBUG'
+    else:
+        effective_level = env_log_level
+
     # Setup enhanced logging if available
     try:
         from daemon.logging_config import setup_logging
         setup_logging(
-            verbose=args.verbose,
+            verbose=(effective_level == 'DEBUG'),
             trace=args.trace,
             log_file=args.log_file,
             console=True,
@@ -144,9 +162,8 @@ def main():
     except ImportError:
         # Enhanced logging not available, use basic setup
         import logging
-        level = logging.DEBUG if args.verbose or args.trace else logging.INFO
         logging.basicConfig(
-            level=level,
+            level=getattr(logging, effective_level, logging.INFO),
             format='%(asctime)s %(levelname)s [%(name)s] %(message)s'
         )
 
@@ -171,13 +188,14 @@ def main():
             log_dir=args.log_dir,
             initial_mode=initial_mode,
             skip_integrity_check=args.skip_integrity_check,
+            dev_mode=args.dev_mode,
         )
 
         daemon.start()
 
-        # Keep running until interrupted
+        # Keep running until interrupted or SIGTERM received
         try:
-            while True:
+            while not getattr(daemon, '_shutdown_requested', False):
                 time.sleep(1)
         except KeyboardInterrupt:
             pass
