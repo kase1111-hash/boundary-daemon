@@ -595,19 +595,21 @@ class MemoryMonitor:
                 logger.warning("tracemalloc DEBUG MODE enabled - expect performance overhead")
 
     def stop(self):
-        """Stop memory monitoring"""
+        """Stop memory monitoring and release resources."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=5.0)
 
         # Stop debugger
         if self._debugger and self._debugger.is_enabled:
-            # Take final leak report before stopping
             report = self._debugger.compare_to_baseline()
             if report:
                 logger.info(f"Final memory growth: {report.growth_bytes / (1024*1024):.2f} MB")
             self._debugger.stop()
 
+        self._history.clear()
+        self._alerts.clear()
+        self._last_alert_time.clear()
         logger.info("Memory monitor stopped")
 
     def _monitor_loop(self):

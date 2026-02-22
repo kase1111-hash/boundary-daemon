@@ -260,7 +260,7 @@ class HealthMonitor:
         logger.info(f"Health monitor started (check interval: {self.config.check_interval}s)")
 
     def stop(self):
-        """Stop health monitoring"""
+        """Stop health monitoring and join threads."""
         self._running = False
         if self._heartbeat_thread:
             self._heartbeat_thread.join(timeout=5.0)
