@@ -1486,7 +1486,11 @@ class BoundaryDaemon:
         # Initialize API server for CLI tools
         self.api_server = None
         if API_SERVER_AVAILABLE and BoundaryAPIServer is not None:
-            socket_path = os.path.join(os.path.dirname(log_dir), 'api', 'boundary.sock')
+            env_bind = os.environ.get("BOUNDARY_API_BIND")
+            if env_bind:
+                socket_path = env_bind
+            else:
+                socket_path = os.path.join(os.path.dirname(log_dir), 'api', 'boundary.sock')
             self.api_server = BoundaryAPIServer(daemon=self, socket_path=socket_path)
 
             # Connect telemetry for API latency monitoring (Plan 11)

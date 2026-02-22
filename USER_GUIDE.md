@@ -416,12 +416,44 @@ You: quit
 
 ---
 
+## Deployment Prerequisites
+
+### Privilege Requirements
+
+The daemon can run without root but certain enforcement features require elevated privileges:
+
+| Feature | Required Privilege | Fallback Without Privilege |
+|---------|-------------------|---------------------------|
+| Network enforcement (iptables/nftables) | `CAP_NET_ADMIN` + root | Detection-only mode |
+| USB enforcement (udev) | root | Detection-only mode |
+| Process enforcement (cgroups) | root or cgroup delegation | Detection-only mode |
+| Namespace isolation | `CAP_SYS_ADMIN` | No sandboxing |
+| Seccomp filtering | `CAP_SYS_ADMIN` | No syscall filtering |
+| Log hardening (chattr +a) | root | Standard file logging |
+| Hardware watchdog | root + `/dev/watchdog` | Software watchdog only |
+
+To run with full enforcement:
+
+```bash
+sudo boundary-daemon --mode restricted
+```
+
+To check which enforcement modules are active, use the `/status` API endpoint or
+review the startup log output for `CRITICAL PRIVILEGE ISSUE` messages.
+
 ## Configuration
 
 ### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `BOUNDARY_LOG_LEVEL` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) | `INFO` |
+| `BOUNDARY_API_BIND` | API socket bind address | `/var/run/boundary-daemon.sock` |
+| `BOUNDARY_CONFIG` | Configuration file path | `/etc/boundary-daemon/boundary.conf` |
+| `BOUNDARY_LOG_PATH` | Log directory path | `./logs` |
+| `BOUNDARY_INITIAL_MODE` | Initial boundary mode (`open`, `restricted`, `trusted`, `airgap`, `coldroom`, `lockdown`) | `open` |
+| `BOUNDARY_TLS_CERT` | TLS certificate path | (none — plaintext) |
+| `BOUNDARY_TLS_KEY` | TLS private key path | (none — plaintext) |
 | `OLLAMA_ENDPOINT` | Ollama API URL | `http://localhost:11434` |
 | `OLLAMA_MODEL` | Ollama model to use | `llama3.2` |
 | `BOUNDARY_DISK_WARNING_PERCENT` | Disk warning threshold | `90` |
@@ -429,6 +461,8 @@ You: quit
 | `BOUNDARY_SECURITY_DIR` | Security advisor directory | (disabled) |
 | `BOUNDARY_WATCHDOG_DIR` | Log watchdog directory | (disabled) |
 | `BOUNDARY_TELEMETRY_DIR` | Telemetry directory | (disabled) |
+
+CLI flags override environment variables, which override hardcoded defaults.
 
 ### Configuration Files
 

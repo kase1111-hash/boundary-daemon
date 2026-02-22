@@ -779,6 +779,9 @@ class RuntimeConfig:
     SECURITY: Environment overrides enable deployment-specific tuning
     without code changes.
     """
+    VALID_LOG_LEVELS = frozenset({'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'})
+    VALID_MODES = frozenset({'open', 'restricted', 'trusted', 'airgap', 'coldroom', 'lockdown'})
+
     @staticmethod
     def get_kdf_iterations() -> int:
         """Get KDF iterations (can be increased for high-security deployments)."""
@@ -793,6 +796,49 @@ class RuntimeConfig:
     def get_health_check_interval() -> float:
         """Get health check interval."""
         return _get_env_float("HEALTH_CHECK_INTERVAL", Timeouts.HEALTH_CHECK_INTERVAL)
+
+    @staticmethod
+    def get_log_level() -> str:
+        """Get log level (BOUNDARY_LOG_LEVEL). Default: INFO."""
+        val = os.environ.get("BOUNDARY_LOG_LEVEL", "INFO").upper()
+        if val not in RuntimeConfig.VALID_LOG_LEVELS:
+            logger.warning(f"Invalid BOUNDARY_LOG_LEVEL={val!r}, using INFO")
+            return "INFO"
+        return val
+
+    @staticmethod
+    def get_api_bind() -> str:
+        """Get API bind address (BOUNDARY_API_BIND). Default: /var/run/boundary-daemon.sock."""
+        return os.environ.get("BOUNDARY_API_BIND", "/var/run/boundary-daemon.sock")
+
+    @staticmethod
+    def get_config_path() -> str:
+        """Get config file path (BOUNDARY_CONFIG). Default: /etc/boundary-daemon/boundary.conf."""
+        return os.environ.get("BOUNDARY_CONFIG", "/etc/boundary-daemon/boundary.conf")
+
+    @staticmethod
+    def get_log_path() -> str:
+        """Get log directory path (BOUNDARY_LOG_PATH). Default: ./logs."""
+        return os.environ.get("BOUNDARY_LOG_PATH", "./logs")
+
+    @staticmethod
+    def get_initial_mode() -> str:
+        """Get initial boundary mode (BOUNDARY_INITIAL_MODE). Default: open."""
+        val = os.environ.get("BOUNDARY_INITIAL_MODE", "open").lower()
+        if val not in RuntimeConfig.VALID_MODES:
+            logger.warning(f"Invalid BOUNDARY_INITIAL_MODE={val!r}, using open")
+            return "open"
+        return val
+
+    @staticmethod
+    def get_tls_cert() -> Optional[str]:
+        """Get TLS certificate path (BOUNDARY_TLS_CERT). Default: None."""
+        return os.environ.get("BOUNDARY_TLS_CERT")
+
+    @staticmethod
+    def get_tls_key() -> Optional[str]:
+        """Get TLS key path (BOUNDARY_TLS_KEY). Default: None."""
+        return os.environ.get("BOUNDARY_TLS_KEY")
 
 
 # Commonly used constants can be imported directly
