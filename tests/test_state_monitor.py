@@ -371,7 +371,7 @@ class TestStateMonitorLifecycle:
         monitor = StateMonitor(poll_interval=10.0)
         try:
             monitor.start()
-            assert monitor._thread is not None
+            assert isinstance(monitor._thread, threading.Thread)
             assert monitor._thread.is_alive()
         finally:
             monitor.stop()
@@ -910,3 +910,173 @@ class TestStateMonitorErrorPaths:
         monitor = StateMonitor()
         # Should not raise
         monitor.stop()
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedInterfaceTypeDetection:
+    """Parametrized: Interface name -> NetworkType mapping."""
+
+    INTERFACE_MAP = [
+        ("eth0", NetworkType.ETHERNET),
+        ("eth1", NetworkType.ETHERNET),
+        ("enp0s3", NetworkType.ETHERNET),
+        ("eno1", NetworkType.ETHERNET),
+        ("ens160", NetworkType.ETHERNET),
+        ("em1", NetworkType.ETHERNET),
+        ("wlan0", NetworkType.WIFI),
+        ("wlp3s0", NetworkType.WIFI),
+        ("wlx001122334455", NetworkType.WIFI),
+        ("tun0", NetworkType.VPN),
+        ("tap0", NetworkType.VPN),
+        ("wg0", NetworkType.VPN),
+        ("bnep0", NetworkType.BLUETOOTH),
+        ("br0", NetworkType.BRIDGE),
+        ("docker0", NetworkType.BRIDGE),
+        ("virbr0", NetworkType.BRIDGE),
+        ("veth12345", NetworkType.BRIDGE),
+        ("ppp0", NetworkType.CELLULAR_4G),
+        ("foo0", NetworkType.UNKNOWN),
+        ("xyz", NetworkType.UNKNOWN),
+        ("", NetworkType.UNKNOWN),
+    ]
+
+    @pytest.mark.parametrize("iface,expected_type", INTERFACE_MAP,
+        ids=[f"{i or 'empty'}->{t.name}" for i, t in INTERFACE_MAP])
+    def test_interface_detection(self, iface, expected_type):
+        """Interface name should map to correct NetworkType."""
+        monitor = StateMonitor()
+        result = monitor._detect_interface_type(iface)
+        assert result == expected_type
+
+
+class TestParametrizedNetworkTypeEnumValues:
+    """Parametrized: All NetworkType enum members have correct string values."""
+
+    EXPECTED_VALUES = [
+        (NetworkType.ETHERNET, "ethernet"),
+        (NetworkType.WIFI, "wifi"),
+        (NetworkType.CELLULAR_4G, "cellular_4g"),
+        (NetworkType.CELLULAR_5G, "cellular_5g"),
+        (NetworkType.VPN, "vpn"),
+        (NetworkType.BLUETOOTH, "bluetooth"),
+        (NetworkType.BRIDGE, "bridge"),
+        (NetworkType.LORA, "lora"),
+        (NetworkType.THREAD, "thread"),
+        (NetworkType.WIMAX, "wimax"),
+        (NetworkType.IRDA, "irda"),
+        (NetworkType.ANT_PLUS, "ant_plus"),
+        (NetworkType.UNKNOWN, "unknown"),
+    ]
+
+    @pytest.mark.parametrize("nt,expected_value", EXPECTED_VALUES,
+        ids=[nt.name for nt, _ in EXPECTED_VALUES])
+    def test_network_type_value(self, nt, expected_value):
+        """Each NetworkType should have its expected string value."""
+        assert nt.value == expected_value
+
+
+class TestParametrizedCellularSecurityAlertValues:
+    """Parametrized: All CellularSecurityAlert enum members."""
+
+    ALERT_VALUES = [
+        (CellularSecurityAlert.NONE, "none"),
+        (CellularSecurityAlert.TOWER_CHANGE, "tower_change"),
+        (CellularSecurityAlert.WEAK_ENCRYPTION, "weak_encryption"),
+        (CellularSecurityAlert.SIGNAL_ANOMALY, "signal_anomaly"),
+        (CellularSecurityAlert.IMSI_CATCHER, "imsi_catcher"),
+        (CellularSecurityAlert.DOWNGRADE_ATTACK, "downgrade_attack"),
+    ]
+
+    @pytest.mark.parametrize("alert,expected_value", ALERT_VALUES,
+        ids=[a.name for a, _ in ALERT_VALUES])
+    def test_alert_value(self, alert, expected_value):
+        """Each CellularSecurityAlert should have its expected string value."""
+        assert alert.value == expected_value
+
+
+class TestParametrizedHardwareTrustCalculation:
+    """Parametrized: Hardware trust calculation based on device changes and TPM."""
+
+    TRUST_CASES = [
+        (True, False, True, HardwareTrust.LOW),
+        (False, True, True, HardwareTrust.LOW),
+        (True, True, True, HardwareTrust.LOW),
+        (False, False, True, HardwareTrust.HIGH),
+        (False, False, False, HardwareTrust.MEDIUM),
+    ]
+
+    @pytest.mark.parametrize("new_usb,new_block,tpm,expected", TRUST_CASES,
+        ids=["new_usb", "new_block", "both_new", "tpm_no_new", "no_tpm_no_new"])
+    def test_hardware_trust_level(self, new_usb, new_block, tpm, expected):
+        """Hardware trust level based on device changes and TPM presence."""
+        monitor = StateMonitor()
+        monitor._baseline_usb = set()
+        monitor._baseline_block_devices = set()
+        hardware_info = {
+            'usb_devices': {'new-usb-device'} if new_usb else set(),
+            'block_devices': {'/dev/sdb'} if new_block else set(),
+            'camera': False,
+            'mic': False,
+            'tpm': tpm,
+        }
+        trust = monitor._calculate_hardware_trust(hardware_info)
+        assert trust == expected
+
+
+class TestParametrizedHardwareTrustValues:
+    """Parametrized: HardwareTrust enum values."""
+
+    TRUST_VALUES = [
+        (HardwareTrust.LOW, "low"),
+        (HardwareTrust.MEDIUM, "medium"),
+        (HardwareTrust.HIGH, "high"),
+    ]
+
+    @pytest.mark.parametrize("trust,expected_value", TRUST_VALUES,
+        ids=[t.name for t, _ in TRUST_VALUES])
+    def test_trust_value(self, trust, expected_value):
+        """Each HardwareTrust should have its expected string value."""
+        assert trust.value == expected_value
+
+
+class TestParametrizedMonitoringConfigDefaults:
+    """Parametrized: MonitoringConfig default values for each field."""
+
+    CONFIG_DEFAULTS = [
+        ("monitor_lora", True),
+        ("monitor_thread", True),
+        ("monitor_cellular_security", True),
+        ("monitor_wimax", False),
+        ("monitor_irda", False),
+        ("monitor_ant_plus", True),
+        ("monitor_dns_security", True),
+        ("monitor_arp_security", True),
+        ("monitor_wifi_security", True),
+        ("monitor_threat_intel", True),
+        ("monitor_file_integrity", True),
+        ("monitor_traffic_anomaly", True),
+        ("monitor_process_security", True),
+    ]
+
+    @pytest.mark.parametrize("field,default_val", CONFIG_DEFAULTS,
+        ids=[f for f, _ in CONFIG_DEFAULTS])
+    def test_config_default(self, field, default_val):
+        """Each MonitoringConfig field should have its expected default."""
+        config = MonitoringConfig()
+        assert getattr(config, field) == default_val
+
+
+class TestParametrizedNetworkStateEnum:
+    """Parametrized: NetworkState enum values."""
+
+    @pytest.mark.parametrize("state,expected_value", [
+        (NetworkState.OFFLINE, "offline"),
+        (NetworkState.ONLINE, "online"),
+    ], ids=["OFFLINE", "ONLINE"])
+    def test_network_state_value(self, state, expected_value):
+        """Each NetworkState should have its expected string value."""
+        assert state.value == expected_value

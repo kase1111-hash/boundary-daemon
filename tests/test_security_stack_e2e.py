@@ -93,7 +93,7 @@ class TestSecurityStackE2E:
             tool_input={"query": "test"},
         )
         assert violation is None, "Should allow first call"
-        assert call_id is not None
+        assert isinstance(call_id, str)
 
         # Test 2: Validate safe output
         safe_output = "Here is the result of your query: 42"
@@ -242,7 +242,7 @@ class TestSecurityStackE2E:
             validity=timedelta(hours=1),
         )
 
-        assert identity is not None
+        assert hasattr(identity, 'agent_name')
         assert identity.agent_name == "test-processor"
         assert AgentCapability.FILE_READ in identity.capabilities
 
@@ -253,7 +253,7 @@ class TestSecurityStackE2E:
             validity=timedelta(minutes=30),
         )
 
-        assert token is not None
+        assert hasattr(token, 'agent_id')
         assert token.agent_id == identity.agent_id
 
         # Test 3: Verify token
@@ -282,7 +282,7 @@ class TestSecurityStackE2E:
             action_data={"path": "/test/file.txt"},
         )
 
-        assert binding is not None
+        assert hasattr(binding, 'action_type')
         assert binding.action_type == "file_read"
 
         # Test 6: Verify action binding
@@ -431,7 +431,7 @@ class TestSecurityStackE2E:
                 "response_length": len(ai_response),
             },
         )
-        assert binding is not None, "Action should be bound"
+        assert hasattr(binding, 'action_type'), "Action should be bound"
 
         print("\n✓ Integrated workflow: PASSED")
         print("  - User input checked for injection")

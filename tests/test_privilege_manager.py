@@ -174,7 +174,7 @@ class TestPrivilegeStatus:
 class TestPrivilegeManagerInit:
     def test_init_without_args(self):
         manager = PrivilegeManager()
-        assert manager is not None
+        assert isinstance(manager, PrivilegeManager)
         assert isinstance(manager._has_root, bool)
         assert isinstance(manager._effective_uid, int)
 

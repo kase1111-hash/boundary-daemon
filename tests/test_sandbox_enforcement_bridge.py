@@ -823,18 +823,18 @@ class TestParametrizedEnforcementActionValues:
     """Parametrized: All EnforcementAction enum members."""
 
     ACTION_VALUES = [
-        (EnforcementAction.TIGHTEN, "tighten"),
-        (EnforcementAction.LOOSEN, "loosen"),
-        (EnforcementAction.TERMINATE, "terminate"),
-        (EnforcementAction.NO_CHANGE, "no_change"),
-        (EnforcementAction.FAILED, "failed"),
+        (EnforcementAction.TIGHTEN, 1),
+        (EnforcementAction.LOOSEN, 2),
+        (EnforcementAction.TERMINATE, 3),
+        (EnforcementAction.NO_CHANGE, 4),
+        (EnforcementAction.FAILED, 5),
     ]
 
     @pytest.mark.unit
     @pytest.mark.parametrize("action,expected_value", ACTION_VALUES,
         ids=[a.name for a, _ in ACTION_VALUES])
     def test_action_value(self, action, expected_value):
-        """Each EnforcementAction should have its expected string value."""
+        """Each EnforcementAction should have its expected int value."""
         assert action.value == expected_value
 
 
@@ -959,9 +959,9 @@ class TestParametrizedTelemetryViolationTypes:
     @pytest.mark.parametrize("vtype", list(ViolationType),
         ids=[v.name for v in ViolationType])
     def test_violation_type_has_value(self, vtype):
-        """Each ViolationType should have a non-empty string value."""
-        assert isinstance(vtype.value, str)
-        assert len(vtype.value) > 0
+        """Each ViolationType should have a positive int value."""
+        assert isinstance(vtype.value, int)
+        assert vtype.value > 0
 
 
 class TestParametrizedBridgeEscalationWithNoSandboxes:

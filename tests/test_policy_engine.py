@@ -1274,6 +1274,31 @@ class TestPolicyEngineErrorPaths:
         )
         assert success is True
 
+    def test_boundary_state_missing_all_fields_raises(self):
+        """BoundaryState with no fields raises TypeError."""
+        with pytest.raises(TypeError):
+            BoundaryState()
+
+    def test_boundary_state_missing_some_fields_raises(self):
+        """BoundaryState with only mode raises TypeError."""
+        with pytest.raises(TypeError):
+            BoundaryState(mode=BoundaryMode.OPEN)
+
+    def test_policy_decision_empty_string_raises(self):
+        """PolicyDecision('') raises ValueError."""
+        with pytest.raises(ValueError):
+            PolicyDecision("")
+
+    def test_memory_class_negative_raises(self):
+        """MemoryClass with negative value raises ValueError."""
+        with pytest.raises(ValueError):
+            MemoryClass(-1)
+
+    def test_boundary_mode_none_raises(self):
+        """BoundaryMode(None) raises ValueError."""
+        with pytest.raises(ValueError):
+            BoundaryMode(None)
+
 
 # ===========================================================================
 # PARAMETRIZED TESTS - Added for comprehensive coverage

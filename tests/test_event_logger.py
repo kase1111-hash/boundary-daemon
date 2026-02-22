@@ -1012,3 +1012,117 @@ class TestEventLoggerErrorPaths:
         """Creating an EventType with invalid value raises ValueError."""
         with pytest.raises(ValueError):
             EventType("nonexistent_event_type")
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedAllEventTypesLoggable:
+    """Parametrized: Every EventType can be logged and retrieved."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("event_type", list(EventType),
+        ids=[et.name for et in EventType])
+    def test_log_and_retrieve_event_type(self, event_type, temp_log_file):
+        """Each EventType can be logged and retrieved by type."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        event = logger.log_event(event_type, f"Test {event_type.name}")
+        assert event.event_type == event_type
+        retrieved = logger.get_events_by_type(event_type)
+        assert len(retrieved) == 1
+        assert retrieved[0].event_type == event_type
+
+
+class TestParametrizedEventTypeStringValues:
+    """Parametrized: All EventType enum members have non-empty string values."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("event_type", list(EventType),
+        ids=[et.name for et in EventType])
+    def test_event_type_has_string_value(self, event_type):
+        """Each EventType must have a non-empty string value."""
+        assert isinstance(event_type.value, str)
+        assert len(event_type.value) > 0
+
+
+class TestParametrizedMetadataTypes:
+    """Parametrized: Various metadata shapes can be logged."""
+
+    METADATA_CASES = [
+        ("empty_dict", {}),
+        ("string_value", {"key": "value"}),
+        ("int_value", {"count": 42}),
+        ("float_value", {"rate": 3.14}),
+        ("bool_value", {"active": True}),
+        ("none_value", {"nothing": None}),
+        ("nested_dict", {"outer": {"inner": "deep"}}),
+        ("list_value", {"items": [1, 2, 3]}),
+        ("mixed", {"str": "a", "int": 1, "list": [1], "nested": {"k": "v"}}),
+    ]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("label,metadata", METADATA_CASES,
+        ids=[label for label, _ in METADATA_CASES])
+    def test_metadata_type_logged(self, label, metadata, temp_log_file):
+        """Various metadata shapes can be logged and preserved."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        event = logger.log_event(EventType.INFO, f"Metadata test: {label}", metadata)
+        assert event.metadata == metadata
+
+
+class TestParametrizedHashChainAfterNEvents:
+    """Parametrized: Hash chain stays valid after N events."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("count", [1, 2, 5, 10, 25],
+        ids=[f"events-{n}" for n in [1, 2, 5, 10, 25]])
+    def test_chain_valid_after_n_events(self, count, temp_log_file):
+        """Hash chain should remain valid after N events."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        for i in range(count):
+            logger.log_event(EventType.HEALTH_CHECK, f"Event {i}", {"i": i})
+        is_valid, error = logger.verify_chain()
+        assert is_valid is True, f"Chain invalid after {count} events: {error}"
+        assert logger.get_event_count() == count
+
+
+class TestParametrizedGetRecentEventsCounts:
+    """Parametrized: get_recent_events with various count values."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("requested,expected", [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (4, 4),
+        (10, 4),
+        (100, 4),
+    ], ids=["req1", "req2", "req3", "req4", "req10", "req100"])
+    def test_get_recent_events_count(self, requested, expected, temp_log_file):
+        """get_recent_events returns correct number of events."""
+        logger = EventLogger(str(temp_log_file), secure_permissions=False)
+        for i in range(4):
+            logger.log_event(EventType.HEALTH_CHECK, f"Event {i}")
+        events = logger.get_recent_events(requested)
+        assert len(events) == expected
+
+
+class TestParametrizedSecurePermissions:
+    """Parametrized: Secure vs insecure permission modes."""
+
+    @pytest.mark.security
+    @pytest.mark.parametrize("secure,expected_perm", [
+        (True, 0o600),
+        (False, None),
+    ], ids=["secure", "insecure"])
+    def test_file_permissions_mode(self, secure, expected_perm, temp_dir):
+        """Log file permissions respect secure_permissions flag."""
+        log_file = temp_dir / "perm_test.log"
+        logger = EventLogger(str(log_file), secure_permissions=secure)
+        logger.log_event(EventType.DAEMON_START, "Start")
+        st = os.stat(log_file)
+        mode = stat.S_IMODE(st.st_mode)
+        if expected_perm is not None:
+            assert mode == expected_perm

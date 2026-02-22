@@ -273,8 +273,8 @@ class TestHealthMonitorLifecycle:
         monitor = HealthMonitor(config=config)
         try:
             monitor.start()
-            assert monitor._heartbeat_thread is not None
-            assert monitor._check_thread is not None
+            assert isinstance(monitor._heartbeat_thread, threading.Thread)
+            assert isinstance(monitor._check_thread, threading.Thread)
             assert monitor._heartbeat_thread.is_alive()
             assert monitor._check_thread.is_alive()
         finally:

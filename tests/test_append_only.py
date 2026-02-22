@@ -217,7 +217,7 @@ class TestAppendOnlyStorageIntegration:
                 checkpoint_path=os.path.join(tmpdir, "checkpoints"),
             )
             storage = AppendOnlyStorage(config=config)
-            assert storage is not None
+            assert isinstance(storage, AppendOnlyStorage)
 
     def test_multiple_storage_instances(self):
         config1 = AppendOnlyConfig(mode=AppendOnlyMode.NONE)
@@ -332,8 +332,8 @@ class TestAppendOnlyErrorPaths:
         assert success is False
         assert "Failed" in msg
 
-    def test_verify_checkpoint_no_checkpoints_returns_false(self, tmp_path):
-        """verify_checkpoint with no checkpoints should return (False, msg)."""
+    def test_verify_checkpoint_bad_hash_returns_false(self, tmp_path):
+        """verify_checkpoint with mismatched hash should return (False, msg)."""
         config = AppendOnlyConfig(
             mode=AppendOnlyMode.NONE,
             log_path=str(tmp_path / "test.log"),
@@ -343,7 +343,14 @@ class TestAppendOnlyErrorPaths:
         storage = AppendOnlyStorage(config)
         storage.initialize()
 
-        success, msg = storage.verify_checkpoint()
+        bad_checkpoint = IntegrityCheckpoint(
+            checkpoint_id="test-cp",
+            timestamp="2024-01-01T00:00:00",
+            event_count=999,
+            last_event_hash="fake_hash",
+            checkpoint_hash="definitely_wrong_hash",
+        )
+        success, msg = storage.verify_checkpoint(bad_checkpoint)
         assert success is False
 
     def test_integrity_checkpoint_missing_fields_raises(self):
@@ -391,6 +398,39 @@ class TestAppendOnlyErrorPaths:
         # _load_state catches exceptions internally
         storage._load_state()
         # Should not raise -- error is caught and logged
+
+    def test_integrity_checkpoint_missing_all_fields_raises(self):
+        """IntegrityCheckpoint with no fields raises TypeError."""
+        with pytest.raises(TypeError):
+            IntegrityCheckpoint()
+
+    def test_integrity_checkpoint_partial_fields_raises(self):
+        """IntegrityCheckpoint with partial fields raises TypeError."""
+        with pytest.raises(TypeError):
+            IntegrityCheckpoint(
+                checkpoint_id="cp1",
+                timestamp="2024-01-01",
+            )
+
+    def test_append_only_mode_none_value_raises(self):
+        """AppendOnlyMode(None) raises ValueError."""
+        with pytest.raises(ValueError):
+            AppendOnlyMode(None)
+
+    def test_syslog_facility_negative_raises(self):
+        """SyslogFacility with negative integer raises ValueError."""
+        with pytest.raises(ValueError):
+            SyslogFacility(-1)
+
+    def test_syslog_severity_out_of_range_raises(self):
+        """SyslogSeverity with value 100 raises ValueError."""
+        with pytest.raises(ValueError):
+            SyslogSeverity(100)
+
+    def test_remote_syslog_config_missing_host_with_port_raises(self):
+        """RemoteSyslogConfig without host but with port raises TypeError."""
+        with pytest.raises(TypeError):
+            RemoteSyslogConfig(port=514)
 
 
 # ===========================================================================

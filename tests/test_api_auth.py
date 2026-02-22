@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +21,7 @@ from daemon.auth.api_auth import (
     COMMAND_CAPABILITIES,
     COMMAND_RATE_LIMITS,
     CommandRateLimitEntry,
+    TokenManager,
 )
 
 
@@ -29,19 +31,19 @@ from daemon.auth.api_auth import (
 
 class TestAPICapability:
     def test_read_only_capabilities(self):
-        assert APICapability.STATUS is not None
-        assert APICapability.READ_EVENTS is not None
-        assert APICapability.VERIFY_LOG is not None
-        assert APICapability.CHECK_RECALL is not None
-        assert APICapability.CHECK_TOOL is not None
-        assert APICapability.CHECK_MESSAGE is not None
+        assert isinstance(APICapability.STATUS, APICapability)
+        assert isinstance(APICapability.READ_EVENTS, APICapability)
+        assert isinstance(APICapability.VERIFY_LOG, APICapability)
+        assert isinstance(APICapability.CHECK_RECALL, APICapability)
+        assert isinstance(APICapability.CHECK_TOOL, APICapability)
+        assert isinstance(APICapability.CHECK_MESSAGE, APICapability)
 
     def test_write_capabilities(self):
-        assert APICapability.SET_MODE is not None
+        assert isinstance(APICapability.SET_MODE, APICapability)
 
     def test_admin_capabilities(self):
-        assert APICapability.MANAGE_TOKENS is not None
-        assert APICapability.ADMIN is not None
+        assert isinstance(APICapability.MANAGE_TOKENS, APICapability)
+        assert isinstance(APICapability.ADMIN, APICapability)
 
     def test_all_capabilities_unique(self):
         values = [c.value for c in APICapability]

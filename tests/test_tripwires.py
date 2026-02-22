@@ -727,7 +727,7 @@ class TestViolationHardwareTrust:
 
         env = _make_env_state(hardware_trust=HardwareTrust.LOW)
         result = ts.check_violations(BoundaryMode.TRUSTED, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
 
 
@@ -851,7 +851,7 @@ class TestTripwireLifecycle:
             BoundaryMode.AIRGAP,
             {"drift_seconds": 60},
         )
-        assert v is not None
+        assert isinstance(v, TripwireViolation)
         assert v.violation_type == ViolationType.CLOCK_MANIPULATION
         assert ts.get_violation_count() == 1
 
@@ -981,7 +981,7 @@ class TestTripwireLifecycle:
 
         env = _make_env_state(network=NetworkState.ONLINE, active_interfaces=["eth0"])
         result = ts.check_violations(BoundaryMode.AIRGAP, env)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert 'network' in result.environment_snapshot
 
     def test_violation_has_unique_id(self):
@@ -1025,7 +1025,7 @@ class TestViolationPriorityOrdering:
             usb_devices={"rogue-usb-stick"},
         )
         result = ts.check_violations(BoundaryMode.COLDROOM, env_both)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         # Network check comes first in priority
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
@@ -1101,7 +1101,7 @@ class TestViolationPriorityOrdering:
         )
         result = ts.check_violations(BoundaryMode.COLDROOM, env_all_bad)
         # Should return exactly one violation (the highest priority)
-        assert result is not None
+        assert isinstance(result, TripwireViolation)
         assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
 
 
@@ -1122,7 +1122,7 @@ class TestTripwireLoggerFailure:
             ViolationType.DAEMON_TAMPERING, "binary modified",
             BoundaryMode.TRUSTED, {"hash": "different"},
         )
-        assert v is not None
+        assert isinstance(v, TripwireViolation)
         assert ts.get_violation_count() == 1
 
     def test_trigger_violation_with_broken_logger_still_records(self):
@@ -1138,7 +1138,7 @@ class TestTripwireLoggerFailure:
             ViolationType.CLOCK_MANIPULATION, "clock jumped",
             BoundaryMode.AIRGAP, {"drift": 60},
         )
-        assert v is not None
+        assert isinstance(v, TripwireViolation)
         assert ts.get_violation_count() == 1
 
     def test_trigger_violation_with_broken_logger_still_calls_callbacks(self):
@@ -1299,3 +1299,220 @@ class TestTripwireErrorPaths:
         ts = TripwireSystem()
         success, msg = ts.disable("", reason="test")
         assert success is False
+
+    def test_tripwire_violation_missing_all_fields_raises(self):
+        """TripwireViolation with no fields raises TypeError."""
+        with pytest.raises(TypeError):
+            TripwireViolation()
+
+    def test_tripwire_violation_missing_some_fields_raises(self):
+        """TripwireViolation with only some fields raises TypeError."""
+        with pytest.raises(TypeError):
+            TripwireViolation(violation_id="v1", timestamp="2024-01-01")
+
+    def test_tripwire_violation_missing_env_snapshot_raises(self):
+        """TripwireViolation without environment_snapshot raises TypeError."""
+        with pytest.raises(TypeError):
+            TripwireViolation(
+                violation_id="v1",
+                timestamp="2024-01-01",
+                violation_type=ViolationType.DAEMON_TAMPERING,
+                details="test",
+                current_mode=BoundaryMode.OPEN,
+                # missing environment_snapshot and auto_lockdown
+            )
+
+    def test_violation_type_wrong_type_raises(self):
+        """ViolationType with integer value raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType(42)
+
+    def test_violation_type_empty_string_raises(self):
+        """ViolationType with empty string raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType("")
+
+    def test_violation_type_none_raises(self):
+        """ViolationType with None raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType(None)
+
+    def test_violation_type_partial_match_raises(self):
+        """ViolationType with partial enum name raises ValueError."""
+        with pytest.raises(ValueError):
+            ViolationType("network")
+
+    def test_clear_violations_empty_token_returns_false(self):
+        """Clearing violations with empty token returns (False, msg)."""
+        ts = TripwireSystem()
+        success, msg = ts.clear_violations("", reason="test")
+        assert success is False
+        assert "Invalid" in msg
+
+
+# ===========================================================================
+# PARAMETRIZED TESTS - Added for comprehensive coverage
+# ===========================================================================
+
+
+class TestParametrizedViolationTypeValues:
+    """Parametrized: All ViolationType enum members have non-empty string values."""
+
+    @pytest.mark.parametrize("vtype", list(ViolationType),
+        ids=[v.name for v in ViolationType])
+    def test_violation_type_has_string_value(self, vtype):
+        """Each ViolationType must have a non-empty string value."""
+        assert isinstance(vtype.value, str)
+        assert len(vtype.value) > 0
+
+
+class TestParametrizedNetworkViolationByMode:
+    """Parametrized: Network-in-airgap triggers only in modes >= AIRGAP."""
+
+    NETWORK_CASES = [
+        (BoundaryMode.OPEN, True, False),
+        (BoundaryMode.RESTRICTED, True, False),
+        (BoundaryMode.TRUSTED, True, False),
+        (BoundaryMode.AIRGAP, True, True),
+        (BoundaryMode.COLDROOM, True, True),
+        (BoundaryMode.LOCKDOWN, True, True),
+        (BoundaryMode.AIRGAP, False, False),
+        (BoundaryMode.COLDROOM, False, False),
+    ]
+
+    @pytest.mark.parametrize("mode,online,should_trigger", NETWORK_CASES,
+        ids=[f"{m.name}-online{o}" for m, o, _ in NETWORK_CASES])
+    def test_network_violation_by_mode(self, mode, online, should_trigger):
+        """Network online triggers violation only in AIRGAP+ modes."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        net_state = NetworkState.ONLINE if online else NetworkState.OFFLINE
+        env = _make_env_state(network=net_state)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.NETWORK_IN_AIRGAP
+        else:
+            assert result is None
+
+
+class TestParametrizedShellEscapeThresholds:
+    """Parametrized: Shell escape thresholds differ by mode."""
+
+    SHELL_CASES = [
+        (BoundaryMode.OPEN, 9, False),
+        (BoundaryMode.OPEN, 10, True),
+        (BoundaryMode.RESTRICTED, 9, False),
+        (BoundaryMode.RESTRICTED, 10, True),
+        (BoundaryMode.TRUSTED, 9, False),
+        (BoundaryMode.TRUSTED, 10, True),
+        (BoundaryMode.AIRGAP, 2, False),
+        (BoundaryMode.AIRGAP, 3, True),
+        (BoundaryMode.COLDROOM, 2, False),
+        (BoundaryMode.COLDROOM, 3, True),
+    ]
+
+    @pytest.mark.parametrize("mode,escapes,should_trigger", SHELL_CASES,
+        ids=[f"{m.name}-esc{e}" for m, e, _ in SHELL_CASES])
+    def test_shell_escape_threshold(self, mode, escapes, should_trigger):
+        """Shell escape threshold is 3 for AIRGAP+, 10 for lower modes."""
+        ts = TripwireSystem()
+        env = _make_env_state(shell_escapes_detected=escapes)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.SUSPICIOUS_PROCESS
+        else:
+            assert result is None
+
+
+class TestParametrizedHardwareTrustByMode:
+    """Parametrized: Hardware trust degradation triggers by mode."""
+
+    HW_CASES = [
+        (BoundaryMode.OPEN, "LOW", False),
+        (BoundaryMode.RESTRICTED, "LOW", False),
+        (BoundaryMode.TRUSTED, "LOW", True),
+        (BoundaryMode.AIRGAP, "LOW", True),
+        (BoundaryMode.COLDROOM, "LOW", True),
+        (BoundaryMode.TRUSTED, "MEDIUM", False),
+        (BoundaryMode.AIRGAP, "MEDIUM", False),
+        (BoundaryMode.COLDROOM, "HIGH", False),
+    ]
+
+    @pytest.mark.parametrize("mode,trust,should_trigger", HW_CASES,
+        ids=[f"{m.name}-{t}" for m, t, _ in HW_CASES])
+    def test_hardware_trust_violation(self, mode, trust, should_trigger):
+        """LOW trust triggers only in TRUSTED+ modes."""
+        from daemon.state_monitor import HardwareTrust
+        trust_level = HardwareTrust[trust]
+        ts = TripwireSystem()
+        env = _make_env_state(hardware_trust=trust_level)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.HARDWARE_TRUST_DEGRADED
+        else:
+            assert result is None
+
+
+class TestParametrizedExternalModelByMode:
+    """Parametrized: External model endpoints trigger only in AIRGAP+ modes."""
+
+    MODEL_CASES = [
+        (BoundaryMode.OPEN, True, False),
+        (BoundaryMode.RESTRICTED, True, False),
+        (BoundaryMode.TRUSTED, True, False),
+        (BoundaryMode.AIRGAP, True, True),
+        (BoundaryMode.COLDROOM, True, True),
+        (BoundaryMode.AIRGAP, False, False),
+        (BoundaryMode.COLDROOM, False, False),
+    ]
+
+    @pytest.mark.parametrize("mode,has_ep,should_trigger", MODEL_CASES,
+        ids=[f"{m.name}-ep{e}" for m, e, _ in MODEL_CASES])
+    def test_external_model_violation(self, mode, has_ep, should_trigger):
+        """External model endpoints trigger only in AIRGAP+ modes."""
+        ts = TripwireSystem()
+        endpoints = ["http://api.openai.com"] if has_ep else []
+        env = _make_env_state(external_model_endpoints=endpoints)
+        result = ts.check_violations(mode, env)
+        if should_trigger:
+            assert isinstance(result, TripwireViolation)
+            assert result.violation_type == ViolationType.EXTERNAL_MODEL_VIOLATION
+        else:
+            assert result is None
+
+
+class TestParametrizedTriggerViolationAllTypes:
+    """Parametrized: trigger_violation works for every ViolationType."""
+
+    @pytest.mark.parametrize("vtype", list(ViolationType),
+        ids=[v.name for v in ViolationType])
+    def test_trigger_violation_type(self, vtype):
+        """trigger_violation should accept and record every ViolationType."""
+        ts = TripwireSystem()
+        v = ts.trigger_violation(vtype, f"Test {vtype.name}", BoundaryMode.OPEN, {})
+        assert isinstance(v, TripwireViolation)
+        assert v.violation_type == vtype
+        assert ts.get_violation_count() == 1
+
+
+class TestParametrizedDisabledTripwiresNoViolations:
+    """Parametrized: When disabled, no violations are detected for any mode."""
+
+    @pytest.mark.parametrize("mode", list(BoundaryMode),
+        ids=[m.name for m in BoundaryMode])
+    def test_disabled_returns_none(self, mode):
+        """Disabled tripwires return None for all modes."""
+        from daemon.state_monitor import NetworkState
+        ts = TripwireSystem()
+        token = ts._generate_auth_token()
+        ts.disable(token, reason="testing")
+        env = _make_env_state(
+            network=NetworkState.ONLINE,
+            shell_escapes_detected=100,
+            external_model_endpoints=["http://evil.com"],
+        )
+        result = ts.check_violations(mode, env)
+        assert result is None
