@@ -306,13 +306,13 @@ class StateMonitorPipeline(PipelineTest):
 
         # Test 6: Enum types exist
         def test_enum_types():
-            assert NetworkState.ONLINE is not None
-            assert NetworkState.OFFLINE is not None
-            assert NetworkType.ETHERNET is not None
-            assert NetworkType.WIFI is not None
-            assert HardwareTrust.LOW is not None
-            assert HardwareTrust.MEDIUM is not None
-            assert HardwareTrust.HIGH is not None
+            assert NetworkState.ONLINE.value == "online"
+            assert NetworkState.OFFLINE.value == "offline"
+            assert NetworkType.ETHERNET.value == "ethernet"
+            assert NetworkType.WIFI.value == "wifi"
+            assert HardwareTrust.LOW.value == "low"
+            assert HardwareTrust.MEDIUM.value == "medium"
+            assert HardwareTrust.HIGH.value == "high"
             return True
 
         self.run_test("enum_types", test_enum_types,

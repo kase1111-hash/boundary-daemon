@@ -53,7 +53,6 @@ from daemon.security.process_security import (
 
 
 class AttackResultCollector:
-    """Collects and summarizes attack simulation test results."""
     def __init__(self):
         self.passed = []
         self.failed = []
@@ -303,9 +302,6 @@ class EthernetAttackSimulator:
         return self.monitor._calculate_hardware_trust(hardware_info)
 
     def simulate_ethernet_interface_detection(self) -> bool:
-        """
-        Test that Ethernet interfaces are properly detected.
-        """
         test_interfaces = ['eth0', 'enp0s3', 'eno1', 'ens33', 'em1']
 
         for iface in test_interfaces:

@@ -34,7 +34,6 @@ except ImportError:
 @pytest.mark.asyncio
 @pytest.mark.skipif(not TEXTUAL_AVAILABLE, reason="textual library not installed")
 async def test_tui_screens():
-    """Test TUI screen navigation and widget rendering."""
     from daemon.boundary_daemon import BoundaryDaemon
     from daemon.policy_engine import BoundaryMode
     from tui.app import (
@@ -102,7 +101,6 @@ async def test_tui_screens():
 @pytest.mark.asyncio
 @pytest.mark.skipif(not TEXTUAL_AVAILABLE, reason="textual library not installed")
 async def test_tui_demo_mode():
-    """Test TUI runs in demo mode without daemon."""
     from tui.app import BoundaryDaemonTUI, DashboardScreen
 
     app = BoundaryDaemonTUI(daemon=None)
@@ -121,7 +119,6 @@ async def test_tui_demo_mode():
 
 
 def run_tests():
-    """Run all TUI tests."""
     print("=== TUI Integration Tests ===\n")
 
     tests = [
