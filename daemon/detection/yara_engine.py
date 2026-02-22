@@ -172,6 +172,7 @@ class YARAEngine:
 
         # Load rules
         engine.load_rules_from_file("/path/to/rules.yar")
+        engine.load_rules_from_directory("/path/to/rules/")
         engine.add_rule(YARARule(name="test", source="rule test {...}"))
 
         # Scan
@@ -181,13 +182,19 @@ class YARAEngine:
                 print(f"Matched: {match.rule_name}")
     """
 
-    def __init__(self):
+    def __init__(self, cache_ttl: float = 300.0):
         self._lock = threading.Lock()
         self._rules: Dict[str, YARARule] = {}
         self._rulesets: Dict[str, YARARuleSet] = {}
         self._compiled_rules = None
-        # TODO: YARA rule hot-reload not implemented — rules loaded once at startup, no file watcher for changes
         self._needs_recompile = True
+
+        # Scan result cache (keyed by target_hash)
+        self._cache: Dict[str, YARAScanResult] = {}
+        self._cache_ttl = cache_ttl  # seconds
+
+        # Directory watching for hot-reload
+        self._watched_dirs: Dict[str, float] = {}  # path -> last_mtime
 
         # Callbacks
         self._on_match: Optional[Callable[[YARAMatch], None]] = None
@@ -195,6 +202,7 @@ class YARAEngine:
         # Stats
         self._scan_count = 0
         self._match_count = 0
+        self._cache_hits = 0
 
     def add_rule(self, rule: YARARule) -> bool:
         """Add a single YARA rule."""
@@ -257,6 +265,94 @@ class YARAEngine:
             created_at=datetime.utcnow(),
         )
         return self.add_rule(rule)
+
+    def load_rules_from_directory(self, directory: str, recursive: bool = True) -> int:
+        """Load all .yar/.yara rule files from a directory.
+
+        Args:
+            directory: Path to the rules directory.
+            recursive: Whether to descend into subdirectories.
+
+        Returns:
+            Number of rule files successfully loaded.
+        """
+        dir_path = Path(directory)
+        if not dir_path.is_dir():
+            logger.error(f"Rules directory not found: {directory}")
+            return 0
+
+        loaded = 0
+        patterns = ["*.yar", "*.yara"]
+        for pat in patterns:
+            globber = dir_path.rglob(pat) if recursive else dir_path.glob(pat)
+            for rule_file in globber:
+                if self.load_rules_from_file(str(rule_file)):
+                    loaded += 1
+
+        # Track directory for hot-reload
+        self._watched_dirs[str(dir_path)] = time.time()
+        logger.info(f"Loaded {loaded} rule file(s) from {directory}")
+        return loaded
+
+    def reload_if_changed(self) -> bool:
+        """Check watched directories for changes and reload if needed.
+
+        Returns:
+            True if any rules were reloaded.
+        """
+        reloaded = False
+        for dir_path, last_load in list(self._watched_dirs.items()):
+            path = Path(dir_path)
+            if not path.is_dir():
+                continue
+            for rule_file in list(path.rglob("*.yar")) + list(path.rglob("*.yara")):
+                try:
+                    mtime = rule_file.stat().st_mtime
+                except OSError:
+                    continue
+                if mtime > last_load:
+                    logger.info(f"Rule file changed, reloading: {rule_file}")
+                    self.load_rules_from_file(str(rule_file))
+                    reloaded = True
+            if reloaded:
+                self._watched_dirs[dir_path] = time.time()
+                self._invalidate_cache()
+        return reloaded
+
+    def validate_rule(self, source: str) -> Optional[str]:
+        """Validate YARA rule syntax without adding it.
+
+        Returns:
+            None if valid, or an error message string.
+        """
+        if not YARA_AVAILABLE:
+            return "yara-python not available"
+        try:
+            yara.compile(source=source)
+            return None
+        except yara.SyntaxError as e:
+            return str(e)
+        except Exception as e:
+            return f"Validation error: {e}"
+
+    def _invalidate_cache(self) -> None:
+        """Clear the scan result cache."""
+        with self._lock:
+            self._cache.clear()
+
+    def _get_cached(self, target_hash: str) -> Optional[YARAScanResult]:
+        """Return a cached result if still valid, else None."""
+        cached = self._cache.get(target_hash)
+        if cached is None:
+            return None
+        if cached.scan_time is None:
+            return None
+        age = (datetime.utcnow() - cached.scan_time).total_seconds()
+        if age > self._cache_ttl:
+            del self._cache[target_hash]
+            return None
+        self._cache_hits += 1
+        return cached
 
     def _compile_rules(self) -> bool:
         """Compile all loaded rules."""
@@ -326,6 +422,12 @@ class YARAEngine:
         except Exception as e:
             result.error = f"Failed to hash file: {e}"
 
+        # Check cache
+        if result.target_hash:
+            cached = self._get_cached(result.target_hash)
+            if cached is not None:
+                return cached
+
         # Compile rules if needed
         if not self._compile_rules():
             result.success = False
@@ -359,6 +461,8 @@ class YARAEngine:
             result.error = str(e)
 
         result.scan_duration_ms = (time.time() - start_time) * 1000
+        if result.success and result.target_hash:
+            self._cache[result.target_hash] = result
         return result
 
     def scan_data(self, data: bytes, identifier: str = "memory") -> YARAScanResult:
@@ -385,6 +489,11 @@ class YARAEngine:
             result.success = False
             result.error = "yara-python not available"
             return result
+
+        # Check cache
+        cached = self._get_cached(result.target_hash)
+        if cached is not None:
+            return cached
 
         if not self._compile_rules():
             result.success = False
@@ -413,6 +522,8 @@ class YARAEngine:
             result.error = str(e)
 
         result.scan_duration_ms = (time.time() - start_time) * 1000
+        if result.success:
+            self._cache[result.target_hash] = result
         return result
 
     def _convert_match(self, match) -> YARAMatch:
@@ -454,15 +565,19 @@ class YARAEngine:
             'rulesets_loaded': len(self._rulesets),
             'scans_performed': self._scan_count,
             'total_matches': self._match_count,
+            'cache_size': len(self._cache),
+            'cache_hits': self._cache_hits,
+            'watched_dirs': len(self._watched_dirs),
         }
 
     def clear_rules(self) -> None:
-        """Clear all loaded rules."""
+        """Clear all loaded rules and cached results."""
         with self._lock:
             self._rules.clear()
             self._rulesets.clear()
             self._compiled_rules = None
             self._needs_recompile = True
+            self._cache.clear()
 
 
 # Built-in rules for common threats

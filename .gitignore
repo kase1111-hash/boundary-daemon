@@ -34,6 +34,7 @@ config/manifest.json
 
 # Security credentials (never commit)
 config/.token_salt
+config/.config_salt
 config/api_tokens.json
 config/bootstrap_token.enc
 config/*.enc
