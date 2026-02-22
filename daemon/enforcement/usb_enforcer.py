@@ -126,7 +126,7 @@ class USBEnforcer:
             try:
                 import ctypes
                 self._has_root = ctypes.windll.shell32.IsUserAnAdmin() != 0
-            except Exception:
+            except (AttributeError, OSError):
                 self._has_root = False
             self._has_udev = False  # udev is Linux-only
             if not self._has_root:
@@ -200,7 +200,7 @@ class USBEnforcer:
                     return protection.mode
                 else:
                     logger.error(f"Failed to re-apply persisted USB mode: {msg}")
-        except Exception as e:
+        except (OSError, USBEnforcementError) as e:
             logger.error(f"Error re-applying persisted USB mode: {e}")
 
         return None
@@ -216,7 +216,7 @@ class USBEnforcer:
             for device in self._enumerate_usb_devices():
                 self._baseline_devices.add(device.path)
             logger.info(f"Captured {len(self._baseline_devices)} baseline USB devices")
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Failed to capture USB baseline: {e}")
 
     def enforce_mode(
@@ -282,7 +282,7 @@ class USBEnforcer:
                             sticky=sticky,
                             emergency=emergency,
                         )
-                    except Exception as e:
+                    except (OSError, ValueError) as e:
                         logger.warning(f"Failed to persist USB protection: {e}")
 
                 # Log the enforcement action
@@ -295,7 +295,7 @@ class USBEnforcer:
 
                 return (True, f"USB enforcement applied for {mode.name} mode")
 
-            except Exception as e:
+            except (OSError, USBEnforcementError) as e:
                 error_msg = f"Failed to apply USB enforcement: {e}"
                 logger.error(error_msg)
 
@@ -306,7 +306,7 @@ class USBEnforcer:
                         action="USB_FAIL_CLOSED",
                         error=str(e)
                     )
-                except Exception as e2:
+                except (OSError, USBEnforcementError) as e2:
                     logger.critical(f"Failed to apply USB lockdown rules: {e2}")
 
                 raise USBEnforcementError(error_msg) from e
@@ -472,7 +472,7 @@ class USBEnforcer:
 
             logger.info(f"Installed udev rule: {self.UDEV_RULE_PATH}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             raise USBEnforcementError(f"Failed to install udev rule: {e}") from e
 
     def _remove_udev_rules(self):
@@ -486,7 +486,7 @@ class USBEnforcer:
                     timeout=10
                 )
                 logger.info(f"Removed udev rule: {self.UDEV_RULE_PATH}")
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.warning(f"Failed to remove udev rule: {e}")
 
     def _enumerate_usb_devices(self) -> List[USBDevice]:
@@ -531,7 +531,7 @@ class USBEnforcer:
                     name=product
                 ))
 
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.debug(f"Error reading USB device {entry}: {e}")
                 continue
 
@@ -623,7 +623,7 @@ class USBEnforcer:
             if os.path.exists(validated_path):
                 with open(validated_path, 'r') as f:
                     return f.read().strip()
-        except Exception:
+        except OSError:
             pass
         return default
 
@@ -671,7 +671,7 @@ class USBEnforcer:
                             f"expected '{expected_value}', got '{actual_value}'"
                         )
                         return False
-                except Exception as e:
+                except OSError as e:
                     logger.error(f"SECURITY: Sysfs write verification failed for {validated_path}: {e}")
                     return False  # Fail-closed: unverifiable write is a security failure
 
@@ -684,7 +684,7 @@ class USBEnforcer:
         except OSError as e:
             logger.error(f"Failed to write {validated_path}: {e}")
             return False
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             logger.debug(f"Unexpected error writing {validated_path}: {e}")
             return False
 
@@ -719,7 +719,7 @@ class USBEnforcer:
                             if f.read().strip() == '08':
                                 is_storage = True
                                 break
-                    except Exception:
+                    except OSError:
                         pass
 
             if is_storage and device.authorized:
@@ -814,7 +814,7 @@ class USBEnforcer:
                 if result.returncode == 0:
                     logger.info(f"Unmounted {mount_point}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Error unmounting device: {e}")
 
     def get_connected_devices(self) -> List[Dict]:
@@ -846,7 +846,7 @@ class USBEnforcer:
                         **kwargs
                     }
                 )
-            except Exception as e:
+            except (ImportError, AttributeError, TypeError) as e:
                 logger.error(f"Failed to log USB enforcement action: {e}")
 
     def get_status(self) -> Dict:
@@ -874,7 +874,7 @@ class USBEnforcer:
         try:
             with open(self.UDEV_RULE_PATH, 'r') as f:
                 return f.read()
-        except Exception as e:
+        except OSError as e:
             return f"Error reading rules: {e}"
 
     def cleanup(
@@ -913,7 +913,7 @@ class USBEnforcer:
                 if not allowed:
                     logger.info(f"USB cleanup blocked by persistence: {msg}")
                     return False, f"Cleanup blocked: {msg}"
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.warning(f"Persistence check failed: {e}")
                 # If persistence check fails, default to NOT cleaning up (fail-safe)
                 if not force:
@@ -928,7 +928,7 @@ class USBEnforcer:
                 logger.info("USB enforcement rules cleaned up")
                 return True, "USB rules cleaned up"
 
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.error(f"Error cleaning up USB rules: {e}")
                 return False, f"Cleanup failed: {e}"
 
@@ -950,7 +950,7 @@ class USBEnforcer:
                 self._current_mode = None
                 logger.warning("USB enforcement rules cleaned up (LEGACY MODE)")
 
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.error(f"Error cleaning up USB rules: {e}")
 
     def emergency_lockdown(self) -> bool:
@@ -983,7 +983,7 @@ class USBEnforcer:
             count, devices = self.eject_all_storage()
             logger.warning(f"Emergency USB lockdown: ejected {count} storage devices")
             return True
-        except Exception as e:
+        except (OSError, USBEnforcementError) as e:
             logger.critical(f"USB emergency lockdown failed: {e}")
             return False
 

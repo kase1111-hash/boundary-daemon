@@ -130,7 +130,7 @@ class Colors:
             else:
                 # Fallback: use normal green, will apply A_DIM when rendering
                 curses.init_pair(Colors.MATRIX_DARK, curses.COLOR_GREEN, curses.COLOR_BLACK)
-        except Exception:
+        except (curses.error, ValueError):
             curses.init_pair(Colors.MATRIX_DARK, curses.COLOR_GREEN, curses.COLOR_BLACK)
         # Lightning flash - inverted bright white on green
         curses.init_pair(Colors.LIGHTNING, curses.COLOR_BLACK, curses.COLOR_WHITE)

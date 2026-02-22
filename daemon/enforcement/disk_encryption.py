@@ -203,7 +203,7 @@ class EncryptionChecker:
                     status = EncryptionStatus.ENCRYPTED
                     details['fscrypt_output'] = result.stdout
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError, ValueError) as e:
             logger.debug(f"Error checking {device}: {e}")
             status = EncryptionStatus.UNKNOWN
 
@@ -239,7 +239,7 @@ class EncryptionChecker:
                 if volume:
                     volumes.append(volume)
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Error checking Windows volumes: {e}")
 
         return volumes
@@ -291,7 +291,7 @@ class EncryptionChecker:
                 details={'manage_bde_output': output},
             )
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Error checking BitLocker for {drive}: {e}")
             return None
 
@@ -446,7 +446,7 @@ class EncryptionChecker:
                     error_message=f"Disk encryption status: {overall}",
                     details=report,
                 )
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
         return report

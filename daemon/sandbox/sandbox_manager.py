@@ -556,7 +556,7 @@ class Sandbox:
 
             return result
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             self._state = SandboxState.FAILED
             self._emit_event('sandbox_error', {'error': str(e)})
             raise SandboxError(f"Sandbox execution failed: {e}")
@@ -884,7 +884,7 @@ class SandboxManager:
                     profile_name=profile.name,
                     boundary_mode=self.get_current_boundary_mode(),
                 )
-            except Exception as e:
+            except (AttributeError, TypeError) as e:
                 logger.debug(f"Telemetry tracking registration failed: {e}")
 
         logger.info(f"Created sandbox: {sandbox_id} (profile: {profile.name})")
@@ -930,7 +930,7 @@ class SandboxManager:
 
             return result
 
-        except Exception as e:
+        except SandboxError as e:
             with self._lock:
                 self._total_failed += 1
             raise
@@ -940,7 +940,7 @@ class SandboxManager:
             if self._telemetry:
                 try:
                     self._telemetry.untrack_sandbox(sandbox.sandbox_id)
-                except Exception:
+                except (AttributeError, TypeError):
                     pass
             with self._lock:
                 self._sandboxes.pop(sandbox.sandbox_id, None)
@@ -1020,7 +1020,7 @@ class SandboxManager:
         if self._telemetry:
             try:
                 stats['telemetry'] = self._telemetry.get_stats()
-            except Exception:
+            except (AttributeError, TypeError):
                 stats['telemetry'] = {'error': 'unavailable'}
 
         return stats

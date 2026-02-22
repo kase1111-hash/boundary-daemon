@@ -890,7 +890,7 @@ class CaseManager:
             current_mode = self._get_mode()
             if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
                 return True
-        except Exception:
+        except (AttributeError, ValueError):
             pass
         return False
 

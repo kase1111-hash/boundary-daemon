@@ -256,7 +256,7 @@ class SIEMConnector:
 
             return True, f"Connected to SIEM at {self.config.host}:{self.config.port}"
 
-        except Exception as e:
+        except (OSError, ssl.SSLError, ValueError) as e:
             self._stats['last_error'] = str(e)
             return False, f"Failed to connect to SIEM: {e}"
 
@@ -265,7 +265,7 @@ class SIEMConnector:
         if self._socket:
             try:
                 self._socket.close()
-            except Exception:
+            except OSError:
                 pass
             self._socket = None
 
@@ -292,7 +292,7 @@ class SIEMConnector:
             time.sleep(self.config.flush_interval)
             try:
                 self.flush()
-            except Exception as e:
+            except (OSError, ssl.SSLError, ValueError) as e:
                 logger.error(f"Error in SIEM flush loop: {e}")
 
     def send_event(self, event: SecurityEvent) -> bool:
@@ -359,7 +359,7 @@ class SIEMConnector:
             else:
                 return self._send_socket(message)
 
-        except Exception as e:
+        except (OSError, ssl.SSLError, ValueError, KeyError) as e:
             self._stats['last_error'] = str(e)
             logger.error(f"Failed to send event to SIEM: {e}")
             return False
@@ -515,7 +515,7 @@ class SIEMConnector:
                 try:
                     self._socket.sendall(data)
                     return True
-                except Exception:
+                except OSError:
                     pass
             return False
 
@@ -715,7 +715,7 @@ class SIEMIntegration:
             for callback in callbacks:
                 try:
                     callback(event)
-                except Exception as e:
+                except (TypeError, ValueError, RuntimeError) as e:
                     logger.error(f"Error in alert callback: {e}")
 
         # Also log to event logger if available
@@ -728,7 +728,7 @@ class SIEMIntegration:
                         else EventType.SECURITY_EVENT,
                     data=event.to_dict()
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     # === Authentication Events ===

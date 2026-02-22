@@ -513,7 +513,7 @@ class FirewallManager:
             else:
                 return False, f"Unsupported backend: {self._backend.value}"
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to apply firewall rules: {e}")
             return False, str(e)
 
@@ -636,7 +636,7 @@ class FirewallManager:
 
             return True, "Firewall rules cleared"
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return False, str(e)
 
     def block_host(self, host: str) -> Tuple[bool, str]:

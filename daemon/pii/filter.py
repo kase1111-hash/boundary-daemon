@@ -370,7 +370,7 @@ class PIIFilter:
                         'timestamp': datetime.utcnow().isoformat() + "Z"
                     }
                 )
-            except Exception:
+            except (ImportError, OSError, ValueError):
                 pass
 
     def disable(self, auth_token: str, reason: str = "") -> Tuple[bool, str]:
@@ -418,7 +418,7 @@ class PIIFilter:
                             'timestamp': datetime.utcnow().isoformat() + "Z"
                         }
                     )
-                except Exception:
+                except (ImportError, OSError, ValueError):
                     pass
 
             return (True, "PII filtering disabled")
@@ -687,7 +687,7 @@ class PIIFilter:
                     'type_summary': result._get_type_summary(),
                 }
             )
-        except Exception:
+        except (ImportError, OSError, ValueError):
             pass  # Don't fail on logging errors
 
     def _add_to_history(self, result: PIIFilterResult):

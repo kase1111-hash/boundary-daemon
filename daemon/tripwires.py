@@ -684,7 +684,7 @@ class TripwireSystem:
             pid = os.getpid()
             if pid <= 0:
                 return False
-        except Exception:
+        except OSError:
             return False
 
         return True

@@ -500,7 +500,7 @@ class EBPFMonitor:
 
                 return True, "eBPF monitoring started"
 
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 self._cleanup_bpf()
                 error_msg = f"Failed to start eBPF monitoring: {e}"
                 logger.error(error_msg)
@@ -554,7 +554,7 @@ class EBPFMonitor:
                 if self._process_bpf:
                     self._process_bpf.perf_buffer_poll(timeout=100)
 
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 if self._running:
                     logger.error(f"Error in eBPF poll loop: {e}")
                     time.sleep(0.1)
@@ -607,7 +607,7 @@ class EBPFMonitor:
             # Process the event
             self._process_event(event)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Error handling network event: {e}")
 
     def _handle_process_event(self, cpu, data, size):
@@ -645,7 +645,7 @@ class EBPFMonitor:
 
             self._process_event(event)
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Error handling process event: {e}")
 
     def _process_event(self, event: SecurityEvent):
@@ -676,7 +676,7 @@ class EBPFMonitor:
                     if callback_action.value > action.value:
                         action = callback_action
                         event.action_taken = action
-                except Exception as e:
+                except (TypeError, AttributeError, ValueError) as e:
                     logger.error(f"Error in event callback: {e}")
 
         # Handle the action
@@ -759,7 +759,7 @@ class EBPFMonitor:
                         **event.details
                     }
                 )
-            except Exception as e:
+            except (AttributeError, TypeError) as e:
                 logger.error(f"Error notifying daemon of alert: {e}")
 
     def _attempt_block(self, event: SecurityEvent):
@@ -790,7 +790,7 @@ class EBPFMonitor:
                     self.daemon.tripwire_system.trigger_lockdown(
                         reason=f"eBPF: {event.event_type.name} violation"
                     )
-            except Exception as e:
+            except (AttributeError, TypeError) as e:
                 logger.error(f"Error triggering lockdown: {e}")
 
     def _log_event(self, event: SecurityEvent):
@@ -816,7 +816,7 @@ class EBPFMonitor:
                         'timestamp': event.timestamp.isoformat() + 'Z',
                     }
                 )
-        except Exception as e:
+        except (ImportError, AttributeError, TypeError) as e:
             logger.debug(f"Error logging eBPF event: {e}")
 
     def get_stats(self) -> Dict:
@@ -896,7 +896,7 @@ def check_ebpf_requirements() -> Tuple[bool, List[str]]:
                 major, minor = int(match.group(1)), int(match.group(2))
                 if major < 4 or (major == 4 and minor < 15):
                     issues.append(f"Kernel version {major}.{minor} too old (need 4.15+)")
-    except Exception:
+    except (OSError, ValueError):
         issues.append("Could not determine kernel version")
 
     # Check for BPF filesystem

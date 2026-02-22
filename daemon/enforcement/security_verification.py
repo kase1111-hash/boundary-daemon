@@ -405,7 +405,7 @@ class SecurityVerifier:
                     message="Neither iptables nor nftables found",
                     duration_ms=(time.time() - start) * 1000,
                 )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return TestCase(
                 name="Firewall Available",
                 phase=1,
@@ -472,7 +472,7 @@ class SecurityVerifier:
                 message="Timeout checking firewall rules",
                 duration_ms=(time.time() - start) * 1000,
             )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return TestCase(
                 name="Firewall Rules Installed",
                 phase=1,
@@ -505,7 +505,7 @@ class SecurityVerifier:
                     message="udevadm not found",
                     duration_ms=(time.time() - start) * 1000,
                 )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return TestCase(
                 name="udev Available",
                 phase=1,
@@ -578,7 +578,7 @@ class SecurityVerifier:
                 duration_ms=(time.time() - start) * 1000,
             )
 
-        except Exception as e:
+        except OSError as e:
             return TestCase(
                 name="seccomp Support",
                 phase=1,
@@ -738,7 +738,7 @@ class SecurityVerifier:
                 message=f"Import error: {e}",
                 duration_ms=(time.time() - start) * 1000,
             )
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             return TestCase(
                 name="eBPF Monitor Start",
                 phase=2,
@@ -955,7 +955,7 @@ class SecurityVerifier:
                         duration_ms=(time.time() - start) * 1000,
                     )
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return TestCase(
                 name="MAC Enforcing",
                 phase=4,
@@ -1010,7 +1010,7 @@ class SecurityVerifier:
                         duration_ms=(time.time() - start) * 1000,
                     )
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return TestCase(
                 name="Boundary Policies Installed",
                 phase=4,
@@ -1083,7 +1083,7 @@ class SecurityVerifier:
                             duration_ms=(time.time() - start) * 1000,
                         )
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError, json.JSONDecodeError) as e:
             return TestCase(
                 name="MAC Enforcement Active",
                 phase=4,

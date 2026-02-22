@@ -325,7 +325,7 @@ class BundleExporter:
                         'status': 'warning',
                         'note': 'Append-only attribute not set',
                     })
-            except Exception:
+            except (subprocess.SubprocessError, OSError):
                 results['checks'].append({
                     'check': 'append_only_attribute',
                     'status': 'skip',

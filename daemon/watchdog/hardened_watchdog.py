@@ -716,7 +716,7 @@ class HardenedWatchdog:
         if self._on_lockdown:
             try:
                 self._on_lockdown(reason)
-            except Exception:
+            except (RuntimeError, OSError):
                 pass
 
         # 5. Write lockdown indicator file
@@ -771,7 +771,7 @@ class HardenedWatchdog:
                 if self.hardware._enabled:
                     self.hardware.ping()
 
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Monitor loop error: {e}")
 
             # Sleep with interruption check
@@ -911,12 +911,12 @@ class DaemonWatchdogEndpoint:
             response = self.protocol.create_response(challenge, 'daemon')
             conn.sendall(response.serialize())
 
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Watchdog endpoint error: {e}")
         finally:
             try:
                 conn.close()
-            except Exception:
+            except OSError:
                 pass
 
     def start(self):
@@ -959,7 +959,7 @@ class DaemonWatchdogEndpoint:
                     ).start()
                 except socket.timeout:
                     continue
-                except Exception as e:
+                except OSError as e:
                     if self._running:
                         logger.debug(f"Accept error: {e}")
 
@@ -975,7 +975,7 @@ class DaemonWatchdogEndpoint:
         if self._server_socket:
             try:
                 self._server_socket.close()
-            except Exception:
+            except OSError:
                 pass
 
         if self._thread:
@@ -984,7 +984,7 @@ class DaemonWatchdogEndpoint:
         # Clean up socket
         try:
             Path(self.socket_path).unlink()
-        except Exception:
+        except OSError:
             pass
 
         logger.info("Daemon watchdog endpoint stopped")
@@ -1012,27 +1012,27 @@ def generate_shared_secret() -> bytes:
             machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
             winreg.CloseKey(key)
             components.append(machine_guid)
-        except Exception:
+        except OSError:
             pass
 
         # Windows: Add computer name for additional uniqueness
         try:
             components.append(os.environ.get('COMPUTERNAME', ''))
-        except Exception:
+        except (ValueError, TypeError):
             pass
     else:
         # Linux: Machine ID
         try:
             with open('/etc/machine-id', 'r') as f:
                 components.append(f.read().strip())
-        except Exception:
+        except OSError:
             pass
 
         # Linux: Boot ID (changes each boot - adds freshness)
         try:
             with open('/proc/sys/kernel/random/boot_id', 'r') as f:
                 components.append(f.read().strip())
-        except Exception:
+        except OSError:
             pass
 
     # If nothing else, use a random secret (not persistent across restarts)

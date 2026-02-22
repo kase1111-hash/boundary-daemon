@@ -440,7 +440,7 @@ class TokenManager:
                     json.dump(data, f, indent=2)
                     f.flush()
                     os.fsync(f.fileno())
-            except Exception:
+            except OSError:
                 os.close(fd)
                 raise
 
@@ -520,7 +520,7 @@ class TokenManager:
                 f.write("# This token expires after 24 hours.\n")
                 f.write("#\n")
                 f.write(f"{token}\n")
-        except Exception:
+        except OSError:
             os.close(fd)
             raise
 

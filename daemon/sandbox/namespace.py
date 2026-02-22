@@ -124,7 +124,7 @@ class NamespaceManager:
             libc_name = ctypes.util.find_library('c')
             if libc_name:
                 return ctypes.CDLL(libc_name, use_errno=True)
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Could not load libc: {e}")
         return None
 
@@ -161,7 +161,7 @@ class NamespaceManager:
             except PermissionError:
                 pass
 
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Error detecting capabilities: {e}")
 
         return caps
@@ -192,7 +192,7 @@ class NamespaceManager:
                 logger.error(f"unshare failed with errno {errno}")
                 return False
             return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"unshare exception: {e}")
             return False
 
@@ -202,7 +202,7 @@ class NamespaceManager:
             map_file = Path(f'/proc/{pid}/{map_type}')
             map_file.write_text(mapping)
             return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to write {map_type}: {e}")
             return False
 
@@ -257,9 +257,9 @@ class NamespaceManager:
                 )
 
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Mount operation failed (sandbox compromised): {e}")
-        except Exception as e:
-            raise RuntimeError(f"Failed to setup mount namespace: {e}")
+            raise RuntimeError(f"Mount operation failed (sandbox compromised): {e}") from e
+        except OSError as e:
+            raise RuntimeError(f"Failed to setup mount namespace: {e}") from e
 
     def _setup_minimal_dev(self) -> None:
         """Create minimal /dev with only essential devices."""
@@ -298,7 +298,7 @@ class NamespaceManager:
                                   ('stdout', 'fd/1'), ('stderr', 'fd/2')]:
                 try:
                     (Path(dev_dir) / link).symlink_to(target)
-                except Exception:
+                except OSError:
                     pass
 
             # Mount over /dev
@@ -308,7 +308,7 @@ class NamespaceManager:
                 capture_output=True,
             )
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Could not setup minimal /dev: {e}")
 
     def _setup_network_namespace(self, config: NamespaceConfig) -> None:
@@ -321,7 +321,7 @@ class NamespaceManager:
                     check=False,
                     capture_output=True,
                 )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Could not setup network namespace: {e}")
 
     def _setup_uts_namespace(self, config: NamespaceConfig) -> None:
@@ -334,7 +334,7 @@ class NamespaceManager:
                     check=False,
                     capture_output=True,
                 )
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.debug(f"Could not set hostname: {e}")
 
     def create_isolated_process(
@@ -484,7 +484,7 @@ class NamespaceManager:
                 # Result not JSON serializable - log error and exit
                 logger.error(f"Result not JSON serializable in isolated process: {e}")
                 os._exit(2)
-            except Exception as e:
+            except OSError as e:
                 logger.error(f"Error in isolated process: {e}")
                 os._exit(1)
 
@@ -603,7 +603,7 @@ class IsolatedProcess:
                     parts = line.split(':')
                     if len(parts) >= 3:
                         return Path(f'/sys/fs/cgroup{parts[2]}')
-        except Exception:
+        except OSError:
             pass
         return None
 

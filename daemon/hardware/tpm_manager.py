@@ -516,7 +516,7 @@ class TPMManager:
         except subprocess.TimeoutExpired:
             raise TPMError("TPM operation timed out")
         except subprocess.SubprocessError as e:
-            raise TPMError(f"TPM subprocess error: {e}")
+            raise TPMError(f"TPM subprocess error: {e}") from e
 
     def _read_pcr_pytss(self, pcr_index: int) -> str:
         """Read PCR using tpm2-pytss"""
@@ -541,7 +541,7 @@ class TPMManager:
         except ImportError:
             raise TPMNotAvailableError("tpm2-pytss not installed")
         except Exception as e:
-            raise TPMError(f"TPM pytss error: {e}")
+            raise TPMError(f"TPM pytss error: {e}") from e
 
     def _read_pcr_simulator(self, pcr_index: int) -> str:
         """Read PCR from simulator (returns cached/computed value)"""
@@ -603,7 +603,7 @@ class TPMManager:
         except subprocess.TimeoutExpired:
             raise TPMError("TPM operation timed out")
         except subprocess.SubprocessError as e:
-            raise TPMError(f"TPM subprocess error: {e}")
+            raise TPMError(f"TPM subprocess error: {e}") from e
 
     def _extend_pcr_pytss(self, data: bytes, pcr_index: int) -> str:
         """Extend PCR using tpm2-pytss"""
@@ -626,7 +626,7 @@ class TPMManager:
         except ImportError:
             raise TPMNotAvailableError("tpm2-pytss not installed")
         except Exception as e:
-            raise TPMError(f"TPM pytss error: {e}")
+            raise TPMError(f"TPM pytss error: {e}") from e
 
     def _extend_pcr_simulator(self, data: bytes, pcr_index: int) -> str:
         """Extend PCR in simulator"""
@@ -699,7 +699,7 @@ class TPMManager:
         except TPMError:
             raise
         except Exception as e:
-            raise TPMAttestationError(f"Mode attestation failed: {e}")
+            raise TPMAttestationError(f"Mode attestation failed: {e}") from e
 
     def verify_mode_integrity(self, mode: 'BoundaryMode') -> Tuple[bool, Optional[str]]:
         """
@@ -905,7 +905,7 @@ class TPMManager:
         except TPMError:
             raise
         except Exception as e:
-            raise TPMSealingError(f"Sealing failed: {e}")
+            raise TPMSealingError(f"Sealing failed: {e}") from e
 
     def unseal_secret(self, sealed_secret: SealedSecret,
                       current_mode: 'BoundaryMode') -> bytes:
@@ -969,7 +969,7 @@ class TPMManager:
         except TPMError:
             raise
         except Exception as e:
-            raise TPMUnsealingError(f"Unsealing failed: {e}")
+            raise TPMUnsealingError(f"Unsealing failed: {e}") from e
 
     def _seal_tpm2tools(self, secret: bytes, mode_hash: str) -> bytes:
         """Seal using tpm2-tools with secure temporary file handling.
@@ -1052,9 +1052,9 @@ class TPMManager:
             return sealed_blob
 
         except subprocess.TimeoutExpired as e:
-            raise TPMSealingError(f"TPM sealing operation timed out: {e}")
+            raise TPMSealingError(f"TPM sealing operation timed out: {e}") from e
         except subprocess.SubprocessError as e:
-            raise TPMSealingError(f"TPM subprocess error during sealing: {e}")
+            raise TPMSealingError(f"TPM subprocess error during sealing: {e}") from e
         finally:
             # Secure cleanup of all temp files (in reverse order)
             for tf in reversed(temp_files):
@@ -1138,9 +1138,9 @@ class TPMManager:
             return secret
 
         except subprocess.TimeoutExpired as e:
-            raise TPMUnsealingError(f"TPM unsealing operation timed out: {e}")
+            raise TPMUnsealingError(f"TPM unsealing operation timed out: {e}") from e
         except subprocess.SubprocessError as e:
-            raise TPMUnsealingError(f"TPM subprocess error during unsealing: {e}")
+            raise TPMUnsealingError(f"TPM subprocess error during unsealing: {e}") from e
         finally:
             # Secure cleanup of all temp files (in reverse order)
             for tf in reversed(temp_files):
@@ -1183,7 +1183,7 @@ class TPMManager:
         except ImportError:
             raise TPMNotAvailableError("tpm2-pytss not installed")
         except Exception as e:
-            raise TPMSealingError(f"pytss sealing error: {e}")
+            raise TPMSealingError(f"pytss sealing error: {e}") from e
 
     def _unseal_pytss(self, sealed_blob: bytes, mode_hash: str) -> bytes:
         """Unseal using tpm2-pytss with AES-GCM decryption"""
@@ -1212,7 +1212,7 @@ class TPMManager:
             return secret
 
         except Exception as e:
-            raise TPMUnsealingError(f"pytss unsealing error: {e}")
+            raise TPMUnsealingError(f"pytss unsealing error: {e}") from e
 
     def _seal_simulator(self, secret: bytes, mode_hash: str) -> bytes:
         """Seal using simulator (software-only) with AES-GCM encryption"""

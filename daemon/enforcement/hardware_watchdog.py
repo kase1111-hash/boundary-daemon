@@ -242,7 +242,7 @@ class HardwareWatchdogManager:
                 firmware_version=firmware,
                 identity=identity,
             )
-        except Exception as e:
+        except (OSError, struct.error) as e:
             logger.debug(f"Could not get watchdog info: {e}")
             return None
 
@@ -265,7 +265,7 @@ class HardwareWatchdogManager:
                 self._timeout = actual_timeout
 
             return True
-        except Exception as e:
+        except (OSError, struct.error) as e:
             logger.warning(f"Could not set watchdog timeout: {e}")
             return False
 
@@ -288,7 +288,7 @@ class HardwareWatchdogManager:
                 self._pretimeout = actual
 
             return True
-        except Exception as e:
+        except (OSError, struct.error) as e:
             logger.debug(f"Could not set pretimeout: {e}")
             return False
 
@@ -323,7 +323,7 @@ class HardwareWatchdogManager:
             else:
                 logger.warning(f"Failed to load softdog: {result.stderr.decode()}")
                 return False
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.warning(f"Could not load softdog: {e}")
             return False
 
@@ -392,7 +392,7 @@ class HardwareWatchdogManager:
             return False, "Permission denied - run as root"
         except FileNotFoundError:
             return False, f"Watchdog device not found: {device}"
-        except Exception as e:
+        except OSError as e:
             if self._fd is not None:
                 try:
                     os.close(self._fd)
@@ -428,7 +428,7 @@ class HardwareWatchdogManager:
             logger.info("Hardware watchdog disabled (magic close)")
             return True, "Watchdog disabled"
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to disable watchdog: {e}")
             # Try to close anyway
             try:
@@ -457,7 +457,7 @@ class HardwareWatchdogManager:
             self._stats['pings'] += 1
             self._stats['last_ping'] = time.time()
             return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Watchdog ping failed: {e}")
             self._stats['errors'] += 1
             return False
@@ -561,7 +561,7 @@ class WatchdogLockdownManager:
             flag_path.write_text(f"pending:{time.time()}\n")
             self._lockdown_pending = True
             logger.info("Set watchdog lockdown pending flag")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to set lockdown flag: {e}")
 
     def clear_lockdown_pending(self):
@@ -576,7 +576,7 @@ class WatchdogLockdownManager:
                 flag_path.unlink()
             self._lockdown_pending = False
             logger.info("Cleared watchdog lockdown pending flag")
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Failed to clear lockdown flag: {e}")
 
     def check_watchdog_reset(self) -> bool:
@@ -611,7 +611,7 @@ class WatchdogLockdownManager:
 
                 return True
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Error checking watchdog reset: {e}")
 
         return False

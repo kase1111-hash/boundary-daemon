@@ -219,7 +219,7 @@ class WindowsFirewallEnforcer:
                 timeout=10,
             )
             return "RUNNING" in result.stdout
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.warning(f"Failed to check firewall service: {e}")
             return False
 
@@ -259,7 +259,7 @@ class WindowsFirewallEnforcer:
         except subprocess.TimeoutExpired:
             logger.error(f"netsh command timed out: {' '.join(cmd)}")
             return False, "Command timed out"
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to run netsh: {e}")
             return False, str(e)
 
@@ -290,7 +290,7 @@ class WindowsFirewallEnforcer:
         except subprocess.TimeoutExpired:
             logger.error("PowerShell command timed out")
             return False, "Command timed out"
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to run PowerShell: {e}")
             return False, str(e)
 
@@ -325,7 +325,7 @@ class WindowsFirewallEnforcer:
                 logger.error("Failed to backup firewall rules")
                 return None
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Backup failed: {e}")
             return None
 
@@ -359,7 +359,7 @@ class WindowsFirewallEnforcer:
                 logger.error("Failed to restore firewall rules")
                 return False
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Restore failed: {e}")
             return False
 
@@ -477,12 +477,12 @@ class WindowsFirewallEnforcer:
                     self._current_mode = "LOCKDOWN"
                     return False
 
-            except Exception as e:
+            except (subprocess.SubprocessError, OSError) as e:
                 logger.critical(f"Exception applying mode {mode}: {e}")
                 # Fail-closed
                 try:
                     self._apply_lockdown_mode()
-                except Exception:
+                except (subprocess.SubprocessError, OSError):
                     pass
                 return False
 
@@ -668,7 +668,7 @@ class WindowsFirewallEnforcer:
                         'platform': 'windows',
                     }
                 )
-            except Exception as e:
+            except (ImportError, AttributeError, TypeError) as e:
                 logger.debug(f"Failed to log mode change: {e}")
 
     def get_current_mode(self) -> Optional[str]:

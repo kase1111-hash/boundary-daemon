@@ -367,13 +367,13 @@ class Paths:
                 machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
                 winreg.CloseKey(key)
                 return machine_guid
-            except Exception:
+            except OSError:
                 return os.environ.get('COMPUTERNAME', 'unknown')
         else:
             try:
                 with open(cls.MACHINE_ID, 'r') as f:
                     return f.read().strip()
-            except Exception:
+            except OSError:
                 return 'unknown'
 
     @classmethod

@@ -258,7 +258,7 @@ class TextNormalizer:
             decoded = unquote(text)
             if decoded != text and '%' in text:
                 return decoded, BypassTechnique.URL_ENCODING
-        except Exception:
+        except (ValueError, TypeError):
             pass
 
         # Try HTML entity decoding
@@ -266,7 +266,7 @@ class TextNormalizer:
             decoded = html.unescape(text)
             if decoded != text and ('&' in text or '&#' in text):
                 return decoded, BypassTechnique.HTML_ENTITY
-        except Exception:
+        except (ValueError, TypeError):
             pass
 
         # Try base64 decoding (only for likely base64 strings)
@@ -280,7 +280,7 @@ class TextNormalizer:
                 decoded = base64.b64decode(padded).decode('utf-8', errors='strict')
                 if decoded.isprintable():
                     return decoded, BypassTechnique.BASE64_ENCODING
-        except Exception:
+        except (ValueError, binascii.Error, UnicodeDecodeError):
             pass
 
         # Try hex decoding
@@ -289,7 +289,7 @@ class TextNormalizer:
                 decoded = binascii.unhexlify(text.strip()).decode('utf-8', errors='strict')
                 if decoded.isprintable():
                     return decoded, BypassTechnique.HEX_ENCODING
-        except Exception:
+        except (ValueError, binascii.Error, UnicodeDecodeError):
             pass
 
         # Try Unicode escape sequences
@@ -298,7 +298,7 @@ class TextNormalizer:
                 decoded = text.encode().decode('unicode_escape')
                 if decoded != text:
                     return decoded, BypassTechnique.UNICODE_ESCAPE
-        except Exception:
+        except (ValueError, UnicodeDecodeError):
             pass
 
         return text, BypassTechnique.NONE
@@ -464,7 +464,7 @@ class BypassDetector:
                         confidence=0.8,
                         severity="high",
                     ))
-            except Exception:
+            except (ValueError, binascii.Error, UnicodeDecodeError):
                 pass
 
         # Hex patterns
@@ -485,7 +485,7 @@ class BypassDetector:
                             confidence=0.75,
                             severity="high",
                         ))
-                except Exception:
+                except (ValueError, binascii.Error, UnicodeDecodeError):
                     pass
 
         # URL encoded patterns
@@ -504,7 +504,7 @@ class BypassDetector:
                         confidence=0.85,
                         severity="medium",
                     ))
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
         return attempts

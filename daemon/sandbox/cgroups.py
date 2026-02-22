@@ -239,7 +239,7 @@ class CgroupManager:
                     except (PermissionError, OSError):
                         pass
 
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Error detecting cgroup capabilities: {e}")
 
         return caps
@@ -258,7 +258,7 @@ class CgroupManager:
                         cgroup_path = self._base_path / parts[2].lstrip('/')
                         if cgroup_path.exists():
                             return cgroup_path
-        except Exception:
+        except OSError:
             pass
         return None
 
@@ -295,8 +295,8 @@ class CgroupManager:
             logger.debug(f"Created cgroup: {cgroup_path}")
             return cgroup_path
 
-        except Exception as e:
-            raise CgroupError(f"Failed to create cgroup: {e}")
+        except OSError as e:
+            raise CgroupError(f"Failed to create cgroup: {e}") from e
 
     def _enable_controllers(self, cgroup_path: Path) -> None:
         """Enable controllers for a cgroup."""
@@ -309,7 +309,7 @@ class CgroupManager:
                 if to_enable:
                     content = ' '.join(f'+{c}' for c in to_enable)
                     subtree_control.write_text(content)
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Could not enable controllers: {e}")
 
     def delete_cgroup(self, cgroup_path: Path) -> bool:
@@ -343,7 +343,7 @@ class CgroupManager:
             logger.debug(f"Deleted cgroup: {cgroup_path}")
             return True
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to delete cgroup: {e}")
             return False
 
@@ -419,8 +419,8 @@ class CgroupManager:
 
             logger.debug(f"Set limits for cgroup: {cgroup_path}")
 
-        except Exception as e:
-            raise CgroupError(f"Failed to set limits: {e}")
+        except OSError as e:
+            raise CgroupError(f"Failed to set limits: {e}") from e
 
     def add_process(self, cgroup_path: Path, pid: int) -> bool:
         """
@@ -438,7 +438,7 @@ class CgroupManager:
             procs_file.write_text(str(pid))
             logger.debug(f"Added PID {pid} to cgroup {cgroup_path}")
             return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to add process to cgroup: {e}")
             return False
 
@@ -458,7 +458,7 @@ class CgroupManager:
                 content = procs_file.read_text().strip()
                 if content:
                     return [int(pid) for pid in content.split('\n')]
-        except Exception:
+        except OSError:
             pass
         return []
 
@@ -470,7 +470,7 @@ class CgroupManager:
             try:
                 kill_file.write_text('1')
                 return
-            except Exception:
+            except OSError:
                 pass
 
         # Fallback: kill each process
@@ -549,7 +549,7 @@ class CgroupManager:
             if pids_peak.exists():
                 usage.pids_peak = int(pids_peak.read_text().strip())
 
-        except Exception as e:
+        except OSError as e:
             logger.debug(f"Error reading cgroup stats: {e}")
 
         return usage
@@ -570,7 +570,7 @@ class CgroupManager:
                 freeze_file.write_text('1')
                 logger.debug(f"Frozen cgroup: {cgroup_path}")
                 return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to freeze cgroup: {e}")
         return False
 
@@ -590,7 +590,7 @@ class CgroupManager:
                 freeze_file.write_text('0')
                 logger.debug(f"Thawed cgroup: {cgroup_path}")
                 return True
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to thaw cgroup: {e}")
         return False
 

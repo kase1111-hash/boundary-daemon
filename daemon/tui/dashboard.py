@@ -1526,7 +1526,7 @@ class Dashboard:
             with open(export_path, 'w') as f:
                 json.dump(events, f, indent=2, default=str)
             self._show_message(f"Exported {len(events)} events to {export_path}", Colors.STATUS_OK)
-        except Exception as e:
+        except (OSError, ValueError, TypeError) as e:
             self._show_message(f"Export failed: {e}", Colors.STATUS_ERROR)
 
     # Boundary Daemon tool definitions with help
@@ -1914,7 +1914,7 @@ class Dashboard:
                         {'id': s.id[:8], 'name': s.name, 'status': s.status, 'uptime': s.uptime_str}
                         for s in self.sandboxes
                     ]
-            except Exception as e:
+            except (OSError, KeyError, ValueError) as e:
                 results[cmd] = {'error': str(e)}
 
         return results
@@ -2129,7 +2129,7 @@ Speak with confidence about the system's capabilities - you know this system ins
                 return lines
             else:
                 return lines + ["ERROR: No response from Ollama"]
-        except Exception as e:
+        except (OSError, ValueError) as e:
             return lines + [f"ERROR: Ollama error: {e}"]
 
     def _analyze_logs_with_ollama(self, num_events: int = 50) -> List[str]:
@@ -2147,7 +2147,7 @@ Speak with confidence about the system's capabilities - you know this system ins
             status = self.client.get_status()
             events = self.client.get_events(limit=num_events)
             alerts = self.client.get_alerts()
-        except Exception as e:
+        except (OSError, ValueError) as e:
             return [f"ERROR: Failed to fetch daemon data: {e}"]
 
         # Build comprehensive log data for Ollama
@@ -2259,7 +2259,7 @@ Provide a clear, actionable analysis."""
                 lines.append(f"Analyzed {len(events)} events, {len(alerts)} alerts")
             else:
                 lines.append("ERROR: No response from Ollama")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             lines.append(f"ERROR: Analysis failed: {e}")
 
         return lines
@@ -2699,7 +2699,7 @@ Provide a clear, actionable analysis."""
                         with open(args, 'w') as f:
                             json.dump(export_data, f, indent=2)
                         self._cli_results = [f"OK: Exported {len(events)} events to {args}"]
-                    except Exception as e:
+                    except (OSError, ValueError, TypeError) as e:
                         self._cli_results = [f"ERROR: Export failed: {e}"]
 
             else:
@@ -2708,7 +2708,7 @@ Provide a clear, actionable analysis."""
                     "Type 'help' for available commands.",
                 ]
 
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             self._cli_results = [f"ERROR: {e}"]
 
     def _execute_query(self, query_str: str) -> List[str]:

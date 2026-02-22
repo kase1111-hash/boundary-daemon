@@ -203,7 +203,7 @@ class ExecProbe(BaseProbe):
             logger.info("Exec probe started")
             return True
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Failed to start exec probe: {e}")
             return False
 
@@ -212,7 +212,7 @@ class ExecProbe(BaseProbe):
         while self._running:
             try:
                 self._bpf.perf_buffer_poll(timeout=100)
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
     def stop(self) -> None:
@@ -313,7 +313,7 @@ class OpenProbe(BaseProbe):
 
             return True
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Failed to start open probe: {e}")
             return False
 
@@ -321,7 +321,7 @@ class OpenProbe(BaseProbe):
         while self._running:
             try:
                 self._bpf.perf_buffer_poll(timeout=100)
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
     def stop(self) -> None:
@@ -444,7 +444,7 @@ class ConnectProbe(BaseProbe):
 
             return True
 
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             logger.error(f"Failed to start connect probe: {e}")
             return False
 
@@ -452,7 +452,7 @@ class ConnectProbe(BaseProbe):
         while self._running:
             try:
                 self._bpf.perf_buffer_poll(timeout=100)
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
     def stop(self) -> None:

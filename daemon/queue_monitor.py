@@ -507,7 +507,7 @@ class QueueMonitor:
                 self._check_all_queues()
 
                 time.sleep(self.config.sample_interval)
-            except Exception as e:
+            except (RuntimeError, OSError) as e:
                 logger.error(f"Error in queue monitor loop: {e}")
                 time.sleep(self.config.sample_interval)
 
@@ -531,7 +531,7 @@ class QueueMonitor:
                 # Export metrics
                 self._export_queue_metrics(snapshot)
 
-            except Exception as e:
+            except (AttributeError, TypeError, RuntimeError) as e:
                 logger.error(f"Error checking queue {name}: {e}")
 
     def _check_depth_thresholds(self, snapshot: QueueSnapshot, config: QueueConfig):
@@ -744,7 +744,7 @@ class QueueMonitor:
                 int(snapshot.avg_latency_ms)
             )
 
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.debug(f"Failed to export queue metrics: {e}")
 
     # Public API

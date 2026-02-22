@@ -105,7 +105,7 @@ class OllamaClient:
             current_mode = self._get_mode()
             if current_mode and current_mode.upper() in self.NETWORK_BLOCKED_MODES:
                 return True
-        except Exception:
+        except (AttributeError, TypeError):
             pass
         return False
 
@@ -118,7 +118,7 @@ class OllamaClient:
             req = urllib.request.Request(url, method='GET')
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.status == 200
-        except Exception:
+        except OSError:
             return False
 
     def list_models(self) -> List[str]:

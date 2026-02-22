@@ -632,7 +632,7 @@ class MessageGate:
                     _logging.getLogger(__name__).error(
                         f"Channel lifecycle monitor error: {e}"
                     )
-                except Exception:
+                except (ImportError, AttributeError):
                     pass
 
     def get_active_channels(self) -> List[Dict[str, Any]]:
@@ -763,7 +763,7 @@ class CeremonyManager:
             # Request keyboard input
             response = input("Type 'PRESENT' to confirm physical presence: ")
             return response.strip().upper() == 'PRESENT'
-        except Exception:
+        except (EOFError, OSError):
             return False
 
     def _cooldown_delay(self):
@@ -788,7 +788,7 @@ class CeremonyManager:
             print("This action will be logged in the immutable event chain.")
             response = input("\nType 'CONFIRM' to proceed: ")
             return response.strip().upper() == 'CONFIRM'
-        except Exception:
+        except (EOFError, OSError):
             return False
 
     def _log_ceremony_failed(self, action: str, reason: str):

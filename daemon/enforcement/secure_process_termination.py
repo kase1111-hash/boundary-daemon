@@ -37,6 +37,13 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+try:
+    import psutil
+    _PsutilProcessErrors = (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError)
+except ImportError:
+    psutil = None
+    _PsutilProcessErrors = (OSError,)
+
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
 
@@ -126,7 +133,7 @@ class ProcessInfo:
                     except (OSError, PermissionError):
                         pass
                 return info
-            except Exception as e:
+            except _PsutilProcessErrors as e:
                 logger.debug(f"Error getting process info for PID {pid} on Windows: {e}")
                 return None
 
@@ -217,7 +224,7 @@ class ProcessInfo:
 
             return info
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.debug(f"Error getting process info for PID {pid}: {e}")
             return None
 
@@ -545,7 +552,7 @@ class SecureProcessTerminator:
                 self._record_attempt(attempt)
                 return TerminationResult.TIMEOUT, f"Process {pid} did not terminate (zombie?)"
 
-            except Exception as e:
+            except OSError as e:
                 attempt.result = TerminationResult.ERROR
                 attempt.error_message = str(e)
                 self._record_attempt(attempt)
@@ -574,7 +581,7 @@ class SecureProcessTerminator:
                     event_type='PROCESS_TERMINATION',
                     data=attempt.to_dict(),
                 )
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
     def find_processes_by_criteria(
@@ -670,7 +677,7 @@ class SecureProcessTerminator:
 
                     matches.append(process_info)
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Error finding processes: {e}")
 
         return matches
@@ -771,7 +778,7 @@ class SecureProcessTerminator:
                     if is_suspicious:
                         suspicious.append((process_info, reason))
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Error finding suspicious processes: {e}")
 
         return suspicious

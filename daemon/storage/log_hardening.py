@@ -164,7 +164,7 @@ class LogHardener:
             try:
                 import ctypes
                 self._is_root = ctypes.windll.shell32.IsUserAnAdmin() != 0
-            except Exception:
+            except OSError:
                 self._is_root = False
         else:
             self._is_root = os.geteuid() == 0
@@ -208,7 +208,7 @@ class LogHardener:
                 return (False, result.stderr.strip())
         except subprocess.TimeoutExpired:
             return (False, "chattr timed out")
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             return (False, str(e))
 
     def _get_file_attrs(self, path: Path) -> Tuple[bool, bool]:
@@ -235,7 +235,7 @@ class LogHardener:
                 is_append = 'a' in attrs
                 is_immutable = 'i' in attrs
                 return (is_append, is_immutable)
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
 
         return (False, False)
@@ -245,7 +245,7 @@ class LogHardener:
         try:
             os.chmod(path, mode)
             return (True, "")
-        except Exception as e:
+        except OSError as e:
             return (False, str(e))
 
     def _get_permissions(self, path: Path) -> str:
@@ -253,7 +253,7 @@ class LogHardener:
         try:
             st = os.stat(path)
             return oct(st.st_mode)[-3:]
-        except Exception:
+        except OSError:
             return "???"
 
     def _get_owner_group(self, path: Path) -> Tuple[str, str]:
@@ -265,7 +265,7 @@ class LogHardener:
             owner = pwd.getpwuid(st.st_uid).pw_name
             group = grp.getgrgid(st.st_gid).gr_name
             return (owner, group)
-        except Exception:
+        except (ImportError, OSError, KeyError):
             return ("?", "?")
 
     def _ensure_sig_dir(self) -> Tuple[bool, str]:
@@ -274,7 +274,7 @@ class LogHardener:
             self.sig_dir.mkdir(parents=True, exist_ok=True)
             os.chmod(self.sig_dir, self.PERM_DIR)
             return (True, "")
-        except Exception as e:
+        except OSError as e:
             return (False, str(e))
 
     def harden(self) -> HardeningStatus:
@@ -299,7 +299,7 @@ class LogHardener:
             # Ensure log directory has proper permissions
             try:
                 os.chmod(self.log_path.parent, self.PERM_DIR)
-            except Exception as e:
+            except OSError as e:
                 warnings.append(f"Could not set directory permissions: {e}")
 
             # Apply file permissions
@@ -373,7 +373,7 @@ class LogHardener:
             if self._on_protection_change:
                 try:
                     self._on_protection_change(str(self.log_path), status)
-                except Exception:
+                except (RuntimeError, OSError):
                     pass
 
             # Fail if strict and protection incomplete
@@ -496,7 +496,7 @@ class LogHardener:
             os.chmod(checkpoint_path, self.PERM_SEALED)
             logger.info(f"Created seal checkpoint: {checkpoint_path}")
 
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Could not create seal checkpoint: {e}")
 
     def _compute_file_hash(self, path: Path) -> str:
@@ -507,7 +507,7 @@ class LogHardener:
                 for chunk in iter(lambda: f.read(8192), b''):
                     sha256.update(chunk)
             return sha256.hexdigest()
-        except Exception:
+        except OSError:
             return ""
 
     def unseal(self) -> bool:
@@ -632,7 +632,7 @@ class LogHardener:
                     if expected_size != actual_size:
                         issues.append(f"Sealed log size mismatch: expected {expected_size}, got {actual_size}")
 
-                except Exception as e:
+                except (OSError, ValueError, TypeError, KeyError) as e:
                     issues.append(f"Could not verify seal checkpoint: {e}")
 
             return (len(issues) == 0, issues)

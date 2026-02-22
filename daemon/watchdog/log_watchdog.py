@@ -196,7 +196,7 @@ class LogWatchdog:
         try:
             client.list()
             return True
-        except Exception:
+        except OSError:
             return False
 
     def add_log_path(self, path: str):
