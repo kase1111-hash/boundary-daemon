@@ -1,6 +1,10 @@
 """
 Coordinator Backends - Pluggable cluster coordination backends
-Provides abstract interface and implementations (file-based, etcd, consul, etc.)
+
+Status: Only FileCoordinator is implemented. Etcd and Consul coordinators
+are referenced in documentation but do not exist.
+
+TODO: Implement EtcdCoordinator or remove etcd/consul claims from docs
 
 SECURITY (Vuln #8 - Identity Spoofing): All coordinator writes are
 authenticated with HMAC-SHA256 using a pre-shared cluster secret.

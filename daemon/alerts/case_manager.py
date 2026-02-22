@@ -1,19 +1,20 @@
 """
 Case Management - Alert Lifecycle and External Integrations
 
-Phase 2 Operational Excellence: Provides workflow for alerts with
-external system integrations.
-
 Features:
 - Alert lifecycle management (NEW → ASSIGNED → INVESTIGATING → RESOLVED)
 - SLA tracking (time to acknowledge, time to resolve)
-- External integrations:
-  - ServiceNow: Create incidents on CRITICAL
-  - Jira: Create issues with labels
-  - PagerDuty: Page on-call for CRITICAL
-  - Slack: Thread updates for case progress
 - Case correlation (group related alerts)
 - Timeline view of case events
+
+External integrations (require: pip install requests):
+  - ServiceNow: Create incidents on CRITICAL
+  - PagerDuty: Page on-call for CRITICAL
+  - Slack: Thread updates for case progress
+
+TODO: Jira integration not yet implemented
+TODO: Add requests to optional dependencies in docs
+TODO: Add integration tests for external service clients
 
 Usage:
     case_manager = CaseManager(config)

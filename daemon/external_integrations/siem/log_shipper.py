@@ -2,16 +2,16 @@
 Log Shipper for SIEM Integration
 
 Provides log shipping capabilities to:
-- Apache Kafka for real-time streaming
-- AWS S3 for cloud storage
-- Google Cloud Storage for cloud storage
-- Generic HTTP endpoints
+- FileShipper: Local file output (always available)
+- HTTPShipper: Generic HTTP endpoints (always available)
+- KafkaShipper: Apache Kafka (requires: pip install kafka-python)
+- S3Shipper: AWS S3 (requires: pip install boto3)
+- GCSShipper: Google Cloud Storage (requires: pip install google-cloud-storage)
 
-All shippers support:
-- Batching for efficiency
-- Retry with exponential backoff
-- Compression (gzip)
-- Signature inclusion for verification
+All shippers support batching, retry with backoff, compression, and signatures.
+
+TODO: Add kafka-python, boto3, google-cloud-storage to optional deps in docs
+TODO: Add integration tests for Kafka/S3/GCS shippers (currently untested)
 """
 
 import gzip
