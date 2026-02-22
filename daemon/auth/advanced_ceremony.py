@@ -27,10 +27,6 @@ from .biometric_verifier import BiometricVerifier
 from ..event_logger import EventType
 
 
-# =============================================================================
-# CEREMONY TEMPLATE SYSTEM
-# =============================================================================
-
 class CeremonyType(Enum):
     """Pre-defined ceremony types with specific requirements."""
     EMERGENCY_ACCESS = "emergency_access"
@@ -215,10 +211,6 @@ CEREMONY_TEMPLATES: Dict[CeremonyType, CeremonyTemplate] = {
     ),
 }
 
-
-# =============================================================================
-# N-OF-M MULTI-PARTY CEREMONY
-# =============================================================================
 
 @dataclass
 class Approver:
@@ -557,10 +549,6 @@ class NofMCeremonyManager:
         )
 
 
-# =============================================================================
-# TIME-LOCKED CEREMONIES
-# =============================================================================
-
 @dataclass
 class TimeWindow:
     """Definition of an allowed time window."""
@@ -721,10 +709,6 @@ class TimeLockedCeremony:
 
         return ceremony_callback()
 
-
-# =============================================================================
-# DEAD-MAN CEREMONY (ACTIVITY WATCHDOG)
-# =============================================================================
 
 @dataclass
 class DeadManTrigger:
@@ -985,10 +969,6 @@ class DeadManCeremony:
                     }
                 )
 
-
-# =============================================================================
-# HARDWARE TOKEN CEREMONIES (FIDO2/U2F)
-# =============================================================================
 
 class HardwareTokenType(Enum):
     """Supported hardware token types."""
@@ -1505,10 +1485,6 @@ class HardwareTokenCeremony:
         return (success, message)
 
 
-# =============================================================================
-# ADVANCED CEREMONY MANAGER (UNIFIED)
-# =============================================================================
-
 class AdvancedCeremonyManager(EnhancedCeremonyManager):
     """
     Advanced ceremony manager integrating all ceremony types.
@@ -1721,10 +1697,6 @@ class AdvancedCeremonyManager(EnhancedCeremonyManager):
             'hardware_token': self.hardware_token.get_capabilities()
         }
 
-
-# =============================================================================
-# MODULE INITIALIZATION
-# =============================================================================
 
 __all__ = [
     # Enums
