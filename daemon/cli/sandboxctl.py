@@ -96,9 +96,12 @@ def format_duration(seconds: float) -> str:
         return f"{hours}h {mins}m"
 
 
-def print_error(msg: str) -> None:
-    """Print error message."""
-    print(f"{Colors.RED}Error:{Colors.RESET} {msg}", file=sys.stderr)
+def print_error(msg: str, code: str = "", hint: str = "") -> None:
+    """Print error message with optional error code and hint."""
+    prefix = f"{Colors.RED}{code}:{Colors.RESET} " if code else f"{Colors.RED}Error:{Colors.RESET} "
+    print(f"{prefix}{msg}", file=sys.stderr)
+    if hint:
+        print(f"  {Colors.GRAY}Hint: {hint}{Colors.RESET}", file=sys.stderr)
 
 
 def print_success(msg: str) -> None:
@@ -131,7 +134,8 @@ class SandboxCLI:
     def _get_manager(self) -> SandboxManager:
         """Get or create sandbox manager."""
         if not SANDBOX_AVAILABLE:
-            print_error("Sandbox module not available. Ensure boundary-daemon is installed.")
+            print_error("Sandbox module not available.",
+                        code="E009", hint="Ensure boundary-daemon is installed.")
             sys.exit(1)
 
         if self._manager is None:
@@ -144,7 +148,8 @@ class SandboxCLI:
     def cmd_run(self, args: argparse.Namespace) -> int:
         """Run a command in a sandbox."""
         if not args.command:
-            print_error("No command specified. Use: sandboxctl run -- <command>")
+            print_error("No command specified.", code="E003",
+                        hint="Use: sandboxctl run -- <command>")
             return 1
 
         manager = self._get_manager()
@@ -233,10 +238,12 @@ class SandboxCLI:
             return result.exit_code
 
         except SandboxError as e:
-            print_error(str(e))
+            print_error(str(e), code="E010",
+                        hint="Check sandbox profile and system capabilities.")
             return 1
         except Exception as e:
-            print_error(f"Unexpected error: {e}")
+            print_error(f"Unexpected error: {e}", code="E010",
+                        hint="Run with --verbose for full traceback.")
             if args.verbose:
                 import traceback
                 traceback.print_exc()
@@ -309,7 +316,8 @@ class SandboxCLI:
         try:
             sandbox = manager.get_sandbox(args.sandbox_id)
         except Exception as e:
-            print_error(f"Sandbox not found: {args.sandbox_id}")
+            print_error(f"Sandbox not found: {args.sandbox_id}",
+                        code="E011", hint="Run: sandboxctl list")
             return 1
 
         info = sandbox.get_info()
@@ -379,7 +387,7 @@ class SandboxCLI:
                 manager.terminate_sandbox(sandbox_id, signal=sig.value)
                 print_success(f"Killed sandbox: {sandbox_id}")
             except Exception as e:
-                print_error(f"Failed to kill {sandbox_id}: {e}")
+                print_error(f"Failed to kill {sandbox_id}: {e}", code="E010")
                 errors += 1
 
         return 1 if errors else 0
@@ -510,7 +518,8 @@ class SandboxCLI:
     def cmd_metrics(self, args: argparse.Namespace) -> int:
         """Show sandbox metrics."""
         if not METRICS_AVAILABLE:
-            print_error("Metrics module not available")
+            print_error("Metrics module not available.",
+                        code="E009", hint="Install boundary-daemon telemetry dependencies.")
             return 1
 
         exporter = get_metrics_exporter()
@@ -722,7 +731,8 @@ def main() -> int:
     if handler:
         return handler(args)
     else:
-        print_error(f"Unknown command: {args.command}")
+        print_error(f"Unknown command: {args.command}",
+                     code="E003", hint="Run: sandboxctl --help")
         return 1
 
 

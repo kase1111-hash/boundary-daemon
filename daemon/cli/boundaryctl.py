@@ -35,6 +35,13 @@ import os
 import sys
 
 
+def _print_cli_error(code: str, message: str, hint: str = "") -> None:
+    """Print a structured CLI error with code and optional hint."""
+    print(f"{code}: {message}", file=sys.stderr)
+    if hint:
+        print(f"  Hint: {hint}", file=sys.stderr)
+
+
 def cmd_status(args):
     """Show daemon status."""
     print("Daemon Status:")
@@ -97,7 +104,8 @@ def cmd_query(args):
                 print(f"\nExported to {args.export}")
 
     except ImportError:
-        print("Query module not available. Run from daemon directory.")
+        _print_cli_error("E009", "Query module not available.",
+                         "Run from the daemon source directory or install boundary-daemon.")
         return 1
 
 
@@ -108,10 +116,11 @@ def cmd_dashboard(args):
         run_dashboard(refresh_interval=args.refresh, socket_path=args.socket,
                      matrix_mode=getattr(args, 'matrix', False))
     except ImportError:
-        print("Dashboard module not available. Run from daemon directory.")
+        _print_cli_error("E009", "Dashboard module not available.",
+                         "Run from the daemon source directory or install boundary-daemon.")
         return 1
     except Exception as e:
-        print(f"Dashboard error: {e}")
+        _print_cli_error("E010", f"Dashboard error: {e}")
         return 1
 
 
@@ -124,7 +133,8 @@ def cmd_config(args):
             exit_code = lint_config(config_path, fix=args.fix, quiet=args.quiet)
             return exit_code
         except ImportError:
-            print("Linter module not available.")
+            _print_cli_error("E009", "Linter module not available.",
+                             "Install boundary-daemon or run from source directory.")
             return 1
 
     elif args.config_cmd == 'show':
@@ -133,25 +143,27 @@ def cmd_config(args):
             with open(config_path) as f:
                 print(f.read())
         else:
-            print(f"Config file not found: {config_path}")
+            _print_cli_error("E009", f"Config file not found: {config_path}",
+                             "Set BOUNDARY_CONFIG or pass --config-file.")
             return 1
 
     elif args.config_cmd == 'validate':
         print("Validating configuration...")
-        # Same as lint but just pass/fail
         try:
             from daemon.config.linter import ConfigLinter
             config_path = args.config_file or '/etc/boundary-daemon/boundary.conf'
             linter = ConfigLinter()
             result = linter.lint(config_path)
             if result.can_start:
-                print("✓ Configuration is valid")
+                print("Configuration is valid")
                 return 0
             else:
-                print("✗ Configuration has critical issues")
+                _print_cli_error("E009", "Configuration has critical issues.",
+                                 "Run: boundaryctl config lint --fix")
                 return 1
         except ImportError:
-            print("Linter module not available.")
+            _print_cli_error("E009", "Linter module not available.",
+                             "Install boundary-daemon or run from source directory.")
             return 1
 
 
@@ -179,7 +191,8 @@ def cmd_case(args):
         elif args.case_cmd == 'show':
             case = manager.get_case(args.case_id)
             if not case:
-                print(f"Case not found: {args.case_id}")
+                _print_cli_error("E011", f"Case not found: {args.case_id}",
+                                 "Run: boundaryctl case list")
                 return 1
 
             print(f"Case ID: {case.case_id}")
@@ -199,14 +212,16 @@ def cmd_case(args):
             if manager.assign(args.case_id, args.assignee, actor="cli"):
                 print(f"Case {args.case_id} assigned to {args.assignee}")
             else:
-                print(f"Failed to assign case")
+                _print_cli_error("E010", f"Failed to assign case {args.case_id}.",
+                                 "Check daemon logs for details.")
                 return 1
 
         elif args.case_cmd == 'resolve':
             if manager.resolve(args.case_id, args.resolution, actor="cli"):
                 print(f"Case {args.case_id} resolved")
             else:
-                print(f"Failed to resolve case")
+                _print_cli_error("E010", f"Failed to resolve case {args.case_id}.",
+                                 "Check daemon logs for details.")
                 return 1
 
         elif args.case_cmd == 'sla':
@@ -219,7 +234,8 @@ def cmd_case(args):
                     print(f"  {case.case_id}: {case.severity.name} - {case.title[:40]}")
 
     except ImportError as e:
-        print(f"Case management module not available: {e}")
+        _print_cli_error("E009", f"Case management module not available: {e}",
+                         "Install boundary-daemon or run from source directory.")
         return 1
 
 
@@ -243,7 +259,8 @@ def cmd_ceremony(args):
             time.sleep(1)
         print("\nCeremony completed successfully.")
     else:
-        print("\nPhrase mismatch. Ceremony aborted.")
+        _print_cli_error("E006", "Phrase mismatch. Ceremony aborted.",
+                         "Type the exact confirmation phrase to proceed.")
         return 1
 
 

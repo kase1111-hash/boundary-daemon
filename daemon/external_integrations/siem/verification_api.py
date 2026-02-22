@@ -21,6 +21,9 @@ from enum import Enum
 from typing import Dict, List, Optional, Any, Tuple
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+from daemon.api.response import ok_response, error_response
+from daemon.api.error_codes import INVALID_REQUEST, NOT_FOUND, INTERNAL_ERROR
+
 logger = logging.getLogger(__name__)
 
 # Try to import NaCl for Ed25519 signature verification
@@ -398,7 +401,22 @@ class SignatureVerificationAPI:
             def log_message(self, format, *args):
                 logger.debug(f"HTTP: {format % args}")
 
+            @staticmethod
+            def _route(path: str) -> str:
+                """Strip /v1 prefix for versioned routing."""
+                if path.startswith('/v1'):
+                    path = path[3:]
+                return path.rstrip('/') or '/'
+
             def _send_json(self, status: int, data: Any):
+                if status < 400:
+                    envelope = ok_response(data if isinstance(data, dict) else {})
+                else:
+                    err = data if isinstance(data, dict) else {}
+                    code = err.get('code', INTERNAL_ERROR.code)
+                    message = err.get('message', err.get('error', INTERNAL_ERROR.message))
+                    envelope = error_response(code, message)
+                body = envelope.to_json().encode('utf-8')
                 self.send_response(status)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Cache-Control', 'no-store')
@@ -406,19 +424,20 @@ class SignatureVerificationAPI:
                 self.send_header('X-Frame-Options', 'DENY')
                 self.send_header('Content-Security-Policy', "default-src 'none'")
                 self.end_headers()
-                self.wfile.write(json.dumps(data).encode('utf-8'))
+                self.wfile.write(body)
 
             def do_GET(self):
-                if self.path == '/keys':
+                route = self._route(self.path)
+                if route == '/keys':
                     keys = {
                         kid: key.hex()
                         for kid, key in api.verifier.trusted_keys.items()
                     }
                     self._send_json(200, {'keys': keys})
-                elif self.path == '/health':
+                elif route == '/health':
                     self._send_json(200, {'status': 'healthy'})
                 else:
-                    self._send_json(404, {'error': 'Not found'})
+                    self._send_json(404, {'code': NOT_FOUND.code, 'message': NOT_FOUND.message})
 
             def do_POST(self):
                 content_length = int(self.headers.get('Content-Length', 0))
@@ -427,10 +446,15 @@ class SignatureVerificationAPI:
                 try:
                     data = json.loads(body.decode('utf-8'))
                 except json.JSONDecodeError:
-                    self._send_json(400, {'error': 'Invalid JSON'})
+                    self._send_json(400, {
+                        'code': INVALID_REQUEST.code,
+                        'message': 'Invalid JSON',
+                    })
                     return
 
-                if self.path == '/verify':
+                route = self._route(self.path)
+
+                if route == '/verify':
                     event = data.get('event', data)
                     signature = data.get('signature')
                     result = api.verify_event(event, signature)
@@ -441,7 +465,7 @@ class SignatureVerificationAPI:
                         'error': result.error_message,
                     })
 
-                elif self.path == '/verify/batch':
+                elif route == '/verify/batch':
                     request = VerificationRequest(
                         events=data.get('events', []),
                         signatures=data.get('signatures'),
@@ -468,20 +492,26 @@ class SignatureVerificationAPI:
                         ],
                     })
 
-                elif self.path == '/keys':
+                elif route == '/keys':
                     # TODO: POST /keys should require authentication — currently unauthenticated
                     key_id = data.get('key_id')
                     public_key = data.get('public_key')
                     if not key_id or not public_key:
-                        self._send_json(400, {'error': 'key_id and public_key required'})
+                        self._send_json(400, {
+                            'code': INVALID_REQUEST.code,
+                            'message': 'key_id and public_key required',
+                        })
                         return
                     if api.verifier.add_trusted_key(key_id, public_key):
                         self._send_json(200, {'status': 'added', 'key_id': key_id})
                     else:
-                        self._send_json(400, {'error': 'Invalid public key'})
+                        self._send_json(400, {
+                            'code': INVALID_REQUEST.code,
+                            'message': 'Invalid public key',
+                        })
 
                 else:
-                    self._send_json(404, {'error': 'Not found'})
+                    self._send_json(404, {'code': NOT_FOUND.code, 'message': NOT_FOUND.message})
 
         return VerificationHandler
 
