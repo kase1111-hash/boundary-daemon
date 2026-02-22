@@ -290,7 +290,7 @@ class NamespaceManager:
                             check=False,
                             capture_output=True,
                         )
-                    except Exception:
+                    except (subprocess.SubprocessError, OSError):
                         pass
 
             # Create symlinks

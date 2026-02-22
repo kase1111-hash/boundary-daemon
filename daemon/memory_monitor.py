@@ -335,7 +335,7 @@ class TraceMallocDebugger:
 
         try:
             return tracemalloc.get_traced_memory()
-        except Exception:
+        except (ValueError, OSError):
             return (0, 0)
 
     def get_snapshots(self, limit: Optional[int] = None) -> List[TraceMallocSnapshot]:
@@ -679,7 +679,7 @@ class MemoryMonitor:
                     'new_sites_count': len(report.new_sites),
                 }
             )
-        except Exception:
+        except (ImportError, AttributeError):
             pass
 
     def _take_snapshot(self) -> MemorySnapshot:
@@ -1048,7 +1048,7 @@ class MemoryMonitor:
                         **(metadata or {}),
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
         # Capture tracemalloc snapshot on critical leak alerts

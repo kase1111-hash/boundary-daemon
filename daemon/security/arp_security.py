@@ -62,7 +62,7 @@ def _is_elevated() -> bool:
         try:
             import ctypes
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, OSError):
             return False
     else:
         return os.geteuid() == 0
@@ -281,7 +281,7 @@ class ARPSecurityMonitor:
                 self._update_arp_table()
                 self._cleanup_old_records()
                 time.sleep(5)  # Check every 5 seconds
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError, ValueError) as e:
                 print(f"Error in ARP monitor loop: {e}")
                 time.sleep(5)
 
@@ -379,13 +379,13 @@ class ARPSecurityMonitor:
             if self._on_block_callback:
                 try:
                     self._on_block_callback(ip, reason)
-                except Exception as e:
+                except (TypeError, ValueError, RuntimeError) as e:
                     logger.error(f"Block callback error: {e}")
 
             logger.warning(f"ARP BLOCKED IP: {ip} - Reason: {reason}")
             return (True, f"Blocked IP {ip}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             # Rollback on any exception
             with self._lock:
                 self._blocked_ips.discard(ip)
@@ -446,7 +446,7 @@ class ARPSecurityMonitor:
             logger.info(f"ARP UNBLOCKED IP: {ip}")
             return (True, f"Unblocked IP {ip}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             # Rollback on exception - restore blocked state
             with self._lock:
                 self._blocked_ips.add(ip)
@@ -518,7 +518,7 @@ class ARPSecurityMonitor:
             else:
                 return (False, f"Failed: {result.stderr.decode()}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to set static ARP: {e}")
             return (False, str(e))
 
@@ -549,7 +549,7 @@ class ARPSecurityMonitor:
             logger.info(f"Removed static ARP for {ip}")
             return (True, f"Removed static ARP for {ip}")
 
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to remove static ARP: {e}")
             return (False, str(e))
 
@@ -622,7 +622,7 @@ class ARPSecurityMonitor:
                 match = re.search(r'dev\s+(\w+)', output)
                 if match:
                     return match.group(1)
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             pass
         return None
 
@@ -660,7 +660,7 @@ class ARPSecurityMonitor:
                         'timestamp': datetime.utcnow().isoformat() + "Z"
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def _log_unblock_event(self, ip: str):

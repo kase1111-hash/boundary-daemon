@@ -903,7 +903,7 @@ class ResourceMonitor:
                         **(metadata or {}),
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def _export_metrics(self, snapshot: ResourceSnapshot):
@@ -1273,7 +1273,7 @@ if __name__ == '__main__':
             try:
                 f = open('/dev/null', 'r')
                 test_files.append(f)
-            except Exception:
+            except OSError:
                 pass
 
             time.sleep(2)

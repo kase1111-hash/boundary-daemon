@@ -301,7 +301,7 @@ class HardwareWatchdogManager:
             buf = struct.pack('i', 0)
             result = fcntl.ioctl(self._fd, WDIOC_GETTIMELEFT, buf)
             return struct.unpack('i', result)[0]
-        except Exception:
+        except OSError:
             return None
 
     def load_softdog(self) -> bool:
@@ -396,7 +396,7 @@ class HardwareWatchdogManager:
             if self._fd is not None:
                 try:
                     os.close(self._fd)
-                except Exception:
+                except OSError:
                     pass
                 self._fd = None
             return False, f"Failed to enable watchdog: {e}"
@@ -433,7 +433,7 @@ class HardwareWatchdogManager:
             # Try to close anyway
             try:
                 os.close(self._fd)
-            except Exception:
+            except OSError:
                 pass
             self._fd = None
             self._enabled = False
@@ -632,7 +632,7 @@ class WatchdogLockdownManager:
                     key, value = line.split(':', 1)
                     info[key] = value
             return info
-        except Exception:
+        except (OSError, ValueError):
             return None
 
 
@@ -670,7 +670,7 @@ def check_watchdog_support() -> Dict[str, Any]:
         with open('/proc/modules', 'r') as f:
             modules = f.read()
             result['softdog_loaded'] = 'softdog' in modules
-    except Exception:
+    except OSError:
         pass
 
     # Determine recommendation

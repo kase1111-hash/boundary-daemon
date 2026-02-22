@@ -522,21 +522,21 @@ class EBPFMonitor:
         if self._network_bpf:
             try:
                 self._network_bpf.cleanup()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
             self._network_bpf = None
 
         if self._process_bpf:
             try:
                 self._process_bpf.cleanup()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
             self._process_bpf = None
 
         if self._usb_bpf:
             try:
                 self._usb_bpf.cleanup()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
             self._usb_bpf = None
 

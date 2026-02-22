@@ -227,7 +227,7 @@ class FirewallManager:
         try:
             import ctypes
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
+        except (AttributeError, OSError, ImportError):
             return False
 
     def _detect_backend(self) -> FirewallBackend:
@@ -685,7 +685,7 @@ class FirewallManager:
                         **data,
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError, TypeError):
                 pass
 
         if self._siem:
@@ -697,7 +697,7 @@ class FirewallManager:
                         **data,
                     }
                 )
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
 
 

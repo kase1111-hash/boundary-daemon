@@ -168,7 +168,7 @@ class Dashboard:
                     mock_engine = MockTTSEngine()
                     mock_engine.initialize()
                     self._tts_manager.register_engine(mock_engine)
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 logger.debug(f"TTS initialization error: {e}")
                 self._tts_manager = None
 
@@ -190,7 +190,7 @@ class Dashboard:
                 self._ollama_client = OllamaClient(config)
                 # Load self-knowledge document for AI context
                 self._self_knowledge = self._load_self_knowledge()
-            except Exception:
+            except (ImportError, OSError, ValueError):
                 pass  # Ollama not available
 
         # Moon state (arcs across sky every 15 minutes)
@@ -212,7 +212,7 @@ class Dashboard:
                 if request:
                     self._tts_manager.synthesize(request)
                     logger.debug(f"TTS spoke: {text[:50]}...")
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 logger.debug(f"TTS error: {e}")
 
         try:
@@ -221,7 +221,7 @@ class Dashboard:
             tts_thread = threading.Thread(target=_tts_worker, daemon=True)
             tts_thread.start()
             return True
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.debug(f"TTS thread error: {e}")
         return False
 
@@ -557,7 +557,7 @@ class Dashboard:
                 known_list = list(self.alley_scene._known_event_ids)
                 self.alley_scene._known_event_ids = set(known_list[500:])
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             # Silently ignore errors (daemon might be unavailable)
             pass
 
@@ -735,7 +735,7 @@ class Dashboard:
             self.alerts = self.client.get_alerts()
             self.sandboxes = self.client.get_sandboxes()
             self.siem_status, self.ingestion_status = self.client.get_siem_status()
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error(f"Failed to refresh data: {e}")
 
     def _handle_input(self, key: int):
@@ -763,7 +763,7 @@ class Dashboard:
                 self._events_cleared = False  # Allow auto-refresh again
                 self.events = self.client.get_events(50)  # Get more events
                 self.scroll_offset = 0
-            except Exception:
+            except (OSError, ValueError):
                 pass
         elif key == ord('/'):
             self._start_search()
@@ -1940,7 +1940,7 @@ class Dashboard:
                         if len(content) > 8000:
                             content = content[:8000] + "\n\n[... truncated for context length ...]"
                         return content
-            except Exception:
+            except OSError:
                 continue
 
         # Fallback: minimal self-knowledge
@@ -1959,14 +1959,14 @@ For detailed information, ask about specific features or run 'help' command."""
         try:
             mode = self.daemon_status.get('mode', 'UNKNOWN') if self.daemon_status else 'UNKNOWN'
             context_parts.append(f"Current Mode: {mode}")
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
         # Uptime
         try:
             uptime = self.daemon_status.get('uptime', 'unknown') if self.daemon_status else 'unknown'
             context_parts.append(f"Uptime: {uptime}")
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
         # SIEM status
@@ -1975,21 +1975,21 @@ For detailed information, ask about specific features or run 'help' command."""
             ingestion_connected = self.ingestion_status.get('connected', False) if hasattr(self, 'ingestion_status') and self.ingestion_status else False
             context_parts.append(f"SIEM Shipping: {'connected' if siem_connected else 'not configured'}")
             context_parts.append(f"SIEM Ingestion: {'connected' if ingestion_connected else 'disconnected'}")
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
         # Active alerts
         try:
             alert_count = len(self.alerts) if self.alerts else 0
             context_parts.append(f"Active Alerts: {alert_count}")
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
         # Recent events count
         try:
             event_count = len(self.events) if self.events else 0
             context_parts.append(f"Recent Events: {event_count}")
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
         return "\n".join(context_parts)

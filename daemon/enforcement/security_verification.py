@@ -605,7 +605,7 @@ class SecurityVerifier:
                     message=f"State file exists ({protections} protections)",
                     duration_ms=(time.time() - start) * 1000,
                 )
-            except Exception:
+            except (OSError, ValueError, KeyError):
                 pass
 
         return TestCase(
@@ -793,7 +793,7 @@ class SecurityVerifier:
                 timeout=5,
             )
             return result.returncode == 0
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             return False
 
     def _test_systemd_watchdog(self) -> TestCase:
@@ -820,7 +820,7 @@ class SecurityVerifier:
                                 message=f"WatchdogSec={timeout}",
                                 duration_ms=(time.time() - start) * 1000,
                             )
-            except Exception:
+            except OSError:
                 pass
 
         return TestCase(

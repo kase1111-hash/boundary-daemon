@@ -722,7 +722,7 @@ class QueueMonitor:
                         **(metadata or {}),
                     }
                 )
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
     def _export_queue_metrics(self, snapshot: QueueSnapshot):
@@ -888,7 +888,7 @@ if __name__ == '__main__':
             for _ in range(items_to_add):
                 try:
                     test_queue.put(f"item_{i}", block=False)
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
             # Remove some items
@@ -896,7 +896,7 @@ if __name__ == '__main__':
             for _ in range(items_to_remove):
                 try:
                     test_queue.get_nowait()
-                except Exception:
+                except (OSError, ValueError):
                     pass
 
             # Print stats

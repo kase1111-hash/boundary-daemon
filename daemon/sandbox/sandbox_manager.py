@@ -317,7 +317,7 @@ class Sandbox:
                 data['sandbox_id'] = self.sandbox_id
                 data['timestamp'] = datetime.utcnow().isoformat()
                 self._event_callback(event_type, data)
-            except Exception as e:
+            except (AttributeError, TypeError) as e:
                 logger.error(f"Event callback failed: {e}")
 
     def _setup_cgroup(self) -> None:
@@ -495,7 +495,7 @@ class Sandbox:
                         self._cgroup_path,
                         self._process.pid,
                     )
-                except Exception as e:
+                except OSError as e:
                     # If we can't add to cgroup, kill the process (fail-closed)
                     logger.error(f"Failed to add process to cgroup: {e}")
                     self._process.kill()
@@ -579,7 +579,7 @@ class Sandbox:
         if self._process:
             try:
                 self._process.kill()
-            except Exception:
+            except OSError:
                 pass
 
         # Kill all processes in cgroup
@@ -591,7 +591,7 @@ class Sandbox:
                         os.kill(pid, 9)
                     except ProcessLookupError:
                         pass
-            except Exception:
+            except OSError:
                 pass
 
         self._state = SandboxState.STOPPED
@@ -722,7 +722,7 @@ class Sandbox:
         if self._cgroup_path:
             try:
                 self._cgroup_manager.delete_cgroup(self._cgroup_path)
-            except Exception as e:
+            except OSError as e:
                 logger.debug(f"Cgroup cleanup error: {e}")
 
         self._emit_event('sandbox_cleanup', {})
@@ -793,7 +793,7 @@ class SandboxManager:
         if self._policy_engine:
             try:
                 return int(self._policy_engine.get_current_mode())
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
         return 0  # Default to OPEN
 
@@ -1013,7 +1013,7 @@ class SandboxManager:
         if self._enforcement_bridge:
             try:
                 stats['enforcement_bridge'] = self._enforcement_bridge.get_stats()
-            except Exception:
+            except (AttributeError, TypeError):
                 stats['enforcement_bridge'] = {'error': 'unavailable'}
 
         # Include telemetry stats if available
