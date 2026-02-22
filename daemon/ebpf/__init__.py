@@ -7,15 +7,18 @@ Provides kernel-level visibility WITHOUT requiring a kernel driver:
 - Network connection monitoring
 - System call tracing
 
-Features:
-- Read-only observation for policy decisions
-- Graceful degradation on older kernels
-- Optional module (daemon works without it)
+Status: EXPERIMENTAL — Falls back to /proc polling when bcc is unavailable.
+The eBPF code paths (eBPFObserverImpl, BPF_TEXT probe programs) are untested
+in CI because bcc is not in requirements.txt. The ProcObserver fallback is
+the only path exercised in practice.
 
-Requirements:
+Requirements (for eBPF mode):
 - Linux kernel 4.15+ (for BPF CO-RE)
-- bcc or bpftrace installed
+- bcc Python bindings: pip install bcc
 - CAP_SYS_ADMIN or CAP_BPF capability
+
+TODO: Add bcc to optional dependencies and CI test matrix
+TODO: Add integration tests for eBPF probes on a capable kernel
 """
 
 from .ebpf_observer import (

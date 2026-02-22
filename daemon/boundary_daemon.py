@@ -2671,14 +2671,6 @@ class BoundaryDaemon:
                 except Exception:
                     pass
 
-            # Clear identity cache (sessions will re-authenticate)
-            if hasattr(self, '_identity_manager') and self._identity_manager:
-                try:
-                    self._identity_manager._identity_cache.clear()
-                    caches_cleared += 1
-                except Exception:
-                    pass
-
             # Clear TPM PCR cache (will be re-read on next check)
             if hasattr(self, '_tpm_manager') and self._tpm_manager:
                 try:

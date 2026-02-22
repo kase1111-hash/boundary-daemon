@@ -1,42 +1,10 @@
 """
 Cryptographic module for Boundary Daemon.
 
-Phase 3 Cutting-Edge Innovation: Enterprise-grade cryptographic operations
-with HSM support and post-quantum cryptography migration path.
+Provides cryptographic primitives used by the signed event logger
+and secure config storage. HSM and post-quantum modules have been
+archived (see archive/crypto/) — they were interface stubs without
+working implementations.
 """
 
-from .hsm_provider import (
-    HSMProvider,
-    HSMType,
-    HSMConfig,
-    HSMKey,
-    HSMSession,
-    PKCS11Provider,
-    SoftHSMProvider,
-)
-
-from .post_quantum import (
-    PostQuantumCrypto,
-    HybridSignature,
-    HybridKeyExchange,
-    PQAlgorithm,
-    MigrationStrategy,
-)
-
-__all__ = [
-    # HSM Support
-    'HSMProvider',
-    'HSMType',
-    'HSMConfig',
-    'HSMKey',
-    'HSMSession',
-    'PKCS11Provider',
-    'SoftHSMProvider',
-
-    # Post-Quantum
-    'PostQuantumCrypto',
-    'HybridSignature',
-    'HybridKeyExchange',
-    'PQAlgorithm',
-    'MigrationStrategy',
-]
+__all__ = []

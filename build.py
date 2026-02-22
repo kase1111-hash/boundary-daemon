@@ -463,10 +463,8 @@ def get_hidden_imports() -> List[str]:
         # Daemon subpackages - containment
         "--hidden-import=daemon.containment",
         "--hidden-import=daemon.containment.agent_profiler",
-        # Daemon subpackages - crypto
+        # Daemon subpackages - crypto (HSM and PQC archived — stubs only)
         "--hidden-import=daemon.crypto",
-        "--hidden-import=daemon.crypto.hsm_provider",
-        "--hidden-import=daemon.crypto.post_quantum",
         # Daemon subpackages - detection
         "--hidden-import=daemon.detection",
         "--hidden-import=daemon.detection.event_publisher",
@@ -508,12 +506,7 @@ def get_hidden_imports() -> List[str]:
         # Daemon subpackages - hardware
         "--hidden-import=daemon.hardware",
         "--hidden-import=daemon.hardware.tpm_manager",
-        # Daemon subpackages - identity
-        "--hidden-import=daemon.identity",
-        "--hidden-import=daemon.identity.identity_manager",
-        "--hidden-import=daemon.identity.ldap_mapper",
-        "--hidden-import=daemon.identity.oidc_validator",
-        "--hidden-import=daemon.identity.pam_integration",
+        # Daemon subpackages - identity (archived — stubs only, no active callers)
         # Daemon subpackages - integrity
         "--hidden-import=daemon.integrity",
         "--hidden-import=daemon.integrity.code_signer",

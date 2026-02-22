@@ -996,3 +996,797 @@ sandboxctl monitor myapp
 # Stop sandbox
 sandboxctl stop myapp
 ```
+
+---
+
+## API Contracts
+
+
+Versioned guarantees for integrators. If a contract is not listed here, it is not guaranteed.
+
+---
+
+## 1. Transport
+
+| Property | Contract |
+|---|---|
+| Protocol | Unix domain socket, JSON over stream |
+| Socket discovery | 1. `BOUNDARY_DAEMON_SOCKET` env var, 2. `/var/run/boundary-daemon/boundary.sock`, 3. `~/.agent-os/api/boundary.sock`, 4. `./api/boundary.sock` |
+| Message framing | Single JSON object per request, single JSON object per response |
+| Max message size | 64 KiB (65536 bytes) |
+| Encoding | UTF-8 |
+
+**Stability:** The 4-level socket discovery order will not change in v1.x releases. New levels may be appended.
+
+---
+
+## 2. Request Format
+
+```json
+{
+  "command": "<string>",
+  "params": { ... },
+  "token": "<string, optional>"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `command` | string | yes | One of the commands listed in section 4 |
+| `params` | object | no | Command-specific parameters (defaults to `{}`) |
+| `token` | string | no | API token prefixed with `bd_`. Required unless anonymous access is enabled. |
+
+**Stability:** These three top-level fields will not change in v1.x.
+
+---
+
+## 3. Response Format
+
+### Success
+
+```json
+{
+  "success": true,
+  "permitted": true,
+  "reason": "Allowed in current mode",
+  ...command-specific fields...
+}
+```
+
+### Denial
+
+```json
+{
+  "success": true,
+  "permitted": false,
+  "reason": "Mode OPEN does not meet minimum AIRGAP for TOP_SECRET"
+}
+```
+
+### Error
+
+```json
+{
+  "success": false,
+  "error": "Human-readable error message",
+  "auth_error": true
+}
+```
+
+| Field | Type | Guaranteed | Notes |
+|---|---|---|---|
+| `success` | boolean | yes | `false` only for transport/auth errors, not policy denials |
+| `permitted` | boolean | yes (for check commands) | Policy decision result |
+| `reason` | string | yes | Human-readable explanation |
+| `error` | string | on failure | Error description |
+| `auth_error` | boolean | on auth failure | Present and `true` when token is invalid |
+
+**Stability:** `success`, `permitted`, and `reason` are guaranteed present in their respective contexts for all v1.x releases. Additional fields may be added but will never be removed.
+
+---
+
+## 4. Commands
+
+### 4.1 Policy Check Commands
+
+#### `check_recall`
+
+Check if memory recall is permitted in current mode.
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `memory_class` | int (0-5) | yes | Memory classification level |
+| `memory_id` | string | no | Memory identifier for audit logging |
+
+Response: `{ permitted, reason }`
+
+**Fail-closed:** Unknown `memory_class` values result in `permitted: false`.
+
+#### `check_tool`
+
+Check if tool execution is permitted.
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `tool_name` | string | yes | Tool identifier |
+| `requires_network` | boolean | no | Tool needs network access (default: false) |
+| `requires_filesystem` | boolean | no | Tool needs filesystem access (default: false) |
+| `requires_usb` | boolean | no | Tool needs USB access (default: false) |
+| `context` | object | no | Additional context for audit logging |
+
+Response: `{ permitted, reason }`
+
+**Fail-closed:** Unknown tools with resource requirements are denied in restrictive modes.
+
+#### `check_message`
+
+Check message content for policy compliance.
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `content` | string | yes | Message content |
+| `source` | string | no | Source identifier: `natlangchain`, `agent_os`, `unknown` |
+| `context` | object | no | Additional context |
+
+Response: `{ permitted, reason, result_type, violations, redacted_content }`
+
+#### `check_natlangchain`
+
+Check a NatLangChain blockchain entry.
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `author` | string | yes | Entry author |
+| `intent` | string | yes | Intent description (prose) |
+| `timestamp` | string | yes | ISO 8601 timestamp |
+| `signature` | string | no | Cryptographic signature |
+| `previous_hash` | string | no | Hash of previous entry |
+| `metadata` | object | no | Additional metadata |
+
+Response: `{ permitted, reason, result_type, violations }`
+
+#### `check_agentos`
+
+Check an Agent-OS inter-agent message.
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `sender_agent` | string | yes | Sending agent identifier |
+| `recipient_agent` | string | yes | Receiving agent identifier |
+| `content` | string | yes | Message content |
+| `message_type` | string | no | `request`, `response`, `notification`, `command` |
+| `authority_level` | int (0-5) | no | Authority level (default: 0) |
+| `timestamp` | string | no | ISO 8601 timestamp (auto-generated if omitted) |
+| `requires_consent` | boolean | no | Whether consent is required |
+| `metadata` | object | no | Additional metadata |
+
+Response: `{ permitted, reason, result_type, violations }`
+
+### 4.2 Status Commands
+
+#### `status`
+
+Get daemon status. No parameters.
+
+Response:
+```json
+{
+  "success": true,
+  "status": {
+    "mode": "restricted",
+    "online": true,
+    "network_state": "online",
+    "hardware_trust": "high",
+    "lockdown_active": false,
+    "tripwire_count": 0,
+    "uptime_seconds": 3600.5
+  }
+}
+```
+
+#### `verify_log`
+
+Verify event log integrity. No parameters.
+
+Response: `{ success, valid, error }`
+
+### 4.3 Mode Commands
+
+#### `set_mode`
+
+Request mode change (requires `SET_MODE` capability).
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `mode` | string | yes | Target mode: `open`, `restricted`, `trusted`, `airgap`, `coldroom` |
+| `operator` | string | no | `human` or `system` (default: `human`) |
+| `reason` | string | no | Reason for change |
+
+Response: `{ success, message }`
+
+**Constraint:** Cannot exit LOCKDOWN via `set_mode`. Use ceremony override instead.
+
+### 4.4 Token Management Commands
+
+#### `create_token`
+
+Create a new API token (requires `MANAGE_TOKENS` capability).
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | Human-readable name |
+| `capabilities` | array | yes | Capability names or set names (`readonly`, `operator`, `admin`) |
+| `expires_in_days` | int | no | Days until expiration (default: 365, null = never) |
+
+#### `revoke_token`
+
+Revoke a token (requires `MANAGE_TOKENS` capability).
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `token_id` | string | yes | Token ID (first 8 chars of hash) |
+
+#### `list_tokens`
+
+List tokens (requires `MANAGE_TOKENS` capability). Token hashes are never exposed.
+
+---
+
+## 5. Authentication
+
+| Property | Contract |
+|---|---|
+| Token format | `bd_` prefix + 43 chars URL-safe base64 |
+| Token storage | SHA-256 hash only; plaintext never persisted |
+| Token validation | Constant-time comparison via `hmac.compare_digest` |
+| Capability model | Capability-based; `ADMIN` implies all capabilities |
+| Unknown commands | Denied (fail-closed) |
+
+### Capability Matrix
+
+| Capability | Commands |
+|---|---|
+| `STATUS` | `status` |
+| `READ_EVENTS` | `get_events` |
+| `VERIFY_LOG` | `verify_log` |
+| `CHECK_RECALL` | `check_recall` |
+| `CHECK_TOOL` | `check_tool` |
+| `CHECK_MESSAGE` | `check_message`, `check_natlangchain`, `check_agentos` |
+| `SET_MODE` | `set_mode` |
+| `MANAGE_TOKENS` | `create_token`, `revoke_token`, `list_tokens`, `rate_limit_status` |
+| `ADMIN` | All of the above |
+
+### Predefined Capability Sets
+
+| Set Name | Includes |
+|---|---|
+| `readonly` | STATUS, READ_EVENTS, VERIFY_LOG, CHECK_RECALL, CHECK_TOOL, CHECK_MESSAGE |
+| `operator` | readonly + SET_MODE |
+| `admin` | ADMIN (all) |
+
+---
+
+## 6. Rate Limiting
+
+| Layer | Default | Window |
+|---|---|---|
+| Per-token | 100 requests | 60 seconds |
+| Per-command | Varies (see below) | 60 seconds |
+| Global | 1000 requests | 60 seconds |
+
+### Per-Command Limits
+
+| Command | Max/minute | Rationale |
+|---|---|---|
+| `check_recall` | 500 | Memory operations are frequent |
+| `check_tool` | 300 | Tool calls are frequent |
+| `check_message` | 200 | Content validation |
+| `status` | 200 | Health checks |
+| `set_mode` | 10 | Mode changes should be rare |
+| `create_token` | 5 | Token creation is infrequent |
+
+### Rate Limit Response Headers
+
+Rate limit status is included in responses:
+
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 45
+X-RateLimit-Window: 60
+```
+
+**Stability:** Rate limit defaults may change between minor versions. The header format is stable.
+
+---
+
+## 7. Fail-Closed Guarantees
+
+These are **hard invariants** — they hold regardless of daemon state:
+
+| Scenario | Behavior |
+|---|---|
+| Daemon unreachable | Client returns `permitted: false` |
+| Token invalid/missing | `success: false, auth_error: true` |
+| Unknown command | `success: false, error: "Unknown command"` |
+| Unknown memory class | `permitted: false` |
+| Unknown request type | `permitted: false` (policy engine deny) |
+| MessageChecker unavailable | All message checks return `permitted: false` |
+| LOCKDOWN mode | All policy checks return `permitted: false` |
+| Rate limit exceeded | `success: false` with retry-after information |
+
+**Stability:** Fail-closed behavior will never be relaxed. New failure modes will always default to denial.
+
+---
+
+## 8. Latency Expectations
+
+| Operation | Target | Notes |
+|---|---|---|
+| Policy check (local) | < 1 ms | No I/O, deterministic matrix lookup |
+| Socket round-trip | < 5 ms | Unix domain socket, local only |
+| Client timeout | 5 seconds | Default; configurable per-client |
+| Client retry | 3 attempts | Exponential backoff: 0.5s, 1s, 2s |
+| Log verification | < 100 ms | Scales with log size |
+
+---
+
+## 9. Versioning
+
+| Property | Contract |
+|---|---|
+| Version scheme | Semantic versioning (major.minor.patch) |
+| Breaking changes | Major version bump only |
+| New fields in responses | May be added in minor versions |
+| Field removal | Major version bump only |
+| New commands | May be added in minor versions |
+| Command removal | Major version bump only |
+
+**Current version:** 1.0.0
+
+---
+
+## 10. Integration Quick Reference
+
+### Python (shared client)
+
+```python
+from boundary_client import BoundaryClient
+
+client = BoundaryClient()  # Auto-discovers socket
+decision = client.check_recall(memory_class=3)
+if decision.permitted:
+    # proceed
+```
+
+### Python (Memory Vault)
+
+```python
+from boundary import RecallGate
+
+gate = RecallGate()
+if gate.can_recall(memory_class=3, memory_id="mem-001"):
+    memory = vault.retrieve("mem-001")
+```
+
+### TypeScript (Agent-OS)
+
+```typescript
+import { AgentOSBoundaryIntegration } from './boundary';
+
+const boundary = new AgentOSBoundaryIntegration();
+if (await boundary.toolGate.canExecute('shell', { network: true })) {
+    // proceed
+}
+```
+
+### Decorator (Python)
+
+```python
+from boundary_client import boundary_protected
+
+@boundary_protected(requires_network=True, memory_class=2)
+def fetch_confidential_data():
+    # Automatically denied if policy check fails
+    ...
+```
+
+---
+
+## Monitoring Metrics
+
+
+Comprehensive catalog of all security rules, tests, threats, and monitoring points.
+
+## Summary Statistics
+
+| Category | Count | Performance Impact |
+|----------|-------|-------------------|
+| **Policy Rules** | 15 | Low - evaluated on request |
+| **Security Tests** | 516 test cases | N/A - test time only |
+| **Attack Vectors** | 78+ | N/A - detection patterns |
+| **Monitoring Points** | 47 | Medium - 1Hz polling |
+| **API Commands** | 23 | Low - on-demand |
+| **Security Gates** | 38 | Low - evaluated on request |
+| **Event Types** | 26 | Low - async logging |
+| **Enforcement Modules** | 11 | Low - triggered on change |
+| **Integration Modules** | 12 | N/A - external repos |
+
+**Total Active Monitoring Elements: 743+**
+
+---
+
+## Monitoring Intervals (Performance Configuration)
+
+### Core Polling Intervals
+
+| Monitor | Interval | Config Location |
+|---------|----------|-----------------|
+| State Monitor | 1.0s | `constants.py:STATE_POLL_INTERVAL` |
+| Health Check | 60.0s | `constants.py:HEALTH_CHECK_INTERVAL` |
+| Heartbeat | 10.0s | `health_monitor.py:heartbeat_interval` |
+| Enforcement Loop | 5.0s | `constants.py:ENFORCEMENT_INTERVAL` |
+| File Integrity | 60.0s | `constants.py:INTEGRITY_CHECK_INTERVAL` |
+| Dead-man Check | 60.0s | `constants.py:DEAD_MAN_CHECK_INTERVAL` |
+| Memory Sampling | 5.0s | `memory_monitor.py:sample_interval` |
+| Resource Sampling | 10.0s | `resource_monitor.py:sample_interval` |
+| Mode Advisor | 60.0s | `mode_advisor.py:evaluation_interval` |
+| Log Redundancy | 60.0s | `redundant_event_logger.py:health_check_interval` |
+
+### Cache TTLs (Performance Optimization)
+
+| Cache | TTL | Max Size |
+|-------|-----|----------|
+| Threat Intel | 3600s (1h) | 10,000 entries |
+| LDAP Groups | 300s (5m) | Unlimited |
+| LDAP Users | 60s (1m) | Unlimited |
+| OIDC JWKS | 3600s (1h) | Single |
+| OIDC Tokens | 300s (5m) | Unlimited |
+| Identity | 300s (5m) | Unlimited |
+| TPM PCRs | 5s | 24 entries |
+| Malware Bazaar | 3600s (1h) | 10,000 entries |
+| Daemon Status | 1s | Single |
+
+---
+
+## Detailed Component Counts
+
+### 1. Policy Rules (15)
+
+**Core Policy Files:**
+- `config/policies.d/00-examples.yaml` - 6 example rules
+- `config/policies.d/10-organization-policies.yaml.example` - 5 template rules
+- `daemon/policy_engine.py` - 4 evaluation methods
+
+**Named Rules:**
+1. Block external models in AIRGAP/COLDROOM
+2. Require VPN for confidential memories
+3. Allow safe filesystem tools in OPEN/RESTRICTED
+4. Block network tools in AIRGAP
+5. Limit SECRET access to business hours
+6. No USB in COLDROOM
+7. Require VPN for all network operations
+8. Block unauthorized API access
+9. Contractor hours restriction
+10. CROWN_JEWEL requires COLDROOM
+11. Whitelist approved tools only
+12. Rate limit enforcement per mode
+13. Authority level validation
+14. Reflection depth limits
+15. Cross-agent communication rules
+
+### 2. Security Tests (516 cases)
+
+| Test File | Cases | Coverage |
+|-----------|-------|----------|
+| test_attack_simulations.py | 75 | Attack prevention |
+| test_state_monitor.py | 59 | State detection |
+| test_privilege_manager.py | 48 | Privilege control |
+| test_policy_engine.py | 48 | Policy evaluation |
+| test_health_monitor.py | 45 | Health checking |
+| test_event_logger.py | 37 | Event logging |
+| test_tripwires.py | 36 | Violation detection |
+| test_api_auth.py | 34 | Authentication |
+| test_log_hardening.py | 27 | Log security |
+| test_append_only.py | 27 | Append-only storage |
+| test_constants.py | 26 | Configuration |
+| test_integrations.py | 16 | Integrations |
+| test_security_stack_e2e.py | 11 | End-to-end |
+| test_security_integration.py | 27 | Cross-repo security |
+
+### 3. Attack Vectors (78+)
+
+**64 Attack Simulations by Category:**
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| Cellular Attacks | 5 | 2G downgrade, IMSI catcher, tower switching |
+| WiFi Attacks | 9 | Evil twin, deauth, rogue AP, handshake capture |
+| DNS Attacks | 8 | Tunneling, rebinding, spoofing, TLD abuse |
+| ARP Attacks | 5 | Spoofing, gateway impersonation, MITM |
+| Threat Intel | 7 | TOR exit, C2, botnet, beaconing |
+| File Integrity | 8 | Modification, SUID, world writable |
+| Traffic Anomaly | 8 | Port scan, exfiltration, ICMP tunnel |
+| Process Security | 8 | ptrace, LD_PRELOAD, memfd exec |
+| Network Bypass | 6 | VPN tunnel, bridge, protocol abuse |
+
+**14 MITRE ATT&CK Tactics:**
+TA0001-TA0011, TA0040, TA0042, TA0043
+
+**10 Violation Types:**
+1. NETWORK_IN_AIRGAP
+2. USB_IN_COLDROOM
+3. UNAUTHORIZED_RECALL
+4. DAEMON_TAMPERING
+5. MODE_INCOMPATIBLE
+6. EXTERNAL_MODEL_VIOLATION
+7. SUSPICIOUS_PROCESS
+8. HARDWARE_TRUST_DEGRADED
+9. CLOCK_MANIPULATION
+10. NETWORK_TRUST_VIOLATION
+
+### 4. Monitoring Points (47)
+
+**State Monitor (42 methods):**
+- Core: `_check_network`, `_check_hardware`, `_check_software`, `_check_human_presence`
+- Security: `_check_dns_security`, `_check_arp_security`, `_check_wifi_security`
+- Intel: `_check_threat_intel`, `_check_file_integrity`, `_check_traffic_anomaly`
+- Process: `_check_process_security`, `_check_specialty_networks`
+- Devices: `_detect_lora_devices`, `_detect_thread_devices`, `_detect_cellular_security_threats`
+
+**Tripwire Checks (5):**
+1. `_check_network_in_airgap`
+2. `_check_usb_in_coldroom`
+3. `_check_external_model_violations`
+4. `_check_suspicious_processes`
+5. `_check_hardware_trust`
+
+**Configurable Monitors (13):**
+```python
+monitor_lora: bool = True
+monitor_thread: bool = True
+monitor_cellular_security: bool = True
+monitor_wimax: bool = False      # Disabled - obsolete
+monitor_irda: bool = False       # Disabled - legacy
+monitor_ant_plus: bool = True
+monitor_dns_security: bool = True
+monitor_arp_security: bool = True
+monitor_wifi_security: bool = True
+monitor_threat_intel: bool = True
+monitor_file_integrity: bool = True
+monitor_traffic_anomaly: bool = True
+monitor_process_security: bool = True
+```
+
+### 5. API Commands (23)
+
+| Category | Commands |
+|----------|----------|
+| Token (3) | create_token, revoke_token, list_tokens |
+| Policy (4) | check_recall, check_tool, check_message, set_mode |
+| Status (6) | status, rate_limit_status, get_health_stats, get_monitoring_summary, get_resource_stats, check_ollama_status |
+| Log (2) | get_events, verify_log |
+| Integration (3) | check_natlangchain, check_agentos, check_message |
+| Reporting (5) | get_memory_stats, get_queue_stats, generate_report, get_raw_report, get_report_history |
+
+### 6. Security Gates (38)
+
+**By Category:**
+
+| Category | Gates | Count |
+|----------|-------|-------|
+| Core | check_recall, check_tool, check_message | 3 |
+| Cryptographic | verify_key_derivation, verify_merkle_proof, verify_cryptographic_signature, verify_zkp_proof | 4 |
+| Semantic | classify_intent_semantics, detect_semantic_drift, detect_cross_language_injection, verify_llm_consensus | 4 |
+| Economic | verify_stake_escrow, verify_stake_burned, verify_effort_proof, verify_w3c_credential | 4 |
+| Cognitive | check_reflection_intensity, check_identity_mutation, check_agent_attestation | 3 |
+| Contract | verify_contract_signature, verify_memory_not_revoked, check_contract_delegation_depth, verify_constitution_integrity | 4 |
+| Execution | verify_execution_confidence, detect_political_activity, verify_sunset_deadline, prevent_posthumous_revocation | 4 |
+| Dispute | check_counter_proposal_limit, verify_settlement_honors_constraints, check_dispute_class_mode_requirement | 3 |
+| SIEM | verify_detection_rule_signature, audit_rule_state_change, correlate_siem_event | 3 |
+| Rate Limit | check_entity_rate_limit | 1 |
+| Consent | verify_memory_consent, verify_physical_token_presented | 2 |
+| Middleware | initiate_ceremony, check_anomaly_score, get_graduated_permission | 3 |
+
+### 7. Event Types (26)
+
+| Category | Types |
+|----------|-------|
+| System (4) | MODE_CHANGE, DAEMON_START, DAEMON_STOP, OVERRIDE |
+| Security (9) | VIOLATION, TRIPWIRE, POLICY_DECISION, RECALL_ATTEMPT, TOOL_REQUEST, BIOMETRIC_ATTEMPT, SECURITY_SCAN, CLOCK_JUMP, CLOCK_DRIFT |
+| API (4) | API_REQUEST, MESSAGE_CHECK, HEALTH_CHECK, NTP_SYNC_LOST |
+| Rate Limit (4) | RATE_LIMIT_TOKEN, RATE_LIMIT_GLOBAL, RATE_LIMIT_COMMAND, RATE_LIMIT_UNBLOCK |
+| PII (3) | PII_DETECTED, PII_BLOCKED, PII_REDACTED |
+| General (2) | ALERT, INFO |
+
+---
+
+## Performance Recommendations
+
+### Current Architecture (Optimized)
+
+The daemon uses several performance optimizations:
+
+1. **Tiered Polling Intervals:**
+   - Critical (1s): State monitor
+   - Standard (5-10s): Memory, resources, enforcement
+   - Background (60s): Health, integrity, dead-man
+
+2. **Caching Strategy:**
+   - Threat intel: 1-hour TTL, 10K max entries
+   - Identity: 5-minute TTL
+   - TPM PCRs: 5-second TTL
+
+3. **Async Processing:**
+   - Event logging is asynchronous
+   - Background threads for non-critical monitors
+   - Rate limiting prevents CPU spikes
+
+4. **Configurable Monitors:**
+   - Legacy monitors (WiMAX, IrDA) disabled by default
+   - Each monitor can be individually toggled
+
+### Resource Usage Estimate
+
+| Component | CPU Impact | Memory | Notes |
+|-----------|-----------|--------|-------|
+| State Monitor | ~1% | ~10MB | 1Hz polling |
+| Health Monitor | <0.1% | ~5MB | 60s interval |
+| Memory Monitor | ~0.5% | ~20MB | 5s sampling, history |
+| Resource Monitor | ~0.5% | ~15MB | 10s sampling, history |
+| Event Logger | <0.1% | ~50MB | Async, hash chains |
+| Tripwires | ~0.5% | ~5MB | Per-check evaluation |
+| **Total** | **~3%** | **~105MB** | Normal operation |
+
+### Tuning for High-Security Environments
+
+For maximum monitoring without performance issues:
+
+```ini
+[daemon]
+poll_interval = 1.0          # Keep at 1Hz for real-time
+
+[health]
+check_interval = 30.0        # Increase frequency
+heartbeat_interval = 5.0     # More frequent heartbeats
+
+[memory]
+sample_interval = 2.0        # More frequent sampling
+history_size = 1800          # 1 hour at 2s
+
+[resource]
+sample_interval = 5.0        # More frequent
+history_size = 720           # 1 hour at 5s
+
+[threat_intel]
+cache_ttl = 1800            # 30 min (fresher data)
+max_cache_size = 50000      # More entries
+
+[monitors]
+all_enabled = true          # Enable all monitors
+```
+
+### Tuning for Resource-Constrained Environments
+
+```ini
+[daemon]
+poll_interval = 5.0          # Reduce to 5Hz
+
+[health]
+check_interval = 120.0       # 2 minutes
+heartbeat_interval = 30.0    # 30 seconds
+
+[memory]
+sample_interval = 30.0       # Less frequent
+history_size = 120           # 1 hour at 30s
+
+[monitors]
+monitor_wimax = false
+monitor_irda = false
+monitor_ant_plus = false
+monitor_traffic_anomaly = false  # Most CPU-intensive
+```
+
+---
+
+## Module Watch Capability Matrix
+
+All modules can be monitored with the following granularity:
+
+| Module | Real-time | Historical | Alerting | Audit |
+|--------|-----------|------------|----------|-------|
+| Policy Engine | ✅ | ✅ | ✅ | ✅ |
+| State Monitor | ✅ | ✅ | ✅ | ✅ |
+| Tripwires | ✅ | ✅ | ✅ | ✅ |
+| Event Logger | ✅ | ✅ | ✅ | ✅ |
+| Health Monitor | ✅ | ✅ | ✅ | ✅ |
+| Memory Monitor | ✅ | ✅ | ✅ | ✅ |
+| Resource Monitor | ✅ | ✅ | ✅ | ✅ |
+| API Layer | ✅ | ✅ | ✅ | ✅ |
+| Enforcement | ✅ | ✅ | ✅ | ✅ |
+| Security Gates | ✅ | ✅ | ✅ | ✅ |
+| Integrations | ✅ | ✅ | ✅ | ✅ |
+
+**Conclusion:** All 47 monitoring points can be watched continuously at 1Hz without significant performance impact (<3% CPU, ~105MB RAM on a modern system).
+
+---
+
+*Generated: 2026-01-02*
+*Daemon Version: 0.1.0-alpha*
+
+---
+
+## Integration
+
+
+> **Note:** This document has been consolidated. For comprehensive integration documentation, see:
+> - **[integrations/INTEGRATION_GUIDE.md](integrations/INTEGRATION_GUIDE.md)** - Complete ecosystem integration guide
+> - **[integrations/README.md](integrations/README.md)** - Quick reference and package list
+> - **[integrations/SECURITY_INTEGRATION.md](integrations/SECURITY_INTEGRATION.md)** - Attack vectors prevented
+> - **[integrations/ADVANCED_RULES.md](integrations/ADVANCED_RULES.md)** - Advanced policy gates (47 rules)
+
+---
+
+## Quick Start
+
+### Mandatory Callers
+
+The following components MUST call the Boundary Daemon:
+
+1. **Memory Vault** - Before any memory recall
+2. **Agent-OS** - Before any tool execution
+3. **synth-mind** - Before reflection loops
+4. **External Model Adapters** - Before API calls
+
+### Python Integration
+
+```python
+from api.boundary_api import BoundaryAPIClient
+
+client = BoundaryAPIClient(socket_path='./api/boundary.sock')
+
+# Check memory recall permission
+permitted, reason = client.check_recall(memory_class=3)
+if not permitted:
+    raise PermissionError(f"Recall denied: {reason}")
+
+# Check tool execution permission
+permitted, reason = client.check_tool(
+    tool_name='wget',
+    requires_network=True
+)
+```
+
+### Unix Socket API
+
+```bash
+echo '{"command": "check_recall", "params": {"memory_class": 3}}' | \
+    nc -U ./api/boundary.sock
+```
+
+---
+
+## Boundary Modes Reference
+
+| Mode | Network | Memory Classes | Tools | Use Case |
+|------|---------|----------------|-------|----------|
+| OPEN | Full | 0-1 | All | Casual use |
+| RESTRICTED | Monitored | 0-2 | Most | Research |
+| TRUSTED | VPN only | 0-3 | No USB | Serious work |
+| AIRGAP | None | 0-4 | No network | High-value IP |
+| COLDROOM | None | 0-5 | Display only | Crown jewels |
+| LOCKDOWN | Blocked | None | None | Emergency |
+
+---
+
+## Architecture Principles
+
+1. **Mandatory Enforcement**: Components MUST NOT bypass the daemon
+2. **Fail-Closed**: Ambiguity defaults to DENY
+3. **Immutable Logging**: All decisions logged with hash chain and Ed25519 signatures
+4. **Human Override**: Requires ceremony, never silent
+5. **Deterministic**: Same inputs → same decision
+
+---
+
+For detailed integration instructions, code examples, and repository-specific guides, see **[integrations/INTEGRATION_GUIDE.md](integrations/INTEGRATION_GUIDE.md)**.

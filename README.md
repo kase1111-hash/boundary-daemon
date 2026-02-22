@@ -26,19 +26,25 @@ Modern AI ecosystems rely on orchestration frameworks (LangGraph, AutoGen, CrewA
 
 ## Beta Release Overview
 
-This is the **v1.0.0-beta release** of Boundary Daemon, representing a production-ready security policy and audit system for AI agent environments. This release includes:
+This is the **v1.0.0-beta release** of Boundary Daemon — a security policy and audit system for AI agent environments.
 
-- **Full TUI dashboard** with animated cityscape visualization
-- **SIEM integration** with bidirectional data flow (shipping & ingestion)
-- **Built-in AI assistant** with self-knowledge and system awareness
-- **Cross-platform support** (Linux, Windows, macOS)
-- **Performance optimizations** for smooth 10ms refresh rates
+**What's production-quality (tested, complete call chains):**
+- Core security engine: 6 boundary modes, fail-closed policy, tripwire system
+- Immutable audit log with SHA-256 hash chains and Ed25519 signatures
+- AI security suite: prompt injection, tool validation, response guardrails
+- Security monitoring: network, USB, process, DNS, ARP, WiFi, file integrity
+- TUI dashboard with real-time monitoring
 
-**What Beta means:**
-- All documented features are implemented, tested, and stable
-- API contracts are finalized for v1.0 stable release
-- Performance is optimized for production use
-- Security hardened with tamper-evident logging
+**What requires elevated privileges:**
+- Process sandboxing (namespaces, seccomp, cgroups) — requires root
+- Platform enforcement (iptables, udev, AppArmor) — requires root
+- Falls back to detection-only mode without privileges
+
+**What requires optional dependencies:**
+- SIEM shipping (Kafka, S3, GCS) — requires kafka-python, boto3, etc.
+- Case management (ServiceNow, PagerDuty, Slack) — requires requests
+- YARA threat detection — requires yara-python
+- eBPF kernel observability — requires bcc (experimental)
 
 ---
 
@@ -127,11 +133,11 @@ Agent Smith serves as the **policy authority and audit system** - the decision-m
 
 ---
 
-## Beta Feature Summary
+## Feature Summary
 
-This Beta release includes **150+ modules** across the following capability areas:
+Status key: **Complete** = tested with full call chains, **Requires Root** = needs elevated privileges, **Optional Deps** = requires packages not in requirements.txt, **Experimental** = code exists but untested in CI, **Archived** = moved to archive/, not actively maintained.
 
-### Core Security Engine
+### Core Security Engine (Complete — tested, production-quality)
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Six Boundary Modes | ✅ Complete | OPEN, RESTRICTED, TRUSTED, AIRGAP, COLDROOM, LOCKDOWN |
@@ -141,7 +147,7 @@ This Beta release includes **150+ modules** across the following capability area
 | Human Override Ceremony | ✅ Complete | Multi-step confirmation with cooldown |
 | Memory Classification | ✅ Complete | 6 levels: PUBLIC → CROWN_JEWEL |
 
-### AI/Agent Security Suite
+### AI/Agent Security Suite (Complete — tested)
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Prompt Injection Detection | ✅ Complete | 50+ patterns: jailbreaks, DAN, encoding bypasses |
@@ -150,24 +156,24 @@ This Beta release includes **150+ modules** across the following capability area
 | RAG Injection Detection | ✅ Complete | Poisoned documents, indirect injection |
 | Agent Attestation (CBAC) | ✅ Complete | Cryptographic identity, capability tokens, delegation |
 
-### Process Sandboxing (Linux)
+### Process Sandboxing (Linux — requires root/CAP_SYS_ADMIN)
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Namespace Isolation | ✅ Complete | PID, network, mount, user, IPC, UTS |
-| Seccomp-BPF Filtering | ✅ Complete | Syscall filtering with mode-aware profiles |
-| Cgroups v2 Limits | ✅ Complete | CPU, memory, I/O, PIDs limits |
-| Per-Sandbox Firewall | ✅ Complete | iptables/nftables with cgroup matching |
-| Network Policy | ✅ Complete | Host/port/CIDR allow lists |
+| Namespace Isolation | ⚙️ Requires Root | PID, network, mount, user, IPC, UTS |
+| Seccomp-BPF Filtering | ⚙️ Requires Root | Syscall filtering with mode-aware profiles |
+| Cgroups v2 Limits | ⚙️ Requires Root | CPU, memory, I/O, PIDs limits |
+| Per-Sandbox Firewall | ⚙️ Requires Root | iptables/nftables with cgroup matching |
+| Network Policy | ⚙️ Requires Root | Host/port/CIDR allow lists |
 
-### Platform Enforcement
+### Platform Enforcement (requires root — detection-only fallback without)
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Linux iptables/nftables | ✅ Complete | Network isolation enforcement |
-| Linux USB/udev Control | ✅ Complete | USB device blocking |
-| Windows Firewall | ✅ Complete | Mode-based firewall rules |
-| AppArmor/SELinux | ✅ Complete | Profile generation |
+| Linux iptables/nftables | ⚙️ Requires Root | Network isolation enforcement |
+| Linux USB/udev Control | ⚙️ Requires Root | USB device blocking |
+| Windows Firewall | ⚙️ Requires Admin | Mode-based firewall rules |
+| AppArmor/SELinux | ⚙️ Requires Root | Profile generation |
 
-### Security Monitoring
+### Security Monitoring (Complete — detection-only, no enforcement)
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Network State Detection | ✅ Complete | Online/offline, VPN, interfaces |
@@ -178,13 +184,12 @@ This Beta release includes **150+ modules** across the following capability area
 | WiFi Security | ✅ Complete | Rogue AP detection |
 | File Integrity | ✅ Complete | Hash-based change monitoring |
 | Traffic Anomaly | ✅ Complete | Network traffic analysis |
-| Antivirus | ✅ Complete | Malware scanning |
 | Clock Monitor | ✅ Complete | System time drift detection |
 
 ### Threat Detection (Deterministic, No ML)
 | Feature | Status | Description |
 |---------|--------|-------------|
-| YARA Engine | ✅ Complete | Custom rule evaluation |
+| YARA Engine | 🔶 Optional Deps | Rule compile + scan (requires: `pip install yara-python`) |
 | Sigma Engine | ✅ Complete | Log-based detection rules |
 | IOC Feeds | ✅ Complete | Signed indicator feeds |
 | MITRE ATT&CK | ✅ Complete | Technique pattern matching |
@@ -192,25 +197,24 @@ This Beta release includes **150+ modules** across the following capability area
 ### Enterprise Integration
 | Feature | Status | Description |
 |---------|--------|-------------|
-| SIEM Integration | ✅ Complete | CEF/LEEF export, Kafka/S3/GCS shipping |
-| Identity Federation | ✅ Complete | OIDC, LDAP, PAM integration |
+| SIEM CEF/LEEF Export | ✅ Complete | CEF/LEEF formatting for Splunk, QRadar, ArcSight |
+| SIEM Kafka/S3/GCS Shipping | 🔶 Optional Deps | Requires: kafka-python, boto3, or google-cloud-storage |
+| Case Management | 🔶 Optional Deps | ServiceNow, PagerDuty, Slack (requires: requests) |
 | Compliance Automation | ✅ Complete | NIST 800-53, ISO 27001 mapping |
 | Prometheus Metrics | ✅ Complete | Sandbox, policy, firewall metrics |
 | Health Check API | ✅ Complete | Kubernetes liveness/readiness probes |
 
-### Advanced Cryptography
+### Cluster Coordination
 | Feature | Status | Description |
 |---------|--------|-------------|
-| HSM Support | ✅ Complete | PKCS#11, CloudHSM, YubiHSM |
-| Post-Quantum Crypto | ✅ Complete | Kyber, Dilithium preparation |
-| TPM Integration | ✅ Complete | Hardware security module binding |
+| File-based Coordinator | ✅ Complete | Filesystem-based multi-node coordination |
+| Etcd/Consul Coordinator | 🚧 Planned | Not yet implemented |
 
-### Air-Gap Operations
+### Kernel Observability
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Data Diode | ✅ Complete | One-way log export |
-| QR Ceremonies | ✅ Complete | Offline approval workflows |
-| Sneakernet Protocol | ✅ Complete | Secure physical transfer |
+| /proc Fallback Observer | ✅ Complete | Process monitoring via /proc filesystem |
+| eBPF Probes | 🧪 Experimental | Requires bcc — untested in CI |
 
 ### CLI Tools
 | Tool | Description |
@@ -219,12 +223,19 @@ This Beta release includes **150+ modules** across the following capability area
 | `sandboxctl` | Sandbox lifecycle management |
 | `authctl` | Authentication and token management |
 | `policy_ctl` | Policy configuration |
-| `cluster_ctl` | Distributed deployment management |
-| `biometric_ctl` | Biometric verification |
+| `cluster_ctl` | Distributed deployment management (file-based only) |
 | `security_scan` | Security scanning utilities |
 | `verify_signatures` | Signature verification |
 | `dashboard` | Real-time TUI monitoring dashboard |
-| `art_editor` | ASCII sprite editor for TUI customization |
+
+### Archived (moved to archive/ — interface stubs without working implementations)
+| Feature | Reason |
+|---------|--------|
+| HSM Support (PKCS#11) | Abstract interface only, no hardware integration |
+| Post-Quantum Crypto | Kyber/Dilithium simulators, not real PQC |
+| Identity Federation (OIDC/LDAP/PAM) | Declared advisory-only, no active callers |
+| Air-Gap Operations | Data diode, QR ceremonies, sneakernet — archived previously |
+| Biometric Authentication | Archived previously |
 
 ---
 
