@@ -61,7 +61,6 @@ class ClusterSyncPolicy(Enum):
     LEADER = "leader"  # Follow a designated leader node
 
 
-# TODO: cluster secret rotation not implemented — manual rotation only
 class ClusterManager:
     """
     Manages distributed boundary daemon cluster.
@@ -141,6 +140,32 @@ class ClusterManager:
             self._violation_callbacks.clear()
 
         logger.info(f"Cluster coordination stopped for node {self.node_id}")
+
+    def rotate_secret(
+        self, new_secret: str, grace_period_seconds: int = 300,
+    ) -> bool:
+        """Rotate the cluster secret on the coordinator.
+
+        Delegates to the coordinator's rotate_secret method, which
+        implements dual-key grace period for zero-downtime rotation.
+
+        Args:
+            new_secret: New cluster secret (min 32 chars).
+            grace_period_seconds: How long to accept the old secret.
+
+        Returns:
+            True if rotation succeeded.
+        """
+        if not hasattr(self.coordinator, 'rotate_secret'):
+            logger.error("Coordinator does not support secret rotation")
+            return False
+        result = self.coordinator.rotate_secret(new_secret, grace_period_seconds)
+        if result:
+            logger.info(
+                f"Cluster secret rotated by node {self.node_id} "
+                f"(grace period {grace_period_seconds}s)"
+            )
+        return result
 
     def register_mode_change_callback(self, callback: Callable) -> int:
         """Register a callback for mode changes.

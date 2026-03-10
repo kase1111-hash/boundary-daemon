@@ -419,7 +419,7 @@ class MetricsExporter:
     Starts an HTTP server that exposes metrics at /metrics endpoint.
     """
 
-    def __init__(self, port: int = 9090, host: str = "0.0.0.0",
+    def __init__(self, port: int = 9090, host: str = "127.0.0.1",
                  tls_certfile: Optional[str] = None,
                  tls_keyfile: Optional[str] = None):
         self.port = port

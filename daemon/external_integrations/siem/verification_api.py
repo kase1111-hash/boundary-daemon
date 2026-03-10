@@ -22,9 +22,17 @@ from typing import Dict, List, Optional, Any, Tuple
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from daemon.api.response import ok_response, error_response
-from daemon.api.error_codes import INVALID_REQUEST, NOT_FOUND, INTERNAL_ERROR
+from daemon.api.error_codes import AUTH_FAILED, INVALID_REQUEST, NOT_FOUND, INTERNAL_ERROR
 
 logger = logging.getLogger(__name__)
+
+# Try to import auth for token validation
+try:
+    from daemon.auth.api_auth import TokenManager, APICapability
+    AUTH_AVAILABLE = True
+except ImportError:
+    AUTH_AVAILABLE = False
+    logger.warning("api_auth not available - verification API auth disabled")
 
 # Try to import NaCl for Ed25519 signature verification
 try:
@@ -241,13 +249,9 @@ class SignatureVerifier:
                 (prev_hash + event_content).encode('utf-8')
             ).hexdigest()
 
-            # Check if hash matches
-            # Note: The actual implementation may use a different hash scheme
-            # This is a simplified version for demonstration
-            # FIXME: hash chain verification uses partial match (16 chars) — should do full comparison
-            if not current_hash.startswith(expected_hash[:16]):
-                # Allow partial match for different hash schemes
-                pass  # Don't fail on hash format differences
+            import hmac as _hmac
+            if not _hmac.compare_digest(current_hash, expected_hash):
+                return (False, f"Hash chain broken at index {i}", i)
 
             prev_hash = current_hash
 
@@ -273,12 +277,14 @@ class SignatureVerificationAPI:
         trusted_keys: Optional[Dict[str, str]] = None,
         tls_certfile: Optional[str] = None,
         tls_keyfile: Optional[str] = None,
+        token_manager: Optional[Any] = None,
     ):
         self.host = host
         self.port = port
         self.verifier = SignatureVerifier(trusted_keys)
         self.tls_certfile = tls_certfile
         self.tls_keyfile = tls_keyfile
+        self.token_manager = token_manager
         self._server: Optional[HTTPServer] = None
         self._server_thread: Optional[threading.Thread] = None
 
@@ -408,6 +414,47 @@ class SignatureVerificationAPI:
                     path = path[3:]
                 return path.rstrip('/') or '/'
 
+            def _authenticate(self, required_capability: Optional[str] = None) -> bool:
+                """Validate Bearer token from Authorization header.
+
+                Returns True if authenticated with sufficient capability.
+                Sends 401/403 error response and returns False otherwise.
+                """
+                if not api.token_manager:
+                    # No token manager configured — deny all protected endpoints
+                    self._send_json(401, {
+                        'code': AUTH_FAILED.code,
+                        'message': 'Authentication not configured',
+                    })
+                    return False
+
+                auth_header = self.headers.get('Authorization', '')
+                if not auth_header.startswith('Bearer '):
+                    self._send_json(401, {
+                        'code': AUTH_FAILED.code,
+                        'message': 'Missing or invalid Authorization header',
+                    })
+                    return False
+
+                token_str = auth_header[7:]  # Strip 'Bearer '
+
+                if required_capability:
+                    is_ok, _token, reason = api.token_manager.check_capability(
+                        token_str, required_capability,
+                    )
+                else:
+                    is_ok, _token, reason = api.token_manager.validate_token(token_str)
+
+                if not is_ok:
+                    status_code = 403 if 'lacks capability' in reason else 401
+                    self._send_json(status_code, {
+                        'code': AUTH_FAILED.code,
+                        'message': reason,
+                    })
+                    return False
+
+                return True
+
             def _send_json(self, status: int, data: Any):
                 if status < 400:
                     envelope = ok_response(data if isinstance(data, dict) else {})
@@ -429,6 +476,8 @@ class SignatureVerificationAPI:
             def do_GET(self):
                 route = self._route(self.path)
                 if route == '/keys':
+                    if not self._authenticate('list_tokens'):
+                        return
                     keys = {
                         kid: key.hex()
                         for kid, key in api.verifier.trusted_keys.items()
@@ -493,7 +542,8 @@ class SignatureVerificationAPI:
                     })
 
                 elif route == '/keys':
-                    # TODO: POST /keys should require authentication — currently unauthenticated
+                    if not self._authenticate('create_token'):
+                        return
                     key_id = data.get('key_id')
                     public_key = data.get('public_key')
                     if not key_id or not public_key:

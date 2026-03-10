@@ -18,6 +18,7 @@ import logging
 import os
 import queue
 import socket
+import ssl
 import struct
 import syslog
 import tempfile
@@ -76,6 +77,10 @@ class BackendConfig:
     retry_count: int = 3
     retry_delay: float = 1.0
     timeout: float = 5.0
+    tls_enabled: bool = True  # TLS on by default for remote backends
+    tls_ca_bundle: Optional[str] = None  # Path to CA bundle for verification
+    tls_certfile: Optional[str] = None  # Client certificate (mutual TLS)
+    tls_keyfile: Optional[str] = None  # Client key (mutual TLS)
 
 
 @dataclass
@@ -376,9 +381,13 @@ class MemoryBackend(LogBackend):
         return len(self._buffer)
 
 
-# TODO: RemoteBackend does not support TLS — all remote log traffic is sent in plaintext
 class RemoteBackend(LogBackend):
-    """Remote logging backend for off-site event storage."""
+    """Remote logging backend for off-site event storage.
+
+    Supports TLS for TCP connections (enabled by default). When TLS is
+    disabled, a warning is logged on every start. UDP transport does not
+    support TLS — use TCP+TLS for production deployments.
+    """
 
     def __init__(self, config: BackendConfig):
         super().__init__(config)
@@ -386,9 +395,44 @@ class RemoteBackend(LogBackend):
         self._queue: queue.Queue = queue.Queue(maxsize=config.buffer_size)
         self._send_thread: Optional[threading.Thread] = None
         self._running = False
+        self._ssl_context: Optional[ssl.SSLContext] = None
+        self._protocol: Optional[str] = None
 
         # Parse URL for connection
         self._parse_url()
+
+        if not self._protocol:
+            return
+
+        # Set up TLS for TCP
+        if self._protocol == 'tcp' and config.tls_enabled:
+            self._ssl_context = self._build_ssl_context(config)
+        elif self._protocol == 'tcp' and not config.tls_enabled:
+            logger.warning(
+                "RemoteBackend TLS is disabled — log traffic will be sent in "
+                "plaintext. Set tls_enabled=True for production use."
+            )
+        elif self._protocol == 'udp' and config.tls_enabled:
+            logger.warning(
+                "RemoteBackend: TLS is not supported for UDP transport. "
+                "Use tcp:// with TLS for encrypted log shipping."
+            )
+
+    @staticmethod
+    def _build_ssl_context(config: BackendConfig) -> ssl.SSLContext:
+        """Build an SSL context for TCP connections."""
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        if config.tls_ca_bundle:
+            ctx.load_verify_locations(config.tls_ca_bundle)
+        else:
+            ctx.load_default_certs()
+
+        if config.tls_certfile and config.tls_keyfile:
+            ctx.load_cert_chain(config.tls_certfile, config.tls_keyfile)
+
+        return ctx
 
     def _parse_url(self):
         """Parse remote URL."""
@@ -458,8 +502,14 @@ class RemoteBackend(LogBackend):
                 sock.sendto(event_data, (self._host, self._port))
                 sock.close()
             else:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(self.config.timeout)
+                raw_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                raw_sock.settimeout(self.config.timeout)
+                if self._ssl_context:
+                    sock = self._ssl_context.wrap_socket(
+                        raw_sock, server_hostname=self._host,
+                    )
+                else:
+                    sock = raw_sock
                 sock.connect((self._host, self._port))
                 # Send length-prefixed message
                 sock.sendall(struct.pack('>I', len(event_data)) + event_data)
@@ -924,6 +974,8 @@ def create_redundant_logger(
     enable_syslog: bool = True,
     enable_memory_buffer: bool = True,
     remote_url: Optional[str] = None,
+    remote_tls_enabled: bool = True,
+    remote_tls_ca_bundle: Optional[str] = None,
 ) -> RedundantEventLogger:
     """
     Create a redundant logger with common configuration.
@@ -964,6 +1016,8 @@ def create_redundant_logger(
             backend_type=LogBackendType.REMOTE,
             enabled=True,
             path=remote_url,
+            tls_enabled=remote_tls_enabled,
+            tls_ca_bundle=remote_tls_ca_bundle,
         ))
 
     config = RedundantLoggerConfig(backends=backends)
