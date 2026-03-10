@@ -14,8 +14,12 @@
 
 FROM python:3.11-slim
 
-# Install system dependencies for enforcement testing
-RUN apt-get update && apt-get install -y \
+# Pinned snapshot for reproducibility (update periodically)
+LABEL maintainer="boundary-daemon" \
+      description="Integration test image for boundary-daemon enforcement modules"
+
+# Install only required system packages; clean up in the same layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
     iptables \
     iproute2 \
     procps \
@@ -23,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     libseccomp-dev \
     gcc \
     python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Set working directory
 WORKDIR /app
@@ -39,6 +43,14 @@ COPY . .
 
 # Install project in development mode
 RUN pip install -e .
+
+# Create non-root user for test execution.
+# Note: --privileged is still required for iptables/network tests,
+# but running as non-root limits blast radius of test code.
+RUN groupadd --gid 1000 testrunner && \
+    useradd --uid 1000 --gid testrunner --shell /bin/bash testrunner && \
+    chown -R testrunner:testrunner /app
+USER testrunner
 
 # Default: run enforcement integration tests
 CMD ["pytest", "tests/integration/test_enforcement_integration.py", "-v", "--tb=short"]
