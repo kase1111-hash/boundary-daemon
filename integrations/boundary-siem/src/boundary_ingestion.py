@@ -364,7 +364,15 @@ class SIEMForwarder:
             logger.error(f"Syslog send failed: {e}")
 
     def _send_http(self, event: BoundaryEvent) -> None:
-        """Send event via HTTP."""
+        """Send event via HTTPS.
+
+        Raises ValueError if the endpoint does not use HTTPS.
+        """
+        if not self.http_endpoint.startswith('https://'):
+            raise ValueError(
+                "SIEM ingestion requires HTTPS. "
+                f"Got: {self.http_endpoint!r}. Use an https:// endpoint."
+            )
         try:
             import urllib.request
             import urllib.error
@@ -376,8 +384,10 @@ class SIEMForwarder:
                 headers={'Content-Type': 'application/json'},
             )
             urllib.request.urlopen(req, timeout=5)
+        except ValueError:
+            raise  # re-raise scheme validation errors
         except Exception as e:
-            logger.error(f"HTTP send failed: {e}")
+            logger.error(f"HTTPS send failed: {e}")
 
 
 # =============================================================================
