@@ -92,3 +92,22 @@ jobs:
               sys.exit(1)
           print('No secrets detected.')
           "
+
+      # SECURITY (Audit v3.0 Phase 4): Strict scan of API surface
+      - name: Scan API endpoints for security issues
+        run: |
+          pip install -r requirements.txt
+          # Strict scan (all severity) for API-facing code — no suppressions
+          bandit -r daemon/api/ daemon/external_integrations/ -ll -f json -o api-bandit-report.json || true
+          python -c "
+          import json, sys
+          with open('api-bandit-report.json') as f:
+              data = json.load(f)
+          issues = [r for r in data.get('results', []) if r['issue_severity'] in ('HIGH', 'MEDIUM')]
+          if issues:
+              print(f'API security issues found: {len(issues)}')
+              for i in issues:
+                  print(f'  {i[\"filename\"]}:{i[\"line_number\"]} [{i[\"issue_severity\"]}] {i[\"issue_text\"]}')
+              sys.exit(1)
+          print(f'API surface clean ({len(data.get(\"results\", []))} low-severity only).')
+          "
