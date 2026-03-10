@@ -203,6 +203,13 @@ class FileCoordinator(Coordinator):
                 "cluster_secret_file for production use."
             )
 
+        # Secret rotation support: during a grace period both old and new
+        # secrets are accepted for reads, while writes use the new secret.
+        self._previous_secret: Optional[str] = None
+        self._rotation_deadline: float = 0.0  # time.time() when old secret expires
+        self._secret_installed_at: float = time.time()
+        self._secret_max_age_days: int = 30
+
         self._load_state()
         self._ttl_thread = threading.Thread(target=self._ttl_cleanup, daemon=True)
         self._ttl_thread.start()
@@ -279,6 +286,59 @@ class FileCoordinator(Coordinator):
             logger.error(f"Error storing key {key}: {e}")
             return False
 
+    def rotate_secret(
+        self, new_secret: str, grace_period_seconds: int = 300,
+    ) -> bool:
+        """Rotate the cluster secret with a dual-key grace period.
+
+        During the grace period, reads accept entries signed with either
+        the old or new secret.  Writes immediately use the new secret.
+
+        Args:
+            new_secret: The new cluster secret (min 32 chars).
+            grace_period_seconds: Seconds to accept the old secret (default 300).
+
+        Returns:
+            True if rotation was applied.
+        """
+        if len(new_secret) < 32:
+            logger.error("New cluster secret too short (minimum 32 characters)")
+            return False
+
+        if not self._cluster_secret:
+            # First-time secret installation, no grace period needed
+            self._cluster_secret = new_secret
+            self._secret_installed_at = time.time()
+            logger.info("FileCoordinator: cluster secret installed (first time)")
+            return True
+
+        self._previous_secret = self._cluster_secret
+        self._cluster_secret = new_secret
+        self._rotation_deadline = time.time() + grace_period_seconds
+        self._secret_installed_at = time.time()
+        logger.info(
+            f"FileCoordinator: cluster secret rotated "
+            f"(grace period {grace_period_seconds}s)"
+        )
+        return True
+
+    def check_secret_age(self) -> Optional[int]:
+        """Return secret age in days, logging a warning if stale.
+
+        Returns:
+            Age in days, or None if no secret is configured.
+        """
+        if not self._cluster_secret:
+            return None
+        age_days = int((time.time() - self._secret_installed_at) / 86400)
+        if age_days > self._secret_max_age_days:
+            logger.warning(
+                f"Cluster secret is {age_days} days old "
+                f"(max recommended: {self._secret_max_age_days}). "
+                f"Rotate with coordinator.rotate_secret(new_secret)."
+            )
+        return age_days
+
     def _verify_entry(self, key: str, entry: Dict[str, Any]) -> bool:
         """Verify HMAC authentication of a coordinator entry.
 
@@ -300,14 +360,22 @@ class FileCoordinator(Coordinator):
             return False
 
         value = entry.get('value', '')
-        if not verify_entry_hmac(key, value, entry_hmac, self._cluster_secret):
-            logger.error(
-                f"SECURITY: Rejecting entry for key {key} - "
-                f"HMAC verification failed (tampered or wrong cluster secret)"
-            )
-            return False
+        if verify_entry_hmac(key, value, entry_hmac, self._cluster_secret):
+            return True
 
-        return True
+        # During grace period, also accept old secret
+        if (
+            self._previous_secret
+            and time.time() < self._rotation_deadline
+            and verify_entry_hmac(key, value, entry_hmac, self._previous_secret)
+        ):
+            return True
+
+        logger.error(
+            f"SECURITY: Rejecting entry for key {key} - "
+            f"HMAC verification failed (tampered or wrong cluster secret)"
+        )
+        return False
 
     def get(self, key: str) -> Optional[str]:
         """Retrieve a value by key with HMAC verification.
