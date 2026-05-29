@@ -54,9 +54,12 @@ def start_daemon():
 
 def connect_to_daemon():
     """Connect to a running daemon via socket."""
-    # TODO: Implement socket connection to running daemon
-    print("Socket connection not yet implemented.")
-    print("Starting embedded daemon instead...")
+    # TODO: Implement socket connection to running daemon (boundaryctl uses
+    # the real socket API at api/boundary_api.py; this TUI does not yet).
+    print("WARNING: --connect is not implemented yet.")
+    print("Falling back to a NEW embedded daemon - this does NOT attach to a")
+    print("running daemon, and its state is independent of any live instance.")
+    print("Use boundaryctl for live daemon state. (Ctrl-C to abort.)")
     return start_daemon()
 
 

@@ -4,6 +4,10 @@ Boundary Daemon Report Generator CLI
 
 Generates monitoring reports and optionally sends them to Ollama for AI analysis.
 
+NOTE: This tool does NOT connect to a running daemon (it builds the report
+without a live daemon handle, so daemon-status sections may be empty). Ollama
+analysis is optional. Use boundaryctl for live daemon state.
+
 Usage:
     python generate_report.py                    # Generate report with Ollama analysis
     python generate_report.py --no-interpret     # Raw report only (no Ollama)

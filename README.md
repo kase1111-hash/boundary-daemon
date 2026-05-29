@@ -200,7 +200,7 @@ Status key: **Complete** = tested with full call chains, **Requires Root** = nee
 | SIEM CEF/LEEF Export | ✅ Complete | CEF/LEEF formatting for Splunk, QRadar, ArcSight |
 | SIEM Kafka/S3/GCS Shipping | 🔶 Optional Deps | Requires: kafka-python, boto3, or google-cloud-storage |
 | Case Management | 🔶 Optional Deps | ServiceNow, PagerDuty, Slack (requires: requests) |
-| Compliance Automation | ✅ Complete | NIST 800-53, ISO 27001 mapping |
+| Compliance Control Mapping | 🔶 Mapping only | NIST 800-53 / ISO 27001 control *mapping* — not certified, see COMPLIANCE.md |
 | Prometheus Metrics | ✅ Complete | Sandbox, policy, firewall metrics |
 | Health Check API | ✅ Complete | Kubernetes liveness/readiness probes |
 
@@ -278,7 +278,7 @@ python daemon/boundary_daemon.py --mode=airgap
 - Unknown states → Block operation
 
 ### Immutable Audit Log
-- Blockchain-style hash chain (SHA-256)
+- Hash-chained, append-only log (SHA-256) — tamper-evident, not a blockchain
 - Ed25519 cryptographic signatures
 - Append-only log storage with chattr +a
 - Tamper-evident and verifiable
@@ -334,7 +334,7 @@ python daemon/boundary_daemon.py --mode=airgap
 
 ```
 boundary-daemon/
-├─ daemon/                    # Core daemon components (150+ modules)
+├─ daemon/                    # Core daemon components (~148 modules)
 │  ├─ boundary_daemon.py          # Main service orchestrator
 │  ├─ state_monitor.py            # Environment sensing
 │  ├─ policy_engine.py            # Mode enforcement

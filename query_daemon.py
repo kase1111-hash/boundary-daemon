@@ -4,6 +4,11 @@ Boundary Daemon Query Tool
 
 Query the Boundary Daemon using natural language via Ollama.
 
+NOTE: This tool does NOT connect to a running daemon. It builds a report from
+local data and sends it to a local Ollama instance for natural-language
+analysis; without Ollama it degrades to raw output. Use boundaryctl to talk to
+a live daemon over its socket API.
+
 Usage:
     python query_daemon.py "What is the memory usage?"
     python query_daemon.py --interactive
