@@ -20,7 +20,7 @@ Fixes #(issue number)
 
 **All contributions must maintain our security-first approach.**
 
-- [ ] I have read [CONTRIBUTING.md](CONTRIBUTING.md)
+- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md)
 - [ ] This change maintains fail-closed semantics
 - [ ] This change does not weaken audit logging or event integrity
 - [ ] This change does not introduce convenience at the cost of security

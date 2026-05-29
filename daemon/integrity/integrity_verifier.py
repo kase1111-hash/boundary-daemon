@@ -566,10 +566,23 @@ def verify_at_startup(
             return False
 
     except FileNotFoundError:
-        logger.warning(
-            f"Manifest not found at {manifest_path} - skipping integrity check"
+        # A missing manifest must be treated as an integrity failure, not a
+        # silent pass. Honor fail_action so the default ("exit") fails closed;
+        # only "warn" mode allows startup without a manifest (development).
+        logger.critical(
+            f"Manifest not found at {manifest_path} - cannot verify integrity"
         )
-        return True  # Allow startup without manifest (development mode)
+        if fail_action == "exit":
+            logger.critical("Refusing to start - no integrity manifest")
+            raise SystemExit(1)
+        elif fail_action == "lockdown":
+            logger.critical("Entering LOCKDOWN mode - no integrity manifest")
+            return False
+        else:
+            logger.warning(
+                "Continuing without integrity manifest (warn/development mode)"
+            )
+            return True
     except Exception as e:
         logger.error(f"Integrity verification error: {e}")
         if fail_action == "exit":

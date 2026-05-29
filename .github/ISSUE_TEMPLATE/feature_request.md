@@ -52,6 +52,6 @@ Link to any relevant specs, documentation, or prior art.
 ## Checklist
 
 - [ ] I have checked existing issues for duplicates
-- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [ ] I have read [CONTRIBUTING.md](../../CONTRIBUTING.md)
 - [ ] I understand the security-first philosophy of this project
 - [ ] This feature does not require machine learning (we use deterministic rules only)

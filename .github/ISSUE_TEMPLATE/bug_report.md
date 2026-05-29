@@ -45,7 +45,7 @@ Paste relevant log output here
 - [ ] This bug affects policy enforcement
 - [ ] This bug could lead to unauthorized access
 
-If any of the above are checked, please also report via the security vulnerability process described in [SECURITY.md](../SECURITY.md).
+If any of the above are checked, please also report via the security vulnerability process described in [SECURITY.md](../../SECURITY.md).
 
 ## Additional Context
 

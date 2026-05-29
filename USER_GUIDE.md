@@ -1754,10 +1754,7 @@ All modules can be monitored with the following granularity:
 
 
 > **Note:** This document has been consolidated. For comprehensive integration documentation, see:
-> - **[integrations/INTEGRATION_GUIDE.md](integrations/INTEGRATION_GUIDE.md)** - Complete ecosystem integration guide
 > - **[integrations/README.md](integrations/README.md)** - Quick reference and package list
-> - **[integrations/SECURITY_INTEGRATION.md](integrations/SECURITY_INTEGRATION.md)** - Attack vectors prevented
-> - **[integrations/ADVANCED_RULES.md](integrations/ADVANCED_RULES.md)** - Advanced policy gates (47 rules)
 
 ---
 
@@ -1823,4 +1820,4 @@ echo '{"command": "check_recall", "params": {"memory_class": 3}}' | \
 
 ---
 
-For detailed integration instructions, code examples, and repository-specific guides, see **[integrations/INTEGRATION_GUIDE.md](integrations/INTEGRATION_GUIDE.md)**.
+For detailed integration instructions, code examples, and repository-specific guides, see **[integrations/README.md](integrations/README.md)**.

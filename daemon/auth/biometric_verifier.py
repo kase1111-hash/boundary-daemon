@@ -304,6 +304,13 @@ class BiometricVerifier:
         self.camera_available = CV2_AVAILABLE and FACE_RECOGNITION_AVAILABLE
         self.fprintd_mode = self._fprintd_client is not None
 
+        # Mock fingerprint paths fabricate match scores and must never be used
+        # as a real authentication factor. They are disabled unless explicitly
+        # opted in (e.g. for demos/tests) via this environment variable.
+        self.allow_mock = os.environ.get(
+            "BOUNDARY_ALLOW_MOCK_BIOMETRICS", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
+
         # Load existing templates
         self.enrolled_templates: List[BiometricTemplate] = []
         self._load_templates()
@@ -441,7 +448,18 @@ class BiometricVerifier:
                 print(f"\n✗ {message}")
                 return (False, message)
 
-        # Fallback: Mock implementation
+        # Fallback: Mock implementation. Refuse unless explicitly opted in, so
+        # we never create a "successful" enrollment that isn't backed by a
+        # real reader.
+        if not self.allow_mock:
+            logger.error(
+                "Fingerprint enrollment requested but no real reader is "
+                "available; refusing to mock enrollment (set "
+                "BOUNDARY_ALLOW_MOCK_BIOMETRICS=1 to allow mock for demos)."
+            )
+            return (False, "No real fingerprint reader available (mock disabled)")
+
+        logger.warning("Using MOCK fingerprint enrollment - NOT a real auth factor")
         print(f"Place your finger on the reader {num_samples} times.")
         print("Remove and replace your finger between scans.\n")
 
@@ -542,6 +560,23 @@ class BiometricVerifier:
                 error_message="No enrolled fingerprints found"
             )
 
+        # Fallback path has no real reader. Refuse rather than fabricate a
+        # successful match, unless mock mode is explicitly enabled.
+        if not self.allow_mock:
+            logger.error(
+                "Fingerprint verification requested but no real reader is "
+                "available; refusing to mock a match (set "
+                "BOUNDARY_ALLOW_MOCK_BIOMETRICS=1 to allow mock for demos)."
+            )
+            return BiometricResult(
+                success=False,
+                biometric_type=BiometricType.FINGERPRINT,
+                match_score=0.0,
+                liveness_passed=False,
+                error_message="No real fingerprint reader available (mock disabled)"
+            )
+
+        logger.warning("Using MOCK fingerprint verification - NOT a real auth factor")
         print("\nPlace finger on reader for verification...")
 
         # Mock implementation (fallback when fprintd not available)

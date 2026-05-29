@@ -299,7 +299,11 @@ class SIEMConnector:
         """
         Queue an event for sending to SIEM.
 
-        Returns True if queued, False if dropped due to full buffer.
+        NOTE: True means the event was accepted (buffered) or intentionally
+        skipped (connector disabled / filtered by severity or category) - it
+        does NOT mean the event was delivered. Actual delivery happens in
+        flush(); check its return value / connector stats for delivery counts.
+        Returns False only when the event was dropped due to a full buffer.
         """
         if not self.config.enabled:
             return True

@@ -2,7 +2,7 @@
 
 Ready-to-use integration modules for all Agent OS ecosystem components.
 
-> For detailed integration instructions and code examples, see [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md).
+> For system architecture and integration concepts, see [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Security Integration Check
 
@@ -15,7 +15,7 @@ python integrations/security_integration_check.py
 python integrations/security_integration_check.py --format json
 ```
 
-See [SECURITY_INTEGRATION.md](./SECURITY_INTEGRATION.md) for attack vectors prevented.
+See [../SECURITY.md](../SECURITY.md) for the security policy and threat model.
 
 ## Integration Packages (Alphabetical)
 
@@ -84,8 +84,6 @@ All integrations implement:
 
 ## Related Documentation
 
-- [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) - Detailed integration guide with examples
-- [ADVANCED_RULES.md](./ADVANCED_RULES.md) - Advanced policy gates specification (v2.0)
-- [../INTEGRATION.md](../INTEGRATION.md) - Core integration concepts
-- [../ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
-- [../SPEC.md](../SPEC.md) - Full specification
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture and integration concepts
+- [../USER_GUIDE.md](../USER_GUIDE.md) - User manual and workflows
+- [../SECURITY.md](../SECURITY.md) - Security policy

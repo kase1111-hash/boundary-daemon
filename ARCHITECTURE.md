@@ -1480,8 +1480,8 @@ It is NOT a standalone security solution. For actual data protection, combine wi
 
 ## See Also
 
-- [SECURITY_AUDIT.md](SECURITY_AUDIT.md) - Detailed security audit findings
-- [SPEC.md](SPEC.md) - Complete technical specification
+- [AUDIT.md](AUDIT.md) - Current repository audit (what's real vs. theater)
+- [SECURITY.md](SECURITY.md) - Security policy
 - [test_bypass_vulnerability.py](test_bypass_vulnerability.py) - Proof-of-concept bypass demonstrations
 
 ---

@@ -426,11 +426,6 @@ def get_hidden_imports() -> List[str]:
         "--hidden-import=daemon.privilege_manager",
         "--hidden-import=daemon.redundant_event_logger",
         "--hidden-import=daemon.integrations",
-        # Daemon subpackages - airgap
-        "--hidden-import=daemon.airgap",
-        "--hidden-import=daemon.airgap.data_diode",
-        "--hidden-import=daemon.airgap.qr_ceremony",
-        "--hidden-import=daemon.airgap.sneakernet",
         # Daemon subpackages - alerts
         "--hidden-import=daemon.alerts",
         "--hidden-import=daemon.alerts.case_manager",
@@ -460,9 +455,6 @@ def get_hidden_imports() -> List[str]:
         "--hidden-import=daemon.config",
         "--hidden-import=daemon.config.linter",
         "--hidden-import=daemon.config.secure_config",
-        # Daemon subpackages - containment
-        "--hidden-import=daemon.containment",
-        "--hidden-import=daemon.containment.agent_profiler",
         # Daemon subpackages - crypto (HSM and PQC archived — stubs only)
         "--hidden-import=daemon.crypto",
         # Daemon subpackages - detection
@@ -500,9 +492,6 @@ def get_hidden_imports() -> List[str]:
         "--hidden-import=daemon.external_integrations.siem.log_shipper",
         "--hidden-import=daemon.external_integrations.siem.sandbox_events",
         "--hidden-import=daemon.external_integrations.siem.verification_api",
-        # Daemon subpackages - federation
-        "--hidden-import=daemon.federation",
-        "--hidden-import=daemon.federation.threat_mesh",
         # Daemon subpackages - hardware
         "--hidden-import=daemon.hardware",
         "--hidden-import=daemon.hardware.tpm_manager",
@@ -511,9 +500,6 @@ def get_hidden_imports() -> List[str]:
         "--hidden-import=daemon.integrity",
         "--hidden-import=daemon.integrity.code_signer",
         "--hidden-import=daemon.integrity.integrity_verifier",
-        # Daemon subpackages - intelligence
-        "--hidden-import=daemon.intelligence",
-        "--hidden-import=daemon.intelligence.mode_advisor",
         # Daemon subpackages - messages
         "--hidden-import=daemon.messages",
         "--hidden-import=daemon.messages.message_checker",
@@ -575,10 +561,6 @@ def get_hidden_imports() -> List[str]:
         "--hidden-import=daemon.watchdog",
         "--hidden-import=daemon.watchdog.hardened_watchdog",
         "--hidden-import=daemon.watchdog.log_watchdog",
-        # Daemon subpackages - blockchain
-        "--hidden-import=daemon.blockchain",
-        "--hidden-import=daemon.blockchain.validator_protection",
-        "--hidden-import=daemon.blockchain.rpc_protection",
     ]
 
 
