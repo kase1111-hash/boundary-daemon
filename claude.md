@@ -168,7 +168,7 @@ except ImportError:
 | Constants/Config | `daemon/constants.py` |
 | Test fixtures | `tests/conftest.py` |
 | CI/CD | `.github/workflows/ci.yml` |
-| Full spec | `SPEC.md` |
+| Architecture | `ARCHITECTURE.md` |
 
 ## Common Tasks
 

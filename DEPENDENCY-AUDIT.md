@@ -95,7 +95,6 @@
 - `daemon/storage/forensic_audit.py` — forensic audit chain signing
 - `daemon/detection/ioc_feeds.py` — IOC feed signature verification
 - `daemon/external_integrations/siem/verification_api.py` — SIEM signature verification
-- Plus 6 files in `archive/` (federation, crypto, blockchain, airgap modules)
 
 **Why essential:** Ed25519 signatures are fundamental to the trust enforcement model. `pynacl` (libsodium) is the standard library for this. No stdlib alternative exists.
 
@@ -103,13 +102,12 @@
 
 **Purpose:** Fernet symmetric encryption, PBKDF2 key derivation, AES-GCM, PEM key loading.
 
-**Usage:** Heavy across 6 active files:
+**Usage:** Heavy across 5 active files:
 - `daemon/config/secure_config.py` — configuration encryption/decryption (Fernet + PBKDF2)
 - `daemon/auth/secure_token_storage.py` — token encryption (Fernet + PBKDF2)
 - `daemon/hardware/tpm_manager.py` — AES-GCM encryption for TPM sealed data
 - `daemon/storage/append_only.py` — PEM key loading for append-only log signing
 - `daemon/security/secure_memory.py` — memory encryption (Fernet)
-- `archive/airgap/sneakernet.py` — sneakernet encryption (Fernet + PBKDF2)
 
 **Why essential:** Handles real cryptographic complexity (symmetric encryption, key derivation, authenticated encryption). No stdlib alternative. Well-maintained, industry-standard library.
 

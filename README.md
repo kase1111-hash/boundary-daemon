@@ -74,7 +74,7 @@ This is the **v1.0.0-beta release** of Boundary Daemon — a security policy and
 > - Network firewalls (iptables/nftables)
 > - Hardware controls
 >
-> See [ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md) for the complete security architecture.
+> See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete security architecture.
 
 ---
 
@@ -135,7 +135,7 @@ Agent Smith serves as the **policy authority and audit system** - the decision-m
 
 ## Feature Summary
 
-Status key: **Complete** = tested with full call chains, **Requires Root** = needs elevated privileges, **Optional Deps** = requires packages not in requirements.txt, **Experimental** = code exists but untested in CI, **Archived** = moved to archive/, not actively maintained.
+Status key: **Complete** = tested with full call chains, **Requires Root** = needs elevated privileges, **Optional Deps** = requires packages not in requirements.txt, **Experimental** = code exists but untested in CI, **Removed** = deleted (was non-functional stub/concept code).
 
 ### Core Security Engine (Complete — tested, production-quality)
 | Feature | Status | Description |
@@ -228,14 +228,14 @@ Status key: **Complete** = tested with full call chains, **Requires Root** = nee
 | `verify_signatures` | Signature verification |
 | `dashboard` | Real-time TUI monitoring dashboard |
 
-### Archived (moved to archive/ — interface stubs without working implementations)
+### Removed (deleted — interface stubs without working implementations)
 | Feature | Reason |
 |---------|--------|
 | HSM Support (PKCS#11) | Abstract interface only, no hardware integration |
 | Post-Quantum Crypto | Kyber/Dilithium simulators, not real PQC |
 | Identity Federation (OIDC/LDAP/PAM) | Declared advisory-only, no active callers |
-| Air-Gap Operations | Data diode, QR ceremonies, sneakernet — archived previously |
-| Biometric Authentication | Archived previously |
+| Air-Gap Operations | Data diode, QR ceremonies, sneakernet — concept code only |
+| Blockchain/Federation | Validator/RPC protection and threat-mesh — no live integration |
 
 ---
 
@@ -556,20 +556,16 @@ boundary-daemon/
 │
 └─ Documentation
    ├─ README.md                       # This file
-   ├─ ARCHITECTURE.md                 # System architecture
-   ├─ SPEC.md                         # Full specification (v2.5)
-   ├─ INTEGRATION.md                  # Integration guide
-   ├─ USAGE.md                        # Usage guide
+   ├─ ARCHITECTURE.md                 # System architecture and enforcement model
    ├─ USER_GUIDE.md                   # User manual
-   ├─ SECURITY.md                     # Security policies
-   ├─ SECURITY_AUDIT.md               # Security audit
-   ├─ ENFORCEMENT_MODEL.md            # Enforcement explanation
-   ├─ CHANGELOG.md                    # Change history
-   ├─ TODO.md                         # External enforcement TODOs
-   └─ docs/
-      ├─ FIVE_STAR_ROADMAP.md             # Long-term roadmap
-      ├─ FEATURE_ROADMAP.md               # Feature priorities
-      └─ SECURITY_COMPARISON.md           # Security comparison
+   ├─ SECURITY.md                     # Security policy
+   ├─ COMPLIANCE.md                   # Compliance control mapping
+   ├─ DEPLOYMENT.md                   # Deployment guide
+   ├─ DEPENDENCY-AUDIT.md             # Dependency inventory
+   ├─ CONTRIBUTING.md                 # Contributor guide
+   ├─ ROADMAP.md                      # Roadmap
+   ├─ AUDIT.md                        # Current repository audit
+   └─ CHANGELOG.md                    # Change history
 ```
 
 ## Integration
@@ -1262,7 +1258,7 @@ python daemon/tui/art_editor.py --load SPRITE_NAME
 | **Network Blocking** | Optional enforcement modules (iptables/nftables, Windows Firewall) can provide this on supported platforms |
 | **Memory Protection** | Cannot prevent unauthorized memory reads at the OS level |
 
-> **Note:** The optional sandbox module (Linux) provides process isolation via namespaces, seccomp-bpf, and cgroups. The optional enforcement modules can control network and USB access. See [ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md) for details.
+> **Note:** The optional sandbox module (Linux) provides process isolation via namespaces, seccomp-bpf, and cgroups. The optional enforcement modules can control network and USB access. See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ### Security Architecture (Defense in Depth)
 
@@ -1410,14 +1406,12 @@ python api/boundary_api.py
 
 ## Documentation
 
-- **[SPEC.md](SPEC.md)** - Complete technical specification
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design
-- **[INTEGRATION.md](INTEGRATION.md)** - Integration guide for Agent OS components
-- **[USAGE.md](USAGE.md)** - Usage guide and common workflows
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture, design, and enforcement model
 - **[USER_GUIDE.md](USER_GUIDE.md)** - Comprehensive user manual
-- **[SECURITY.md](SECURITY.md)** - Security policies and practices
-- **[SECURITY_AUDIT.md](SECURITY_AUDIT.md)** - Security audit findings
-- **[ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md)** - Understanding the enforcement model
+- **[SECURITY.md](SECURITY.md)** - Security policy and practices
+- **[COMPLIANCE.md](COMPLIANCE.md)** - Compliance control mapping (no certification claimed)
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Deployment guide
+- **[AUDIT.md](AUDIT.md)** - Current repository audit (what's real vs. theater)
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and changes
 
 ## Planned Features (TODO)

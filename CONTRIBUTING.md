@@ -18,11 +18,10 @@ Before diving in, familiarize yourself with the codebase:
 
 | Document | Purpose |
 |----------|---------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design and security model |
-| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Practical guide for new contributors |
-| [docs/MODULE_MAP.md](docs/MODULE_MAP.md) | Module organization and navigation |
-| [SPEC.md](SPEC.md) | Formal specification |
-| [ENFORCEMENT_MODEL.md](ENFORCEMENT_MODEL.md) | How enforcement works |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, security model, and how enforcement works |
+| [USER_GUIDE.md](USER_GUIDE.md) | User manual and common workflows |
+| [SECURITY.md](SECURITY.md) | Security policy |
+| [AUDIT.md](AUDIT.md) | Current repository audit (what's real vs. theater) |
 
 ## Getting Started
 
@@ -609,7 +608,7 @@ These thresholds ensure the daemon doesn't introduce noticeable latency to agent
 
 ## Getting Help
 
-1. **Read the docs**: `ARCHITECTURE.md`, `SPEC.md`, `ENFORCEMENT_MODEL.md`
+1. **Read the docs**: `ARCHITECTURE.md`, `USER_GUIDE.md`, `SECURITY.md`
 2. **Check existing code**: Find similar functionality and follow the pattern
 3. **Run tests**: `pytest tests/ -v` shows how components are used
 4. **Use feature detection**: `python -m daemon.features` shows what's available
