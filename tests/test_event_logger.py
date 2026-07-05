@@ -660,7 +660,14 @@ class TestEventLoggerCrashRecovery:
         success1, _ = logger.seal_log()
         assert success1 is True
 
-        # Make writable again for second seal attempt
+        # Make writable again for second seal attempt. When running as
+        # root, seal_log() also applies chattr +i, which blocks chmod
+        # until the immutable attribute is cleared.
+        import subprocess
+        subprocess.run(
+            ['chattr', '-i', str(temp_log_file)],
+            capture_output=True,
+        )
         os.chmod(str(temp_log_file), 0o600)
 
         success2, _ = logger.seal_log()
