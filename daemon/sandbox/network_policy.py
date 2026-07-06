@@ -30,6 +30,7 @@ Cgroup matching allows per-sandbox rules:
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -476,11 +477,18 @@ class SandboxFirewall:
             add chain inet {self.NFT_TABLE} {chain_name}
         ''')
 
-        # Add jump from output hook
-        self._run_nft(f'''
-            add chain inet {self.NFT_TABLE} output {{ type filter hook output priority 0; policy accept; }}
-            add rule inet {self.NFT_TABLE} output socket cgroupv2 level 2 "{cgroup_rel}" jump {chain_name}
-        ''', ignore_errors=True)
+        # Add jump from output hook. The base chain may already exist from a
+        # previous sandbox, so that step tolerates errors — but the jump rule
+        # itself must not fail silently, or the sandbox policy is unenforced.
+        self._run_nft(
+            f'add chain inet {self.NFT_TABLE} output'
+            f' {{ type filter hook output priority 0; policy accept; }}',
+            ignore_errors=True,
+        )
+        self._run_nft(
+            f'add rule inet {self.NFT_TABLE} output'
+            f' socket cgroupv2 level 2 "{cgroup_rel}" jump {chain_name}'
+        )
 
         # Build rules
         rules = []
@@ -594,6 +602,23 @@ class SandboxFirewall:
         """Clean up nftables rules for a sandbox."""
         chain_name = f"sandbox_{sandbox_id.replace('-', '_')}"
 
+        # Delete the jump rule from the output hook first: nft refuses to
+        # delete a chain that is still referenced by a jump rule. Rule
+        # deletion requires the rule's handle, so list with handles.
+        result = subprocess.run(
+            ['nft', '-a', 'list', 'chain', 'inet', self.NFT_TABLE, 'output'],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.decode().splitlines():
+                if re.search(rf'\bjump {re.escape(chain_name)}\s*#', line):
+                    handle = line.rsplit('# handle', 1)[1].strip()
+                    self._run_nft(
+                        f'delete rule inet {self.NFT_TABLE} output handle {handle}',
+                        ignore_errors=True,
+                    )
+
         # Delete chain (and its rules)
         self._run_nft(
             f'delete chain inet {self.NFT_TABLE} {chain_name}',
@@ -650,7 +675,14 @@ class SandboxFirewall:
         ignore_errors: bool = False,
     ) -> subprocess.CompletedProcess:
         """Run nftables commands."""
-        commands = ' '.join(commands.split())
+        # Normalize whitespace within each line but keep line breaks:
+        # nft scripts separate statements by newline, so collapsing them
+        # would merge every statement into one unparseable line.
+        commands = '\n'.join(
+            ' '.join(line.split())
+            for line in commands.splitlines()
+            if line.strip()
+        )
         cmd = ['nft', '-f', '-']
         logger.debug(f"Running nft: {commands[:80]}...")
 

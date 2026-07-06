@@ -387,10 +387,10 @@ class NetworkEnforcer:
             self._run_iptables(['-A', self.BOUNDARY_CHAIN, '-j', 'ACCEPT'])
         else:
             self._nftables_setup_table()
-            self._run_nft(f'''
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} \
-                    log prefix "[BOUNDARY-RESTRICTED] " accept
-            ''')
+            self._run_nft(
+                f'add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} '
+                f'log prefix "[BOUNDARY-RESTRICTED] " accept'
+            )
 
         logger.info("Network enforcement: RESTRICTED mode - logging enabled")
 
@@ -430,13 +430,21 @@ class NetworkEnforcer:
 
         else:
             self._nftables_setup_table()
-            vpn_ifaces = ' '.join([f'"{i}"' for i in self._vpn_interfaces])
             self._run_nft(f'''
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} oifname "lo" accept
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} ct state established,related accept
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} oifname {{ {vpn_ifaces} }} accept
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} log prefix "[BOUNDARY-BLOCKED] " drop
+                add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} oifname "lo" accept
+                add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} ct state established,related accept
             ''')
+            if self._vpn_interfaces:
+                # nft set elements are comma-separated
+                vpn_ifaces = ', '.join([f'"{i}"' for i in self._vpn_interfaces])
+                self._run_nft(
+                    f'add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} '
+                    f'oifname {{ {vpn_ifaces} }} accept'
+                )
+            self._run_nft(
+                f'add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} '
+                f'log prefix "[BOUNDARY-BLOCKED] " drop'
+            )
 
         logger.info("Network enforcement: TRUSTED mode - VPN only")
 
@@ -465,8 +473,8 @@ class NetworkEnforcer:
         else:
             self._nftables_setup_table()
             self._run_nft(f'''
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} oifname "lo" accept
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} log prefix "[AIRGAP-VIOLATION] " level warn drop
+                add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} oifname "lo" accept
+                add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} log prefix "[AIRGAP-VIOLATION] " level warn drop
             ''')
 
         logger.info("Network enforcement: AIRGAP mode - loopback only")
@@ -496,9 +504,10 @@ class NetworkEnforcer:
 
         else:
             self._nftables_setup_table()
-            self._run_nft(f'''
-                add rule {self.NFT_TABLE} {self.NFT_CHAIN} log prefix "[LOCKDOWN-BLOCK] " level alert drop
-            ''')
+            self._run_nft(
+                f'add rule inet {self.NFT_TABLE} {self.NFT_CHAIN} '
+                f'log prefix "[LOCKDOWN-BLOCK] " level alert drop'
+            )
 
         logger.info("Network enforcement: LOCKDOWN mode - all traffic blocked")
 
@@ -585,8 +594,14 @@ class NetworkEnforcer:
 
     def _run_nft(self, commands: str, ignore_errors: bool = False) -> subprocess.CompletedProcess:
         """Run nftables commands"""
-        # Clean up the command string
-        commands = ' '.join(commands.split())
+        # Normalize whitespace within each line but keep line breaks:
+        # nft scripts separate statements by newline, so collapsing them
+        # would merge every statement into one unparseable line.
+        commands = '\n'.join(
+            ' '.join(line.split())
+            for line in commands.splitlines()
+            if line.strip()
+        )
 
         cmd = ['nft', '-f', '-']
         logger.debug(f"Running nft commands: {commands[:100]}...")
