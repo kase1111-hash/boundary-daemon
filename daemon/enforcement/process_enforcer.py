@@ -37,7 +37,7 @@ import json
 import ctypes
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict, Set
+from typing import Optional, List, Tuple, Dict, Set, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ try:
     SECURE_PROFILE_AVAILABLE = True
 except ImportError:
     SECURE_PROFILE_AVAILABLE = False
-    SecureProfileManager = None
+    SecureProfileManager = None  # type: ignore[assignment,misc]
 
 # Import secure process termination (SECURITY: replaces broad pattern matching)
 try:
@@ -64,10 +64,10 @@ try:
     SECURE_TERMINATION_AVAILABLE = True
 except ImportError:
     SECURE_TERMINATION_AVAILABLE = False
-    SecureProcessTerminator = None
-    ProcessInfo = None
-    TerminationReason = None
-    TerminationResult = None
+    SecureProcessTerminator = None  # type: ignore[assignment,misc]
+    ProcessInfo = None  # type: ignore[assignment,misc]
+    TerminationReason = None  # type: ignore[assignment,misc]
+    TerminationResult = None  # type: ignore[assignment,misc]
 
 
 class ProcessEnforcementError(Exception):
@@ -176,14 +176,14 @@ class SeccompFilter:
 class ContainerConfig:
     """Configuration for container isolation"""
     network: str = "none"  # none, host, bridge
-    capabilities: List[str] = None  # Capabilities to drop
+    capabilities: Optional[List[str]] = None  # Capabilities to drop
     read_only: bool = True
     no_new_privileges: bool = True
     seccomp_profile: Optional[str] = None
     memory_limit: Optional[str] = None
     cpu_limit: Optional[float] = None
-    devices: List[str] = None
-    volumes: List[str] = None
+    devices: Optional[List[str]] = None
+    volumes: Optional[List[str]] = None
 
 
 class ProcessEnforcer:
@@ -480,7 +480,7 @@ class ProcessEnforcer:
             if num in num_to_name:
                 syscall_names.append(num_to_name[num])
 
-        profile = {
+        profile: Dict[str, Any] = {
             "defaultAction": "SCMP_ACT_ALLOW",
             "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_X86", "SCMP_ARCH_AARCH64"],
             "syscalls": [
@@ -735,9 +735,9 @@ class ProcessEnforcer:
             # Use exact path matching, not pattern matching
             # nosec B108 - detecting malicious processes, not writing to tmp
             suspicious_exe_prefixes = [
-                '/tmp/',
-                '/dev/shm/',
-                '/var/tmp/',
+                '/tmp/',  # nosec B108 - detection pattern
+                '/dev/shm/',  # nosec B108 - detection pattern
+                '/var/tmp/',  # nosec B108 - detection pattern
             ]
 
             for prefix in suspicious_exe_prefixes:
@@ -809,7 +809,7 @@ class ProcessEnforcer:
                 if self.daemon:
                     # Verify daemon is responsive
                     try:
-                        status = self.daemon.policy_engine.get_current_mode()
+                        self.daemon.policy_engine.get_current_mode()
                         # Daemon is healthy
                     except (AttributeError, RuntimeError):
                         logger.error("Daemon health check failed in watchdog")

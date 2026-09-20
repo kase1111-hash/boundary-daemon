@@ -56,9 +56,9 @@ try:
     BYPASS_RESISTANT_AVAILABLE = True
 except ImportError:
     BYPASS_RESISTANT_AVAILABLE = False
-    BypassResistantPIIDetector = None
-    BypassDetector = None
-    TextNormalizer = None
+    BypassResistantPIIDetector = None  # type: ignore[assignment,misc]
+    BypassDetector = None  # type: ignore[assignment,misc]
+    TextNormalizer = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ class PIIFilterResult:
 
     def _get_severity_summary(self) -> Dict[str, int]:
         """Get entity count by severity."""
-        summary = {}
+        summary: Dict[str, int] = {}
         for entity in self.entities_found:
             key = entity.severity.value
             summary[key] = summary.get(key, 0) + 1
@@ -198,7 +198,7 @@ class PIIFilterResult:
 
     def _get_type_summary(self) -> Dict[str, int]:
         """Get entity count by type."""
-        summary = {}
+        summary: Dict[str, int] = {}
         for entity in self.entities_found:
             key = entity.entity_type.value
             summary[key] = summary.get(key, 0) + 1
@@ -258,7 +258,7 @@ class PIIFilter:
             self._bypass_resistant = False
         elif use_bypass_resistant and BYPASS_RESISTANT_AVAILABLE and BypassResistantPIIDetector is not None:
             base_detector = PIIDetector()
-            self.detector = BypassResistantPIIDetector(
+            self.detector = BypassResistantPIIDetector(  # type: ignore[assignment]  # duck-types PIIDetector (detect/redact/get_stats)
                 base_detector=base_detector,
                 normalize_before_scan=True,
                 detect_bypass_attempts=True,
@@ -283,10 +283,10 @@ class PIIFilter:
         self._max_failed_attempts = 3
 
         # Generate auth token
-        self._initial_token = self._generate_auth_token()
+        self._initial_token: Optional[str] = self._generate_auth_token()
 
         # Statistics
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             'total_scans': 0,
             'entities_detected': 0,
             'blocked_count': 0,
@@ -500,8 +500,8 @@ class PIIFilter:
         detection_result = self.detector.detect(text)
 
         # Extract entities - handle both Dict (bypass-resistant) and List (base) returns
-        bypass_attempts = []
-        bypass_warnings = []
+        bypass_attempts: List[Any] = []
+        bypass_warnings: List[Any] = []
         if isinstance(detection_result, dict):
             # Bypass-resistant detector returns Dict
             entities = detection_result.get('entities', [])
@@ -677,6 +677,7 @@ class PIIFilter:
             self._event_logger.log_event(
                 event_type=event_type,
                 data={
+                    'details': details,
                     'action': result.action_taken.value,
                     'context': result.context.value,
                     'mode': mode,
@@ -754,7 +755,7 @@ class PIIFilter:
             Tuple of (filtered_dict, list of results)
         """
         results = []
-        filtered = {}
+        filtered: Dict[str, Any] = {}
 
         for key, value in data.items():
             if isinstance(value, str):
@@ -769,7 +770,7 @@ class PIIFilter:
                 filtered[key] = nested
                 results.extend(nested_results)
             elif isinstance(value, list):
-                filtered_list = []
+                filtered_list: List[Any] = []
                 for item in value:
                     if isinstance(item, str):
                         if keys_to_filter is None:

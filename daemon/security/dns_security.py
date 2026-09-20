@@ -32,7 +32,7 @@ import shutil
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple, Callable
+from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 from enum import Enum
 from collections import defaultdict, deque
 import sys
@@ -64,9 +64,9 @@ try:
     NATIVE_DNS_AVAILABLE = True
 except ImportError:
     NATIVE_DNS_AVAILABLE = False
-    NativeDNSResolver = None
-    SecureDNSVerifier = None
-    DNSType = None
+    NativeDNSResolver = None  # type: ignore[assignment,misc]
+    SecureDNSVerifier = None  # type: ignore[assignment,misc]
+    DNSType = None  # type: ignore[assignment,misc]
 
 
 class DNSSecurityAlert(Enum):
@@ -120,7 +120,7 @@ class DNSSecurityConfig:
     auto_block_rebinding: bool = True  # Block domains attempting DNS rebinding
 
     # Sinkhole configuration
-    sinkhole_ipv4: str = "0.0.0.0"  # Where to redirect blocked domains
+    sinkhole_ipv4: str = "0.0.0.0"  # nosec B104 - sinkhole target for blocked domains, not a listening bind
     sinkhole_ipv6: str = "::"
 
     # Hosts file management
@@ -715,6 +715,13 @@ class DNSSecurityMonitor:
                            '-d', ip, '-j', 'DROP',
                            '-m', 'comment', '--comment', f'boundary-block-{domain}']
 
+                # Idempotency: skip if an identical rule already exists (-C = check)
+                check_cmd = [cmd[0], '-C'] + cmd[2:]
+                check_result = subprocess.run(check_cmd, capture_output=True, timeout=5)
+                if check_result.returncode == 0:
+                    blocked_ips.append(ip)
+                    continue
+
                 result = subprocess.run(cmd, capture_output=True, timeout=5)
                 if result.returncode == 0:
                     blocked_ips.append(ip)
@@ -949,7 +956,7 @@ class DNSSecurityMonitor:
         Returns:
             List of alert messages
         """
-        alerts = []
+        alerts: List[str] = []
         should_block = False
         block_reason = ""
 
@@ -1008,7 +1015,7 @@ class DNSSecurityMonitor:
                 result = subprocess.run(
                     ['tasklist'],
                     capture_output=True, timeout=5,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    creationflags=subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]  # Windows-only; guarded by IS_WINDOWS
                 )
                 if result.returncode == 0:
                     output = result.stdout.decode().lower()
@@ -1075,7 +1082,7 @@ class DNSSecurityMonitor:
                 result = subprocess.run(
                     ['tasklist'],
                     capture_output=True, timeout=5,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    creationflags=subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]  # Windows-only; guarded by IS_WINDOWS
                 )
                 if result.returncode == 0:
                     output = result.stdout.decode().lower()
@@ -1119,7 +1126,7 @@ class DNSSecurityMonitor:
         - Many subdomain labels
         - Unusual characters patterns
         """
-        alerts = []
+        alerts: List[str] = []
 
         # Skip known legitimate high-entropy domains
         for legit in self._legitimate_high_entropy:
@@ -1172,7 +1179,7 @@ class DNSSecurityMonitor:
         if not text:
             return 0.0
 
-        freq = defaultdict(int)
+        freq: Dict[str, int] = defaultdict(int)
         for char in text.lower():
             freq[char] += 1
 
@@ -1269,7 +1276,7 @@ class DNSSecurityMonitor:
                 result = subprocess.run(
                     ['ipconfig', '/all'],
                     capture_output=True, timeout=5,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    creationflags=subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]  # Windows-only; guarded by IS_WINDOWS
                 )
                 if result.returncode == 0:
                     output = result.stdout.decode()
@@ -1424,7 +1431,7 @@ class DNSSecurityMonitor:
         Returns:
             Dict with verification results
         """
-        results = {
+        results: Dict[str, Any] = {
             'domain': domain,
             'consistent': True,
             'responses': {},

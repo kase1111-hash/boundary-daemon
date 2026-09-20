@@ -90,7 +90,7 @@ class EnhancedCeremonyManager(CeremonyManager):
         # Check failure cooldown
         can_proceed, error_msg = self._check_failure_cooldown()
         if not can_proceed:
-            return (False, error_msg, None)
+            return (False, error_msg or "Biometric verification is in failure cooldown", None)
 
         # Get capabilities
         caps = self.biometric.get_capabilities()
@@ -203,8 +203,8 @@ class EnhancedCeremonyManager(CeremonyManager):
 
             if success:
                 print(f"✓ {message}")
-                print(f"  Match score: {result.match_score:.2f}")
-                print(f"  Liveness: {'PASSED' if result.liveness_passed else 'FAILED'}")
+                print(f"  Match score: {result.match_score:.2f}")  # type: ignore[union-attr]  # non-None when success
+                print(f"  Liveness: {'PASSED' if result.liveness_passed else 'FAILED'}")  # type: ignore[union-attr]
             elif not self.biometric_config.fallback_to_keyboard:
                 # Biometric required, no fallback allowed
                 print(f"✗ {message}")
@@ -280,8 +280,8 @@ class EnhancedCeremonyManager(CeremonyManager):
         print("✓ Cooldown complete")
 
         # Final confirmation
-        print(f"\nFinal confirmation required.")
-        print(f"Type 'CONFIRM' to complete the override:\n")
+        print("\nFinal confirmation required.")
+        print("Type 'CONFIRM' to complete the override:\n")
 
         if confirmation_callback:
             final_input = confirmation_callback()
@@ -336,7 +336,7 @@ class EnhancedCeremonyManager(CeremonyManager):
             True if ceremony succeeds, False otherwise
         """
         if not self.biometric or not self.biometric_config.enabled:
-            print(f"\nQuick ceremony not available (biometrics required)")
+            print("\nQuick ceremony not available (biometrics required)")
             return False
 
         print(f"\n→ Quick ceremony: {action}")

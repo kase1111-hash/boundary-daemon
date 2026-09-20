@@ -29,9 +29,7 @@ Usage:
 """
 
 import logging
-import os
 import threading
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
@@ -328,7 +326,7 @@ class SandboxTelemetryCollector:
         self, sandbox_id: str, state: '_SandboxTrackingState'
     ) -> None:
         """Check memory.events for OOM kills and high watermark hits."""
-        events_file = state.cgroup_path / "memory.events"
+        events_file = state.cgroup_path / "memory.events"  # type: ignore[operator]  # caller guards cgroup_path is not None
         if not events_file.exists():
             return
 
@@ -364,7 +362,7 @@ class SandboxTelemetryCollector:
         self, sandbox_id: str, state: '_SandboxTrackingState'
     ) -> None:
         """Check pids.events for PID limit hits."""
-        events_file = state.cgroup_path / "pids.events"
+        events_file = state.cgroup_path / "pids.events"  # type: ignore[operator]  # caller guards cgroup_path is not None
         if not events_file.exists():
             return
 
@@ -394,7 +392,7 @@ class SandboxTelemetryCollector:
         self, sandbox_id: str, state: '_SandboxTrackingState'
     ) -> None:
         """Check cpu.stat for throttling events."""
-        stat_file = state.cgroup_path / "cpu.stat"
+        stat_file = state.cgroup_path / "cpu.stat"  # type: ignore[operator]  # caller guards cgroup_path is not None
         if not stat_file.exists():
             return
 

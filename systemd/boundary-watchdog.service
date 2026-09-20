@@ -20,6 +20,9 @@
 # with --id secondary --peer /var/run/boundary-daemon/watchdog_primary.sock
 
 [Unit]
+# Restart rate limiting (must be in [Unit]; systemd ignores these keys in [Service])
+StartLimitIntervalSec=60
+StartLimitBurst=10
 Description=Boundary Daemon Watchdog - External Process Monitor
 Documentation=man:boundary-daemon(8)
 After=boundary-daemon.service
@@ -46,8 +49,6 @@ Restart=always
 RestartSec=1
 
 # Restart limit (don't restart more than 10 times in 60 seconds)
-StartLimitIntervalSec=60
-StartLimitBurst=10
 
 # Security hardening
 NoNewPrivileges=yes

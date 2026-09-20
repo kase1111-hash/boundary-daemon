@@ -43,13 +43,12 @@ import os
 import sys
 import fcntl
 import struct
-import ctypes
 import logging
 import threading
 import time
 from dataclasses import dataclass
-from enum import Enum, IntFlag
-from typing import Optional, Dict, Any, Tuple
+from enum import IntFlag
+from typing import Optional, Dict, Any, Tuple, Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -152,7 +151,7 @@ class HardwareWatchdogManager:
         pretimeout: int = 10,
         auto_ping: bool = False,
         ping_interval: Optional[float] = None,
-        on_pretimeout: Optional[callable] = None,
+        on_pretimeout: Optional[Callable[..., Any]] = None,
         device_path: Optional[str] = None,
     ):
         """
@@ -432,7 +431,7 @@ class HardwareWatchdogManager:
             logger.error(f"Failed to disable watchdog: {e}")
             # Try to close anyway
             try:
-                os.close(self._fd)
+                os.close(self._fd)  # type: ignore[arg-type]  # _fd checked non-None at function entry
             except OSError:
                 pass
             self._fd = None
@@ -642,7 +641,7 @@ def check_watchdog_support() -> Dict[str, Any]:
 
     Returns dict with support information.
     """
-    result = {
+    result: Dict[str, Any] = {
         'platform': sys.platform,
         'is_linux': IS_LINUX,
         'is_root': os.geteuid() == 0 if IS_LINUX else False,

@@ -5,6 +5,83 @@ All notable changes to the Boundary Daemon project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **CI never ran past lint.** The ruff step failed on every recent run of `main`, so the type
+  checker, the test suite and the security scans were never executed. Ruff now passes (243
+  findings resolved), mypy passes with the `types-PyYAML`/`types-requests` stubs installed,
+  bandit / detect-secrets / pip-audit pass, and the coverage gate uses the measured floor in
+  `.coveragerc` instead of an unmet `--cov-fail-under=60` override on the command line.
+- **Runtime crashes surfaced by the linters and type checker:**
+  - `daemon/tui/scene.py` used `time`, `threading`, `logger` and the optional audio-engine names
+    without importing them (`NameError` when a car sound or TTS hook fired).
+  - `daemon/enforcement/protection_persistence.py` referenced `ErrorCategory` without importing it.
+  - `EventType` lacked `DETECTION`, `SECURITY_EVENT`, `SECURITY_VIOLATION`, `SECURITY_ALERT`,
+    `ENFORCEMENT` and `NETWORK_ACTIVITY`, which ten modules referenced (`AttributeError` on those
+    audit-logging paths).
+  - `ToolOutputValidator`, `ResponseGuardrails` and `RAGInjectionDetector.subscribe()` called
+    `.append` on a dict registry (`AttributeError`); `ResponseGuardrails` also used a lock attribute
+    that was never created.
+  - `SIEMIntegration.log_security_error()` passed an unknown keyword to `_create_event`
+    (`TypeError` on the error-forwarding path used by `daemon.utils.error_handling`).
+  - The Windows branch of `ProcessSecurityMonitor._get_process_info()` built `ProcessInfo` with an
+    unknown `username` field and no `state`.
+  - `EncryptionChecker.is_path_encrypted()` called `.parents` on a `str`.
+  - `TripwireSystem.simulate_violation()` and the policy-engine demo built `EnvironmentState`
+    without nine required fields (`TypeError`).
+  - `get_prompt_injection_detector()` updated `_event_logger`/`_policy_engine` attributes the
+    detector never reads.
+  - `SignedEventLogger.log_event()` rejected the `reasoning_chain` argument its base class accepts,
+    and `verify_signatures()` dropped the reasoning chain when re-serialising events, so signed
+    events carrying one failed verification.
+  - `daemon/utils/error_handling.py` defined `handle_error` twice; the base implementation is now
+    `_handle_error_base` and the SIEM-forwarding wrapper is the single public `handle_error`.
+- **Silent fail-open in sandbox resource limits.** `CgroupLimitsConfig.to_cgroup_limits()` assigned
+  `memory_max`, `memory_high`, `cpu_max`, `cpu_period`, `io_rbps_max` and `io_wbps_max`, none of
+  which are `CgroupLimits` fields, so profile-configured limits were accepted and never applied.
+  It now sets `memory_max_bytes`, `memory_high_bytes`, `cpu_quota_us`/`cpu_period_us` and
+  `pids_max`, and logs a warning that size-only io limits cannot be applied. A profile
+  `timeout_seconds` now maps to `SandboxProfile.max_runtime_seconds`.
+- **`sandboxctl` was written against a sandbox API that does not exist** (`SandboxProfile.from_name`,
+  `run_sandboxed(stdin_data=..., capture_output=..., inherit_env=...)`,
+  `terminate_sandbox(signal=...)`, attribute-style list entries, `MetricsExporter.get_all_metrics`),
+  so every command crashed. All commands now use the real `SandboxManager` API. Supporting additions:
+  `Sandbox.get_info()`, `Sandbox.pid`, `Sandbox.started_at`, a `capture_output` parameter on
+  `SandboxManager.run_sandboxed()`, and `list_sandboxes()` now returns full `get_info()` dicts.
+  The `run` subcommand's positional argument also shadowed the subparser destination, so `sandboxctl run`
+  could never dispatch; the destination is now `subcommand`.
+  `sandboxctl metrics` reads the daemon's Prometheus exporter endpoint (`--metrics-url` /
+  `BOUNDARY_METRICS_URL`).
+- DNS blocking appended a duplicate firewall rule on every daemon restart; rules are now checked
+  with `-C` before being added.
+- `NetworkAttestor.is_vpn_connected()` and `MACPolicyManager.mac_system` could return `None`.
+- `SELinuxPolicyGenerator` defaulted to the fixed, predictable `/tmp/boundary-selinux` directory;
+  it now uses a private `mkdtemp()` directory. The default hardening config no longer lists
+  `/tmp/boundary-daemon/logs` as an allowed log directory.
+- Outbound HTTP hardening: the SIEM HTTP shipper, the Splunk HEC forwarder, the Ollama client and
+  the threat-intelligence lookups refuse non-http(s) endpoints, and threat-intel lookups validate
+  the IP address before interpolating it into a URL.
+- `systemd/boundary-daemon.service` and `boundary-watchdog.service` declared `StartLimitIntervalSec`/`StartLimitBurst`
+  in `[Service]`, where systemd ignores them; they are now in `[Unit]` so restart rate limiting applies.
+- The apparmor profile unload result is no longer ignored; the dashboard client falls back to the
+  environment uptime as intended; PII filter audit events now carry the summary they computed.
+
+### Changed
+
+- Dependencies: `cryptography` 44.0.0 → 50.0.1 and `pynacl` 1.5.0 → 1.6.2; both previous pins had
+  published advisories (see `DEPENDENCY-AUDIT.md`). CI checks dependencies with `pip-audit`
+  instead of `safety check`, which now requires an account.
+- `requirements-dev.txt` adds `types-PyYAML` and `types-requests` for mypy.
+- `.gitignore` ignores `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/` and `.hypothesis/`.
+
+### Added
+
+- `tests/test_regression_ci_fixes.py`: regression tests for every fix above.
+- `tests/test_sandboxctl.py`: tests for the rewritten CLI, including a check that its calls bind to
+  the real `SandboxManager` signatures.
+
 ## [1.0.0-beta] - 2026-01-09
 
 **Beta Release** - Production-ready release of Boundary Daemon (Agent Smith)

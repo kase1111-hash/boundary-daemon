@@ -40,7 +40,7 @@ def _is_admin_windows() -> bool:
     """Check if running as admin on Windows."""
     try:
         import ctypes
-        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # Windows only
     except (AttributeError, OSError):
         return False
 

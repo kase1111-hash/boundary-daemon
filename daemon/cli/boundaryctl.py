@@ -338,7 +338,7 @@ def main():
     resolve_parser.add_argument('case_id', help='Case ID')
     resolve_parser.add_argument('resolution', help='Resolution summary')
 
-    sla_parser = case_sub.add_parser('sla', help='Show SLA breaches')
+    case_sub.add_parser('sla', help='Show SLA breaches')
 
     case_parser.set_defaults(func=cmd_case)
 

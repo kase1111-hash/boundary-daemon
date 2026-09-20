@@ -43,9 +43,9 @@ try:
     ERROR_HANDLING_AVAILABLE = True
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub
         logger.error(f"{op}: {e}")
-    def log_filesystem_error(e, op, **ctx):
+    def log_filesystem_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub
         logger.error(f"FILESYSTEM: {op}: {e}")
 
 # Import secure memory utilities for key cleanup
@@ -58,9 +58,9 @@ try:
     SECURE_MEMORY_AVAILABLE = True
 except ImportError:
     SECURE_MEMORY_AVAILABLE = False
-    SecureBytes = None
-    secure_zero_memory = None
-    secure_key_context = None
+    SecureBytes = None  # type: ignore[assignment,misc]
+    secure_zero_memory = None  # type: ignore[assignment]
+    secure_key_context = None  # type: ignore[assignment]
 
 # Try to import cryptography library
 try:
@@ -70,7 +70,7 @@ try:
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
-    InvalidToken = Exception
+    InvalidToken = Exception  # type: ignore[assignment,misc]
     logger.warning("cryptography library not available - config encryption disabled")
 
 # Try to import YAML support
@@ -79,7 +79,7 @@ try:
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
-    yaml = None
+    yaml = None  # type: ignore[assignment]
 
 
 class ConfigFormat(Enum):
@@ -241,12 +241,12 @@ class SecureConfigStorage:
             # Windows: Use machine GUID from registry
             try:
                 import winreg
-                key = winreg.OpenKey(
-                    winreg.HKEY_LOCAL_MACHINE,
+                key = winreg.OpenKey(  # type: ignore[attr-defined]  # winreg attrs only exist on Windows
+                    winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
                     r"SOFTWARE\Microsoft\Cryptography"
                 )
-                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-                winreg.CloseKey(key)
+                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
+                winreg.CloseKey(key)  # type: ignore[attr-defined]
                 machine_data.append(machine_guid)
             except (ImportError, OSError, KeyError, AttributeError):
                 # ImportError: winreg not available
@@ -347,7 +347,7 @@ class SecureConfigStorage:
                 content = filepath.read_text()
                 if content.strip().startswith('{'):
                     return ConfigFormat.JSON
-                elif ':' in content and not '=' in content.split('\n')[0]:
+                elif ':' in content and '=' not in content.split('\n')[0]:
                     return ConfigFormat.YAML
                 else:
                     return ConfigFormat.INI
@@ -397,7 +397,7 @@ class SecureConfigStorage:
 
     def _encrypt_dict(self, data: Dict, path: str = "") -> Dict:
         """Recursively encrypt sensitive fields in a dictionary."""
-        result = {}
+        result: Dict[str, Any] = {}
 
         for key, value in data.items():
             field_path = f"{path}.{key}" if path else key
@@ -418,7 +418,7 @@ class SecureConfigStorage:
 
     def _encrypt_list(self, data: List, path: str) -> List:
         """Recursively encrypt sensitive fields in a list."""
-        result = []
+        result: List[Any] = []
 
         for i, item in enumerate(data):
             item_path = f"{path}[{i}]"
@@ -433,7 +433,7 @@ class SecureConfigStorage:
 
     def _decrypt_dict(self, data: Dict, path: str = "") -> Dict:
         """Recursively decrypt fields in a dictionary."""
-        result = {}
+        result: Dict[str, Any] = {}
 
         for key, value in data.items():
             field_path = f"{path}.{key}" if path else key
@@ -454,7 +454,7 @@ class SecureConfigStorage:
 
     def _decrypt_list(self, data: List, path: str) -> List:
         """Recursively decrypt fields in a list."""
-        result = []
+        result: List[Any] = []
 
         for i, item in enumerate(data):
             item_path = f"{path}[{i}]"

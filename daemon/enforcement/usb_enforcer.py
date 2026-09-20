@@ -491,7 +491,7 @@ class USBEnforcer:
 
     def _enumerate_usb_devices(self) -> List[USBDevice]:
         """Enumerate all connected USB devices"""
-        devices = []
+        devices: List[USBDevice] = []
 
         if not os.path.exists(self.USB_DEVICES_PATH):
             return devices
@@ -523,9 +523,9 @@ class USBEnforcer:
                 devices.append(USBDevice(
                     bus=bus,
                     device=device_num,
-                    vendor_id=vendor_id,
-                    product_id=product_id,
-                    device_class=device_class,
+                    vendor_id=vendor_id,  # type: ignore[arg-type]  # _read_sysfs with '' default returns str
+                    product_id=product_id,  # type: ignore[arg-type]
+                    device_class=device_class,  # type: ignore[arg-type]
                     authorized=authorized,
                     path=device_path,
                     name=product

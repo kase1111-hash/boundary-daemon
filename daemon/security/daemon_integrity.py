@@ -22,7 +22,7 @@ import time
 import logging
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 
@@ -39,11 +39,11 @@ try:
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
     # Fallback stubs
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub
         logger.error(f"{op}: {e}")
-    def log_security_error(e, op, **ctx):
+    def log_security_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub
         logger.error(f"SECURITY: {op}: {e}")
-    def log_filesystem_error(e, op, **ctx):
+    def log_filesystem_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub
         logger.error(f"FILESYSTEM: {op}: {e}")
 
 # Import centralized paths for PyInstaller-aware path resolution
@@ -292,7 +292,7 @@ class DaemonIntegrityProtector:
         self._signing_key: Optional[bytes] = None
 
         # Statistics
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             'checks_performed': 0,
             'checks_passed': 0,
             'checks_failed': 0,
@@ -395,7 +395,7 @@ class DaemonIntegrityProtector:
             elif self.config.hash_algorithm == "sha512":
                 hasher = hashlib.sha512()
             elif self.config.hash_algorithm == "blake2b":
-                hasher = hashlib.blake2b()
+                hasher = hashlib.blake2b()  # type: ignore[assignment]  # typeshed: blake2b is not a HASH subclass
             else:
                 hasher = hashlib.sha256()
 
@@ -643,7 +643,7 @@ class DaemonIntegrityProtector:
                     return result
 
             # Verify manifest signature
-            if not self._verify_signature(self._manifest):
+            if not self._verify_signature(self._manifest):  # type: ignore[arg-type]  # _manifest set by load_manifest() above  # type: ignore[arg-type]  # _manifest set by load_manifest() above  # type: ignore[arg-type]  # _manifest set by load_manifest() above
                 result = IntegrityCheckResult(
                     status=IntegrityStatus.SIGNATURE_INVALID,
                     error_message="Manifest signature is invalid - possible tampering!",
@@ -658,7 +658,7 @@ class DaemonIntegrityProtector:
 
             # Compare against manifest
             result = IntegrityCheckResult(status=IntegrityStatus.VERIFIED)
-            manifest_paths = set(self._manifest.files.keys())
+            manifest_paths = set(self._manifest.files.keys())  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above
             current_paths = set(current_files.keys())
 
             # Check for missing files
@@ -673,7 +673,7 @@ class DaemonIntegrityProtector:
 
             # Check for modified files
             for path in manifest_paths & current_paths:
-                manifest_info = self._manifest.files[path]
+                manifest_info = self._manifest.files[path]  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above
                 current_info = current_files[path]
 
                 if manifest_info.hash != current_info.hash:
@@ -1010,7 +1010,7 @@ if __name__ == '__main__':
 
     elif args.command == 'show':
         if protector.load_manifest():
-            manifest = protector._manifest
+            manifest = protector._manifest  # type: ignore[assignment]  # non-None after successful load_manifest()
             print(f"Manifest version: {manifest.version}")
             print(f"Created: {manifest.created_at}")
             print(f"Daemon version: {manifest.daemon_version}")

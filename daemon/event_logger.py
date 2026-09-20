@@ -54,6 +54,12 @@ class EventType(Enum):
     PII_REDACTED = "pii_redacted"  # PII redacted from content
     ALERT = "alert"  # System alert (critical/warning)
     INFO = "info"  # Informational event
+    DETECTION = "detection"  # Security detector finding (prompt/RAG injection, tool validation, guardrails)
+    SECURITY_EVENT = "security_event"  # Generic security event forwarded to SIEM
+    SECURITY_VIOLATION = "security_violation"  # Security policy violation (append-only log, profiles)
+    SECURITY_ALERT = "security_alert"  # Kernel-level (eBPF) security alert
+    ENFORCEMENT = "enforcement"  # Enforcement action taken (firewall rule, seccomp profile)
+    NETWORK_ACTIVITY = "network_activity"  # Network activity observed by firewall integration
     SANDBOX_ENFORCEMENT = "sandbox_enforcement"  # Sandbox enforcement action taken
     SANDBOX_VIOLATION = "sandbox_violation"  # Kernel-level violation in sandbox
     SANDBOX_TIGHTENED = "sandbox_tightened"  # Sandbox profile tightened on mode escalation
@@ -172,7 +178,7 @@ class EventLogger:
                             hash_chain=event_data['hash_chain']
                         )
                         self._last_hash = event.compute_hash()
-                        self._event_count = sum(1 for l in lines if l.strip())
+                        self._event_count = sum(1 for line in lines if line.strip())
         except Exception as e:
             # SECURITY: A corrupted log file could mean tampering.
             # Do NOT silently fork the hash chain with a fresh genesis hash.
@@ -495,7 +501,7 @@ class EventLogger:
                     )
                     if result.returncode == 0:
                         is_immutable = True
-                        logger.info(f"Applied immutable attribute to sealed log")
+                        logger.info("Applied immutable attribute to sealed log")
                 except (subprocess.SubprocessError, OSError):
                     pass
 
@@ -585,7 +591,7 @@ class EventLogger:
 
 
 if __name__ == '__main__':
-    # Test event logger
+    # Test event demo_logger
     print("Testing Event Logger...")
 
     import tempfile
@@ -595,34 +601,34 @@ if __name__ == '__main__':
     temp_dir = tempfile.mkdtemp()
     log_file = os.path.join(temp_dir, 'boundary_chain.log')
 
-    logger = EventLogger(log_file)
+    demo_logger = EventLogger(log_file)
 
     # Log some events
     print("\nLogging events...")
-    logger.log_event(EventType.DAEMON_START, "Boundary daemon started")
-    logger.log_event(EventType.MODE_CHANGE, "Transitioned from OPEN to RESTRICTED",
+    demo_logger.log_event(EventType.DAEMON_START, "Boundary daemon started")
+    demo_logger.log_event(EventType.MODE_CHANGE, "Transitioned from OPEN to RESTRICTED",
                     metadata={'old_mode': 'open', 'new_mode': 'restricted'})
-    logger.log_event(EventType.RECALL_ATTEMPT, "Memory class 3 recall requested",
+    demo_logger.log_event(EventType.RECALL_ATTEMPT, "Memory class 3 recall requested",
                     metadata={'memory_class': 3, 'decision': 'allow'})
-    logger.log_event(EventType.VIOLATION, "Network came online in AIRGAP mode",
+    demo_logger.log_event(EventType.VIOLATION, "Network came online in AIRGAP mode",
                     metadata={'violation_type': 'network_in_airgap'})
 
-    print(f"Total events: {logger.get_event_count()}")
+    print(f"Total events: {demo_logger.get_event_count()}")
 
     # Verify chain
     print("\nVerifying chain integrity...")
-    is_valid, error = logger.verify_chain()
+    is_valid, error = demo_logger.verify_chain()
     print(f"Chain valid: {is_valid}")
     if error:
         print(f"Error: {error}")
 
     # Get recent events
     print("\nRecent events:")
-    for event in logger.get_recent_events(10):
+    for event in demo_logger.get_recent_events(10):
         print(f"  [{event.timestamp}] {event.event_type.value}: {event.details}")
 
     # Cleanup
     import shutil
     shutil.rmtree(temp_dir)
 
-    print("\nEvent logger test complete.")
+    print("\nEvent demo_logger test complete.")

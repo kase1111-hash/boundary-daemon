@@ -344,7 +344,7 @@ profile boundary-daemon {self.config.daemon_path} flags=(attach_disconnected) {{
         if self._mac_system == MACSystem.APPARMOR:
             return self._generate_apparmor_process_profile(process_path, mode, name)
         else:
-            return f"# SELinux process profiles require custom module - use audit2allow"
+            return "# SELinux process profiles require custom module - use audit2allow"
 
     def _generate_apparmor_process_profile(
         self,

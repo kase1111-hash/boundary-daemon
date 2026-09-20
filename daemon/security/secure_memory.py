@@ -19,6 +19,7 @@ secrets are not copied by the garbage collector or interpreter.
 import ctypes
 import gc
 import os
+import sys
 import hmac
 import logging
 from contextlib import contextmanager
@@ -34,7 +35,6 @@ except ImportError:
     MLOCK_AVAILABLE = False
 
 # Check for ctypes memset
-import sys
 CTYPES_MEMSET_AVAILABLE = False
 _memset = None
 
@@ -88,7 +88,7 @@ def secure_zero_memory(data: Union[bytearray, memoryview]) -> bool:
     try:
         # Convert memoryview to get the underlying buffer
         if isinstance(data, memoryview):
-            data = data.obj if hasattr(data, 'obj') else data
+            data = data.obj if hasattr(data, 'obj') else data  # type: ignore[assignment]  # memoryview.obj is typed as Buffer; isinstance check below narrows it
 
         if not isinstance(data, bytearray):
             logger.warning("secure_zero_memory requires bytearray, got %s", type(data).__name__)

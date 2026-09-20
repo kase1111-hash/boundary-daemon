@@ -18,9 +18,10 @@ Addresses Critical Finding: "AIRGAP Mode Leaks Network Traffic"
 import threading
 import socket
 import json
+import ipaddress
 import logging
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 from enum import Enum
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
@@ -303,7 +304,7 @@ class ThreatIntelMonitor:
         """Analyze an IP against all threat sources"""
         categories = []
         max_confidence = 0
-        details = {}
+        details: Dict[str, Any] = {}
         is_tor = False
         is_c2 = False
         is_botnet = False
@@ -439,12 +440,17 @@ class ThreatIntelMonitor:
             api_key = self.config.abuseipdb_api_key
             if not api_key:
                 return None
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                logger.warning(f"Refusing AbuseIPDB lookup for non-IP value: {ip!r}")
+                return None
             url = f"https://api.abuseipdb.com/api/v2/check?ipAddress={ip}"
             req = urllib.request.Request(url)
             req.add_header('Key', api_key)
             req.add_header('Accept', 'application/json')
 
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 - fixed https URL, validated IP
                 self._record_api_call()
                 data = json.loads(response.read().decode())
 
@@ -491,11 +497,16 @@ class ThreatIntelMonitor:
             api_key = self.config.virustotal_api_key
             if not api_key:
                 return None
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                logger.warning(f"Refusing VirusTotal lookup for non-IP value: {ip!r}")
+                return None
             url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
             req = urllib.request.Request(url)
             req.add_header('x-apikey', api_key)
 
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 - fixed https URL, validated IP
                 self._record_api_call()
                 data = json.loads(response.read().decode())
 
@@ -646,7 +657,7 @@ class ThreatIntelMonitor:
                      if (datetime.now() - t).seconds < 60]
 
             if len(recent) >= 10:
-                alert = {
+                alert: Dict[str, Any] = {
                     "type": ThreatIntelAlert.SUSPICIOUS_CONNECTION.value,
                     "message": f"Rapid connections to {ip} ({len(recent)} in last minute) - possible beaconing",
                     "severity": ThreatSeverity.MEDIUM.value,
@@ -673,7 +684,7 @@ class ThreatIntelMonitor:
         }
 
         if port in suspicious_ports:
-            alert = {
+            alert = {  # type: ignore[no-redef]  # same Dict[str, Any] shape as above  # type: ignore[no-redef]  # same Dict[str, Any] shape as above  # type: ignore[no-redef]  # same Dict[str, Any] shape as above
                 "type": ThreatIntelAlert.SUSPICIOUS_CONNECTION.value,
                 "message": f"Connection to suspicious port {ip}:{port} ({suspicious_ports[port]})",
                 "severity": ThreatSeverity.MEDIUM.value,

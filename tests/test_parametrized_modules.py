@@ -51,8 +51,8 @@ class TestSecureConfigRoundTrip:
         "data",
         [
             {"simple_key": "hello"},
-            {"password": "s3cret!", "user": "admin"},
-            {"api_key": "sk-abc123", "nested": {"token": "tok-xyz"}},
+            {"password": "s3cret!", "user": "admin"},  # pragma: allowlist secret
+            {"api_key": "sk-abc123", "nested": {"token": "tok-xyz"}},  # pragma: allowlist secret
             {"empty_value": "", "number": 42, "flag": True},
         ],
         ids=["simple", "with-password", "nested-secrets", "mixed-types"],
@@ -67,7 +67,7 @@ class TestSecureConfigRoundTrip:
         "data",
         [
             {"simple_key": "hello"},
-            {"secret": "top-secret-value", "host": "localhost"},
+            {"secret": "top-secret-value", "host": "localhost"},  # pragma: allowlist secret
         ],
         ids=["plain", "with-secret"],
     )
@@ -82,7 +82,7 @@ class TestSecureConfigRoundTrip:
         assert loaded == data
 
     def test_sensitive_fields_are_encrypted_on_disk(self):
-        data = {"password": "hunter2", "host": "localhost"}
+        data = {"password": "hunter2", "host": "localhost"}  # pragma: allowlist secret
         path = str(self.tmp_path / "config.json")
         opts = SecureConfigOptions(encryption_mode=EncryptionMode.SENSITIVE_ONLY)
         storage = SecureConfigStorage(
@@ -92,10 +92,10 @@ class TestSecureConfigRoundTrip:
         raw = open(path).read()
         assert "hunter2" not in raw
         loaded = storage.load(path, format=ConfigFormat.JSON)
-        assert loaded["password"] == "hunter2"
+        assert loaded["password"] == "hunter2"  # pragma: allowlist secret
 
     def test_full_encryption_mode(self):
-        data = {"user": "admin", "password": "s3cret"}
+        data = {"user": "admin", "password": "s3cret"}  # pragma: allowlist secret
         path = str(self.tmp_path / "full_enc.json")
         opts = SecureConfigOptions(encryption_mode=EncryptionMode.FULL)
         storage = SecureConfigStorage(
@@ -134,7 +134,7 @@ class TestPIIDetection:
             ("Card: 4111111111111111", PIIEntityType.CREDIT_CARD),
             ("Email me at user@example.com", PIIEntityType.EMAIL),
             ("Call 555-867-5309", PIIEntityType.PHONE),
-            ("API key: AKIA1234567890ABCDEF", PIIEntityType.AWS_KEY),
+            ("API key: AKIA1234567890ABCDEF", PIIEntityType.AWS_KEY),  # pragma: allowlist secret
             ("Token: ghp_abcdefghij1234567890abcdefghij12", PIIEntityType.ACCESS_TOKEN),
         ],
         ids=["ssn", "credit-card", "email", "phone", "aws-key", "access-token"],

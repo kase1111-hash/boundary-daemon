@@ -343,22 +343,23 @@ def setup_logging(
         _state.initialized = True
 
 
-def get_logger(name: str) -> BoundaryLogger:
+def get_logger(name: str) -> logging.Logger:
     """
     Get a feature-aware logger.
+
+    Loggers created after this module is imported are BoundaryLogger
+    instances (see the setLoggerClass() call above). A logger that was
+    already registered as a plain logging.Logger before that is returned
+    unchanged: the logging module never replaces a registered logger, so it
+    cannot be upgraded in place.
 
     Args:
         name: Logger name (e.g., 'daemon.security.antivirus')
 
     Returns:
-        BoundaryLogger instance
+        Logger instance (a BoundaryLogger when created through this module)
     """
-    logger = logging.getLogger(name)
-    if not isinstance(logger, BoundaryLogger):
-        # Upgrade to BoundaryLogger if needed
-        logging.setLoggerClass(BoundaryLogger)
-        logger = logging.getLogger(name)
-    return logger
+    return logging.getLogger(name)
 
 
 def set_verbose(enabled: bool) -> None:
@@ -483,52 +484,52 @@ def verbose_for(feature: Optional[FeatureArea] = None) -> VerboseContext:
     return VerboseContext(feature)
 
 
-def get_core_logger() -> BoundaryLogger:
+def get_core_logger() -> logging.Logger:
     """Get logger for core daemon operations."""
     return get_logger('daemon.core')
 
 
-def get_security_logger() -> BoundaryLogger:
+def get_security_logger() -> logging.Logger:
     """Get logger for security operations."""
     return get_logger('daemon.security')
 
 
-def get_enforcement_logger() -> BoundaryLogger:
+def get_enforcement_logger() -> logging.Logger:
     """Get logger for enforcement operations."""
     return get_logger('daemon.enforcement')
 
 
-def get_policy_logger() -> BoundaryLogger:
+def get_policy_logger() -> logging.Logger:
     """Get logger for policy operations."""
     return get_logger('daemon.policy_engine')
 
 
-def get_tripwire_logger() -> BoundaryLogger:
+def get_tripwire_logger() -> logging.Logger:
     """Get logger for tripwire operations."""
     return get_logger('daemon.tripwires')
 
 
-def get_auth_logger() -> BoundaryLogger:
+def get_auth_logger() -> logging.Logger:
     """Get logger for authentication operations."""
     return get_logger('daemon.auth')
 
 
-def get_network_logger() -> BoundaryLogger:
+def get_network_logger() -> logging.Logger:
     """Get logger for network operations."""
     return get_logger('daemon.network')
 
 
-def get_sandbox_logger() -> BoundaryLogger:
+def get_sandbox_logger() -> logging.Logger:
     """Get logger for sandbox operations."""
     return get_logger('daemon.sandbox')
 
 
-def get_health_logger() -> BoundaryLogger:
+def get_health_logger() -> logging.Logger:
     """Get logger for health monitoring."""
     return get_logger('daemon.health')
 
 
-def get_integration_logger() -> BoundaryLogger:
+def get_integration_logger() -> logging.Logger:
     """Get logger for integrations."""
     return get_logger('daemon.integration')
 

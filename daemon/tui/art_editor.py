@@ -46,17 +46,16 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Handle curses import for Windows (windows-curses not available for Python 3.14+)
-curses = None
 CURSES_AVAILABLE = False
 try:
     import curses
     CURSES_AVAILABLE = True
 except ImportError:
     # Try to find Python 3.12 on Windows for curses support
-    pass
+    curses = None  # type: ignore[assignment]
 
 
 def _try_relaunch_with_py312() -> bool:
@@ -72,7 +71,7 @@ def _try_relaunch_with_py312() -> bool:
         )
         if result.returncode == 0:
             # Relaunch with Python 3.12
-            print(f"Relaunching with Python 3.12 for curses support...")
+            print("Relaunching with Python 3.12 for curses support...")
             subprocess.run(['py', '-3.12'] + sys.argv)
             return True
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -283,7 +282,7 @@ class ArtEditor:
         self.undo_manager = UndoManager()
         self.sprite_library = SpriteLibrary()
         self.running = True
-        self.screen = None
+        self.screen: Any = None
         self.message = ""
         self.message_time = 0
         self.show_help = False

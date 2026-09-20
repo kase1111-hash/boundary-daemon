@@ -534,7 +534,7 @@ class MemoryMonitor:
         self._baseline_rss: Optional[int] = None
 
         # Process handle
-        self._process: Optional[Any] = None
+        self._process: Any = None
         if PSUTIL_AVAILABLE:
             self._process = psutil.Process(os.getpid())
 
@@ -1137,7 +1137,7 @@ class MemoryMonitor:
             history_len = len(self._history)
             alert_count = len(self._alerts)
 
-        stats = {
+        stats: Dict[str, Any] = {
             'available': self.is_available,
             'running': self._running,
             'samples_collected': history_len,

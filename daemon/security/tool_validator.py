@@ -343,7 +343,7 @@ class ToolOutputValidator:
         max_depth = min(policy.max_chain_depth, self.max_chain_depth)
 
         if depth > max_depth:
-            violation = ValidationViolation(
+            violation: Optional[ValidationViolation] = ValidationViolation(
                 violation_type=ViolationType.RECURSIVE_CALL,
                 severity="high",
                 description=f"Tool call chain depth {depth} exceeds maximum {max_depth}",
@@ -655,7 +655,7 @@ class ToolOutputValidator:
             # Basic type checking
             expected_type = schema.get('type')
             if expected_type:
-                type_map = {
+                type_map: Dict[str, Any] = {
                     'string': str,
                     'number': (int, float),
                     'integer': int,
@@ -730,7 +730,8 @@ class ToolOutputValidator:
 
     def subscribe(self, callback: Callable[[ToolValidationResult], None]) -> None:
         """Subscribe to validation events"""
-        self._callbacks.append(callback)
+        with self._lock:
+            self._callbacks[id(callback)] = callback
 
     def get_stats(self) -> Dict[str, Any]:
         """Get validator statistics"""

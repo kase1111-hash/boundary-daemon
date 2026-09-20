@@ -413,8 +413,8 @@ class CrossNodeAnchoringManager:
 
         # Signing key
         if signing_key and NACL_AVAILABLE:
-            self._signing_key = nacl.signing.SigningKey(signing_key)
-            self._verify_key = self._signing_key.verify_key
+            self._signing_key: Optional[Any] = nacl.signing.SigningKey(signing_key)
+            self._verify_key: Optional[Any] = self._signing_key.verify_key
         else:
             self._signing_key = None
             self._verify_key = None
@@ -634,10 +634,10 @@ class LogWitness:
 
         if NACL_AVAILABLE:
             if signing_key:
-                self._signing_key = nacl.signing.SigningKey(signing_key)
+                self._signing_key: Optional[Any] = nacl.signing.SigningKey(signing_key)
             else:
                 self._signing_key = nacl.signing.SigningKey.generate()
-            self._verify_key = self._signing_key.verify_key
+            self._verify_key: Optional[Any] = self._signing_key.verify_key
             self.public_key = self._verify_key.encode(encoder=nacl.encoding.HexEncoder).decode()
         else:
             self._signing_key = None
@@ -665,7 +665,7 @@ class LogWitness:
         )[:16]
 
         # Data to sign
-        data = {
+        data: Dict[str, Any] = {
             'commitment_id': commitment_id,
             'witness_id': self.witness_id,
             'merkle_root': merkle_root,
@@ -738,7 +738,7 @@ class LogWitnessManager:
             if NACL_AVAILABLE:
                 try:
                     verify_key = nacl.signing.VerifyKey(
-                        commitment.public_key,
+                        commitment.public_key,  # type: ignore[arg-type]  # HexEncoder accepts a hex str
                         encoder=nacl.encoding.HexEncoder
                     )
 
@@ -786,7 +786,7 @@ class LogWitnessManager:
         current_root = merkle_tree.get_root_hash() or ""
 
         if merkle_tree.get_leaf_count() < commitment.event_count:
-            return (False, f"Log has fewer events than commitment")
+            return (False, "Log has fewer events than commitment")
 
         # If same event count, roots must match
         if merkle_tree.get_leaf_count() == commitment.event_count:
@@ -1072,7 +1072,7 @@ class ForensicAuditManager:
         self.selective_disclosure = SelectiveDisclosureManager(event_logger)
 
         self._lock = threading.Lock()
-        self._last_rebuild = None
+        self._last_rebuild: Optional[datetime] = None
 
     def rebuild_merkle_tree(self) -> bool:
         """Rebuild Merkle tree from current log."""

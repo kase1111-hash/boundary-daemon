@@ -19,7 +19,6 @@ Usage:
 import ssl
 import logging
 import os
-import tempfile
 import subprocess
 from typing import Optional, Tuple
 

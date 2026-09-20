@@ -11,7 +11,7 @@ SECURITY (Vuln #10 - Agent Coordination): MessageGate provides:
 import threading
 import time
 from typing import Optional, Callable, Dict, Any, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from .policy_engine import MemoryClass, BoundaryMode
@@ -29,11 +29,11 @@ try:
     MESSAGE_CHECKER_AVAILABLE = True
 except ImportError:
     MESSAGE_CHECKER_AVAILABLE = False
-    MessageChecker = None
-    MessageSource = None
-    MessageCheckResult = None
-    NatLangChainEntry = None
-    AgentOSMessage = None
+    MessageChecker = None  # type: ignore[assignment,misc]
+    MessageSource = None  # type: ignore[assignment,misc]
+    MessageCheckResult = None  # type: ignore[assignment,misc]
+    NatLangChainEntry = None  # type: ignore[assignment,misc]
+    AgentOSMessage = None  # type: ignore[assignment,misc]
 
 
 class RecallGate:
@@ -241,7 +241,7 @@ class MessageGate:
         self.strict_mode = strict_mode
 
         if MESSAGE_CHECKER_AVAILABLE and MessageChecker is not None:
-            self.checker = MessageChecker(
+            self.checker: Optional[MessageChecker] = MessageChecker(
                 daemon=daemon,
                 strict_mode=strict_mode,
                 attestation_system=attestation_system,
@@ -628,7 +628,7 @@ class MessageGate:
             except Exception as e:
                 # Don't let monitoring crash silently
                 try:
-                    from . import logging as _logging
+                    from . import logging as _logging  # type: ignore[attr-defined]  # no daemon.logging module; ImportError swallowed below
                     _logging.getLogger(__name__).error(
                         f"Channel lifecycle monitor error: {e}"
                     )

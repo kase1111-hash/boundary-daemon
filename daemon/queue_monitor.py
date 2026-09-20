@@ -893,7 +893,7 @@ if __name__ == '__main__':
             items_to_add = random.randint(0, 4)
             for _ in range(items_to_add):
                 try:
-                    test_queue.put(f"item_{i}", block=False)
+                    test_queue.put(f"item_{i}", block=False)  # type: ignore[union-attr]  # demo code
                 except (OSError, ValueError):
                     pass
 
@@ -901,7 +901,7 @@ if __name__ == '__main__':
             items_to_remove = random.randint(0, 2)
             for _ in range(items_to_remove):
                 try:
-                    test_queue.get_nowait()
+                    test_queue.get_nowait()  # type: ignore[union-attr]  # demo code
                 except (OSError, ValueError):
                     pass
 

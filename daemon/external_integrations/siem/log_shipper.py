@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -508,15 +508,20 @@ class HTTPShipper(LogShipper):
 
         headers.update(self.config.http_headers)
 
+        endpoint = str(self.config.http_endpoint)
+        if not endpoint.lower().startswith(('http://', 'https://')):
+            logger.error(f"Refusing to ship logs to non-http(s) endpoint: {endpoint!r}")
+            return False
+
         request = urllib.request.Request(
-            self.config.http_endpoint,
+            endpoint,
             data=data,
             headers=headers,
             method='POST',
         )
 
         try:
-            with urllib.request.urlopen(
+            with urllib.request.urlopen(  # nosec B310 - scheme validated above
                 request,
                 timeout=self.config.http_timeout
             ) as response:
@@ -540,7 +545,7 @@ def create_shipper(config: ShipperConfig) -> LogShipper:
     Returns:
         Configured LogShipper instance
     """
-    shippers = {
+    shippers: Dict[ShipperProtocol, Callable[..., LogShipper]] = {
         ShipperProtocol.KAFKA: KafkaShipper,
         ShipperProtocol.S3: S3Shipper,
         ShipperProtocol.GCS: GCSShipper,

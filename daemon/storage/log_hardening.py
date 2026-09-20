@@ -163,7 +163,7 @@ class LogHardener:
         if IS_WINDOWS:
             try:
                 import ctypes
-                self._is_root = ctypes.windll.shell32.IsUserAnAdmin() != 0
+                self._is_root = ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # ctypes.windll is win32-only
             except OSError:
                 self._is_root = False
         else:
@@ -309,13 +309,9 @@ class LogHardener:
                     errors.append(f"Failed to set permissions: {err}")
 
             # Apply chattr +a (append-only)
-            is_append_only = False
-            is_immutable = False
-
             if self.mode in (HardeningMode.STANDARD, HardeningMode.STRICT, HardeningMode.PARANOID):
                 ok, err = self._run_chattr('+a', self.log_path)
                 if ok:
-                    is_append_only = True
                     logger.info(f"Applied append-only attribute to {self.log_path}")
                 else:
                     msg = f"Failed to apply chattr +a: {err}"
@@ -401,7 +397,7 @@ class LogHardener:
         """
         with self._lock:
             errors = []
-            warnings = []
+            warnings: List[str] = []
 
             if not self.log_path.exists():
                 errors.append("Log file does not exist")
@@ -743,7 +739,7 @@ def verify_log_protection(log_dir: str) -> Dict[str, HardeningStatus]:
     Returns:
         Dictionary mapping log paths to their status
     """
-    results = {}
+    results: Dict[str, HardeningStatus] = {}
     log_path = Path(log_dir)
 
     if not log_path.exists():

@@ -203,7 +203,7 @@ class KeyloggerSignatures:
     KNOWN_MALWARE_HASHES = {
         # Add known malicious file hashes here
         # These are placeholders for demonstration
-        'd41d8cd98f00b204e9800998ecf8427e': 'empty_file_test',
+        'd41d8cd98f00b204e9800998ecf8427e': 'empty_file_test',  # pragma: allowlist secret
     }
 
     # Suspicious /proc patterns for keyloggers

@@ -40,7 +40,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -360,7 +360,7 @@ class SandboxEnforcementBridge(EnforcementConsumer):
         """Return current enforcement state for audit."""
         with self._sandbox_manager._lock:
             sandbox_count = len(self._sandbox_manager._sandboxes)
-            sandbox_states = {}
+            sandbox_states: Dict[str, int] = {}
             for s in self._sandbox_manager._sandboxes.values():
                 state_name = s.state.name
                 sandbox_states[state_name] = sandbox_states.get(state_name, 0) + 1
@@ -553,7 +553,7 @@ class SandboxEnforcementBridge(EnforcementConsumer):
     def get_stats(self) -> Dict[str, Any]:
         """Get bridge statistics."""
         total = len(self._enforcement_history)
-        by_action = {}
+        by_action: Dict[str, int] = {}
         failures = 0
         for r in self._enforcement_history:
             by_action[r.action.name] = by_action.get(r.action.name, 0) + 1

@@ -51,14 +51,14 @@ try:
     WINDOWS_FIREWALL_AVAILABLE = True
 except ImportError:
     WINDOWS_FIREWALL_AVAILABLE = False
-    WindowsFirewallEnforcer = None
-    WindowsFirewallError = None
-    WindowsFirewallRule = None
-    FirewallProfile = None
-    FirewallAction = None
-    FirewallDirection = None
-    RuleProtocol = None
-    get_windows_firewall_enforcer = None
+    WindowsFirewallEnforcer = None  # type: ignore[assignment,misc]
+    WindowsFirewallError = None  # type: ignore[assignment,misc]
+    WindowsFirewallRule = None  # type: ignore[assignment,misc]
+    FirewallProfile = None  # type: ignore[assignment,misc]
+    FirewallAction = None  # type: ignore[assignment,misc]
+    FirewallDirection = None  # type: ignore[assignment,misc]
+    RuleProtocol = None  # type: ignore[assignment,misc]
+    get_windows_firewall_enforcer = None  # type: ignore[assignment]
 
 from .usb_enforcer import (
     USBEnforcer,
@@ -113,13 +113,13 @@ try:
     FIREWALL_INTEGRATION_AVAILABLE = True
 except ImportError:
     FIREWALL_INTEGRATION_AVAILABLE = False
-    FirewallManager = None
-    FirewallConfig = None
-    FirewallRule = None
-    FWBackend = None
-    RuleAction = None
-    RuleDirection = None
-    get_firewall_manager = None
+    FirewallManager = None  # type: ignore[assignment,misc]
+    FirewallConfig = None  # type: ignore[assignment,misc]
+    FirewallRule = None  # type: ignore[assignment,misc]
+    FWBackend = None  # type: ignore[assignment,misc]
+    RuleAction = None  # type: ignore[assignment,misc]
+    RuleDirection = None  # type: ignore[assignment,misc]
+    get_firewall_manager = None  # type: ignore[assignment]
 
 # MAC Profile Generator (SELinux/AppArmor)
 try:
@@ -134,12 +134,12 @@ try:
     MAC_PROFILES_AVAILABLE = True
 except ImportError:
     MAC_PROFILES_AVAILABLE = False
-    MACProfileGenerator = None
-    ProfileConfig = None
-    MACSystem = None
-    SELinuxMode = None
-    AppArmorMode = None
-    get_mac_generator = None
+    MACProfileGenerator = None  # type: ignore[assignment,misc]
+    ProfileConfig = None  # type: ignore[assignment,misc]
+    MACSystem = None  # type: ignore[assignment,misc]
+    SELinuxMode = None  # type: ignore[assignment,misc]
+    AppArmorMode = None  # type: ignore[assignment,misc]
+    get_mac_generator = None  # type: ignore[assignment]
 
 # Disk Encryption Checker
 try:
@@ -153,11 +153,11 @@ try:
     DISK_ENCRYPTION_AVAILABLE = True
 except ImportError:
     DISK_ENCRYPTION_AVAILABLE = False
-    EncryptionChecker = None
-    EncryptionType = None
-    EncryptionStatus = None
-    VolumeInfo = None
-    get_encryption_checker = None
+    EncryptionChecker = None  # type: ignore[assignment,misc]
+    EncryptionType = None  # type: ignore[assignment,misc]
+    EncryptionStatus = None  # type: ignore[assignment,misc]
+    VolumeInfo = None  # type: ignore[assignment,misc]
+    get_encryption_checker = None  # type: ignore[assignment]
 
 # eBPF Real-Time Monitor (Phase 2: Eliminates polling race condition)
 try:
@@ -175,14 +175,14 @@ try:
     EBPF_AVAILABLE = BCC_AVAILABLE
 except ImportError:
     EBPF_AVAILABLE = False
-    EBPFMonitor = None
-    EBPFMonitorError = None
-    EBPFEventType = None
-    MonitorAction = None
-    SecurityEvent = None
-    MonitorPolicy = None
-    check_ebpf_requirements = None
-    get_ebpf_monitor = None
+    EBPFMonitor = None  # type: ignore[assignment,misc]
+    EBPFMonitorError = None  # type: ignore[assignment,misc]
+    EBPFEventType = None  # type: ignore[assignment,misc]
+    MonitorAction = None  # type: ignore[assignment,misc]
+    SecurityEvent = None  # type: ignore[assignment,misc]
+    MonitorPolicy = None  # type: ignore[assignment,misc]
+    check_ebpf_requirements = None  # type: ignore[assignment]
+    get_ebpf_monitor = None  # type: ignore[assignment]
     BCC_AVAILABLE = False
 
 # Hardware Watchdog (Phase 3: Daemon death protection)
@@ -199,17 +199,17 @@ try:
     HARDWARE_WATCHDOG_AVAILABLE = True
 except ImportError:
     HARDWARE_WATCHDOG_AVAILABLE = False
-    HardwareWatchdogManager = None
-    HardwareWatchdogError = None
-    WatchdogCapability = None
-    WatchdogInfo = None
-    WatchdogLockdownManager = None
-    check_watchdog_support = None
-    get_hardware_watchdog = None
+    HardwareWatchdogManager = None  # type: ignore[assignment,misc]
+    HardwareWatchdogError = None  # type: ignore[assignment,misc]
+    WatchdogCapability = None  # type: ignore[assignment,misc]
+    WatchdogInfo = None  # type: ignore[assignment,misc]
+    WatchdogLockdownManager = None  # type: ignore[assignment,misc]
+    check_watchdog_support = None  # type: ignore[assignment]
+    get_hardware_watchdog = None  # type: ignore[assignment]
 
 # Dynamic MAC Policy (Phase 4: Kernel-level mandatory access control)
 try:
-    from .dynamic_mac_policy import (
+    from .dynamic_mac_policy import (  # type: ignore[assignment]  # MACSystem also exported by mac_profiles
         DynamicMACPolicyManager,
         SELinuxPolicyGenerator,
         AppArmorPolicyGenerator,
@@ -223,15 +223,15 @@ try:
     DYNAMIC_MAC_AVAILABLE = True
 except ImportError:
     DYNAMIC_MAC_AVAILABLE = False
-    DynamicMACPolicyManager = None
-    SELinuxPolicyGenerator = None
-    AppArmorPolicyGenerator = None
-    MACSystem = None
-    PolicyMode = None
-    ModePolicy = None
-    MODE_POLICIES = None
-    check_mac_support = None
-    get_mac_policy_manager = None
+    DynamicMACPolicyManager = None  # type: ignore[assignment,misc]
+    SELinuxPolicyGenerator = None  # type: ignore[assignment,misc]
+    AppArmorPolicyGenerator = None  # type: ignore[assignment,misc]
+    MACSystem = None  # type: ignore[assignment,misc]
+    PolicyMode = None  # type: ignore[assignment,misc]
+    ModePolicy = None  # type: ignore[assignment,misc]
+    MODE_POLICIES = None  # type: ignore[assignment]
+    check_mac_support = None  # type: ignore[assignment]
+    get_mac_policy_manager = None  # type: ignore[assignment]
 
 # Security Verification (Phase 5: Comprehensive verification suite)
 try:
@@ -247,13 +247,13 @@ try:
     SECURITY_VERIFICATION_AVAILABLE = True
 except ImportError:
     SECURITY_VERIFICATION_AVAILABLE = False
-    SecurityVerifier = None
-    SecurityReport = None
-    PhaseReport = None
-    TestCase = None
-    TestResult = None
-    SecurityLevel = None
-    run_verification = None
+    SecurityVerifier = None  # type: ignore[assignment,misc]
+    SecurityReport = None  # type: ignore[assignment,misc]
+    PhaseReport = None  # type: ignore[assignment,misc]
+    TestCase = None  # type: ignore[assignment,misc]
+    TestResult = None  # type: ignore[assignment,misc]
+    SecurityLevel = None  # type: ignore[assignment,misc]
+    run_verification = None  # type: ignore[assignment]
 
 __all__ = [
     # Network Enforcement (Plan 1 Phase 1)

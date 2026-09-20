@@ -59,7 +59,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Dict, List, Optional, Tuple, Any, Callable, cast
 import logging
 
 try:
@@ -222,8 +222,8 @@ class PedersenCommitment:
             self.h = 3
         else:
             self.p = p
-            self.g = g
-            self.h = h
+            self.g = cast(int, g)
+            self.h = cast(int, h)
 
     def commit(self, value: int, randomness: Optional[int] = None) -> Tuple[int, int]:
         """
@@ -291,7 +291,7 @@ class ZKComplianceProver:
         # Signing key
         if NACL_AVAILABLE and signing_key:
             from nacl.signing import SigningKey
-            self._signing_key = SigningKey(signing_key)
+            self._signing_key: Optional['SigningKey'] = SigningKey(signing_key)
         else:
             self._signing_key = None
 
@@ -542,11 +542,11 @@ class ZKComplianceProver:
         for event in events:
             if event.get('type') == 'ALERT' and event.get('severity') == severity:
                 alert_id = event.get('alert_id')
-                alerts[alert_id] = datetime.fromisoformat(event.get('timestamp'))
+                alerts[alert_id] = datetime.fromisoformat(event.get('timestamp'))  # type: ignore[arg-type]
 
             if event.get('type') == 'ALERT_ACK':
                 alert_id = event.get('alert_id')
-                acks[alert_id] = datetime.fromisoformat(event.get('timestamp'))
+                acks[alert_id] = datetime.fromisoformat(event.get('timestamp'))  # type: ignore[arg-type]
 
         # Check all alerts were acked within SLA
         all_compliant = True
@@ -608,12 +608,12 @@ class ZKComplianceProver:
             if event.get('type') == 'CEREMONY_STARTED':
                 ceremony_id = event.get('ceremony_id')
                 ceremonies_started[ceremony_id] = datetime.fromisoformat(
-                    event.get('timestamp')
+                    event.get('timestamp')  # type: ignore[arg-type]
                 )
             if event.get('type') == 'CEREMONY_COMPLETED':
                 ceremony_id = event.get('ceremony_id')
                 ceremonies_completed[ceremony_id] = datetime.fromisoformat(
-                    event.get('timestamp')
+                    event.get('timestamp')  # type: ignore[arg-type]
                 )
 
         all_compliant = True
@@ -645,7 +645,7 @@ class ZKComplianceProver:
 
         # Find heartbeat events
         heartbeats = sorted([
-            datetime.fromisoformat(e.get('timestamp'))
+            datetime.fromisoformat(e.get('timestamp'))  # type: ignore[arg-type]
             for e in events
             if e.get('type') == 'HEARTBEAT'
         ])
@@ -874,7 +874,7 @@ class ZKComplianceProver:
         Returns:
             Report dictionary with proofs
         """
-        report = {
+        report: Dict[str, Any] = {
             'report_id': f"report_{int(time.time() * 1000)}",
             'generated_at': datetime.now().isoformat(),
             'assertions': [],

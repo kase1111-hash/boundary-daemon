@@ -32,12 +32,20 @@ import os
 import random
 import signal
 import sys
-import threading
 import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+
+# Import extracted TUI modules
+from .models import PanelType, DashboardEvent, DashboardAlert, SandboxStatus
+from .colors import Colors
+from .weather import WeatherMode, MatrixRain
+from .backdrop import TunnelBackdrop
+from .creatures import LightningBolt, AlleyRat, LurkingShadow
+from .client import DashboardClient
+from .scene import AlleyScene
 
 # Handle curses import for Windows compatibility
 # Defer error to runtime to allow PyInstaller to analyze the module
@@ -45,7 +53,7 @@ try:
     import curses
     CURSES_AVAILABLE = True
 except ImportError:
-    curses = None
+    curses = None  # type: ignore[assignment]
     CURSES_AVAILABLE = False
 
 # Import Ollama client for CLI chat
@@ -54,8 +62,8 @@ try:
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
-    OllamaClient = None
-    OllamaConfig = None
+    OllamaClient = None  # type: ignore[assignment,misc]
+    OllamaConfig = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +86,6 @@ except ImportError:
     VoiceParameters = None
     TTSEngineError = None
 
-# Import extracted TUI modules
-from .models import PanelType, DashboardEvent, DashboardAlert, SandboxStatus
-from .colors import Colors
-from .weather import WeatherMode, MatrixRain
-from .backdrop import TunnelBackdrop
-from .creatures import LightningBolt, AlleyRat, LurkingShadow
-from .client import DashboardClient
-from .scene import AlleyScene
 
 class Dashboard:
     """
@@ -105,7 +105,7 @@ class Dashboard:
         # Use pre-created client if provided, otherwise create new one
         self.client = client or DashboardClient(socket_path)
         self.running = False
-        self.screen = None
+        self.screen: Any = None
         self.selected_panel = PanelType.STATUS
         self.event_filter = ""
         self.scroll_offset = 0
@@ -328,7 +328,7 @@ class Dashboard:
             args.extend(['--refresh', str(self.refresh_interval)])
 
         try:
-            result = subprocess.run(args, env=env)
+            result = subprocess.run(args, env=env)  # type: ignore[assignment]  # earlier run() in this function used text=True
             sys.exit(result.returncode)
         except (subprocess.SubprocessError, FileNotFoundError):
             return False
@@ -557,7 +557,7 @@ class Dashboard:
                 known_list = list(self.alley_scene._known_event_ids)
                 self.alley_scene._known_event_ids = set(known_list[500:])
 
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError):
             # Silently ignore errors (daemon might be unavailable)
             pass
 
@@ -979,7 +979,7 @@ class Dashboard:
         # Mode
         mode = self.status.get('mode', 'UNKNOWN')
         mode_color = Colors.STATUS_OK if mode in ('TRUSTED', 'AIRGAP', 'COLDROOM') else Colors.STATUS_WARN
-        self._addstr(row, col, f"Mode: ", Colors.MUTED)
+        self._addstr(row, col, "Mode: ", Colors.MUTED)
         self._addstr(row, col + 6, mode, mode_color, bold=True)
         row += 2  # Extra space
 
@@ -1107,7 +1107,6 @@ class Dashboard:
 
         row = y + 1
         col = x + 2
-        display_width = width - 4
 
         if not self.sandboxes:
             self._addstr(row, col, "No active sandboxes", Colors.MUTED)
@@ -1144,7 +1143,7 @@ class Dashboard:
         # Determine panel status color based on connection state
         # Warning (yellow) if SIEM was connected but is now disconnected
         if ingestion_was_connected and not ingestion_connected:
-            title_color = Colors.STATUS_WARNING  # Disconnected warning
+            title_color = Colors.STATUS_WARN  # Disconnected warning
         elif connected or ingestion_connected:
             title_color = Colors.STATUS_OK
         else:
@@ -1172,7 +1171,7 @@ class Dashboard:
             ingestion_color = Colors.STATUS_OK
         elif ingestion_was_connected:
             ingestion_text = "⚠ Disconnected"
-            ingestion_color = Colors.STATUS_WARNING
+            ingestion_color = Colors.STATUS_WARN
         elif ingestion_active:
             ingestion_text = "○ Idle"
             ingestion_color = Colors.MUTED
@@ -1199,7 +1198,7 @@ class Dashboard:
                 if len(last_client) > max_len:
                     last_client = last_client[:max_len-2] + ".."
                 line = f"Last: {last_client}"
-                self._addstr(row, right_edge - len(line), line, Colors.STATUS_WARNING)
+                self._addstr(row, right_edge - len(line), line, Colors.STATUS_WARN)
                 row += 1
 
         # --- Shipping stats (daemon pushing to SIEM) ---
@@ -1530,7 +1529,7 @@ class Dashboard:
             self._show_message(f"Export failed: {e}", Colors.STATUS_ERROR)
 
     # Boundary Daemon tool definitions with help
-    DAEMON_TOOLS = {
+    DAEMON_TOOLS: Dict[str, Dict[str, Any]] = {
         # CLI Commands
         'query': {
             'desc': 'Query events from log',
@@ -1870,7 +1869,7 @@ class Dashboard:
 
     def _gather_command_data(self, commands: List[str]) -> Dict[str, Any]:
         """Execute commands and gather their results for Ollama analysis."""
-        results = {}
+        results: Dict[str, Any] = {}
 
         for cmd in commands:
             cmd = cmd.strip().lower()
@@ -1957,14 +1956,14 @@ For detailed information, ask about specific features or run 'help' command."""
 
         # Current mode
         try:
-            mode = self.daemon_status.get('mode', 'UNKNOWN') if self.daemon_status else 'UNKNOWN'
+            mode = self.status.get('mode', 'UNKNOWN') if self.status else 'UNKNOWN'
             context_parts.append(f"Current Mode: {mode}")
         except (AttributeError, TypeError):
             pass
 
         # Uptime
         try:
-            uptime = self.daemon_status.get('uptime', 'unknown') if self.daemon_status else 'unknown'
+            uptime = self.status.get('uptime', 'unknown') if self.status else 'unknown'
             context_parts.append(f"Uptime: {uptime}")
         except (AttributeError, TypeError):
             pass
@@ -2171,7 +2170,7 @@ Speak with confidence about the system's capabilities - you know this system ins
 
         # Add recent events with full details
         log_data.append(f"=== RECENT EVENTS (last {len(events)}) ===")
-        event_type_counts = {}
+        event_type_counts: Dict[str, int] = {}
         for event in events:
             event_type_counts[event.event_type] = event_type_counts.get(event.event_type, 0) + 1
             log_data.append(f"[{event.time_short}] {event.event_type}: {event.details[:100]}")
@@ -2266,7 +2265,6 @@ Provide a clear, actionable analysis."""
         """Start CLI mode for running commands and chatting with Ollama."""
         curses.curs_set(1)  # Show cursor
         cmd_text = ""
-        cursor_pos = 0
         show_help_popup = False
         help_popup_tool = None
 
@@ -2693,7 +2691,7 @@ Provide a clear, actionable analysis."""
                 else:
                     try:
                         events = self.client.get_events(1000)
-                        export_data = [{'time': e.time_str, 'type': e.event_type, 'details': e.details} for e in events]
+                        export_data = [{'time': e.time_short, 'type': e.event_type, 'details': e.details} for e in events]
                         with open(args, 'w') as f:
                             json.dump(export_data, f, indent=2)
                         self._cli_results = [f"OK: Exported {len(events)} events to {args}"]
@@ -2727,11 +2725,9 @@ Provide a clear, actionable analysis."""
 
         # Filter by severity
         if 'severity:' in query_lower:
-            severity_map = {'info': 0, 'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
             import re
             sev_match = re.search(r'severity:>=?(\w+)', query_lower)
             if sev_match:
-                min_sev = severity_map.get(sev_match.group(1).lower(), 0)
                 # Filter events with severity (would need actual severity field)
                 events = [e for e in events if any(s in e.event_type.upper() for s in ['HIGH', 'CRITICAL', 'VIOLATION', 'ERROR'])]
 
@@ -2789,7 +2785,7 @@ Provide a clear, actionable analysis."""
 
         for i, e in enumerate(matches[:15]):
             results.append(f"┌─ Event {i+1} ─────────────────────────")
-            results.append(f"│ Time:    {e.time_str}")
+            results.append(f"│ Time:    {e.time_short}")
             results.append(f"│ Type:    {e.event_type}")
             results.append(f"│ Details: {e.details[:50]}")
             if len(e.details) > 50:
@@ -2877,7 +2873,7 @@ Provide a clear, actionable analysis."""
         for unit in ['B', 'KB', 'MB', 'GB']:
             if abs(n) < 1024.0:
                 return f"{n:.0f}{unit}"
-            n /= 1024.0
+            n /= 1024.0  # type: ignore[assignment]  # int byte count is rebound to float for unit scaling
         return f"{n:.0f}TB"
 
 

@@ -591,7 +591,7 @@ class eBPFObserver:
 if __name__ == '__main__':
     print("Testing eBPF Observer...")
 
-    print(f"\nSystem Info:")
+    print("\nSystem Info:")
     print(f"  Kernel Version: {'.'.join(map(str, KERNEL_VERSION))}")
     print(f"  eBPF Available: {EBPF_AVAILABLE}")
     print(f"  BCC Available: {BCC_AVAILABLE}")

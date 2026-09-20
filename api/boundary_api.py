@@ -19,6 +19,13 @@ import time
 from datetime import datetime
 from typing import Optional, Dict, Any, TYPE_CHECKING
 
+from daemon.policy_engine import BoundaryMode, Operator, MemoryClass
+from daemon.auth.api_auth import (
+    TokenManager,
+    AuthenticationMiddleware,
+    APICapability,
+)
+
 logger = logging.getLogger(__name__)
 
 # Import error handling framework for consistent error management
@@ -44,13 +51,6 @@ HAS_UNIX_SOCKETS = hasattr(socket, 'AF_UNIX')
 
 if TYPE_CHECKING:
     from daemon.telemetry import TelemetryManager
-
-from daemon.policy_engine import BoundaryMode, Operator, MemoryClass
-from daemon.auth.api_auth import (
-    TokenManager,
-    AuthenticationMiddleware,
-    APICapability,
-)
 
 
 class BoundaryAPIServer:

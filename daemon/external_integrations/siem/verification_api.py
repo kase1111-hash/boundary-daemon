@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import auth for token validation
 try:
-    from daemon.auth.api_auth import TokenManager, APICapability
+    from daemon.auth.api_auth import TokenManager, APICapability  # noqa: F401 - availability probe
     AUTH_AVAILABLE = True
 except ImportError:
     AUTH_AVAILABLE = False
@@ -225,7 +225,7 @@ class SignatureVerifier:
         if not events:
             return (True, None, None)
 
-        prev_hash = None
+        prev_hash: Any = None
 
         for i, event in enumerate(events):
             current_hash = event.get('hash_chain')
@@ -304,7 +304,6 @@ class SignatureVerificationAPI:
             VerificationResult
         """
         event_id = event.get('event_id', 'unknown')
-        start_time = datetime.utcnow()
 
         if signature is None:
             # Look for signature in event itself
@@ -611,7 +610,7 @@ if __name__ == '__main__':
     }
 
     result = api.verify_event(test_event)
-    print(f"\nSingle event verification:")
+    print("\nSingle event verification:")
     print(f"  Status: {result.status.value}")
     print(f"  Error: {result.error_message}")
 
@@ -628,7 +627,7 @@ if __name__ == '__main__':
     )
 
     response = api.verify_batch(batch_request)
-    print(f"\nBatch verification:")
+    print("\nBatch verification:")
     print(f"  Overall: {response.overall_status.value}")
     print(f"  Chain integrity: {response.chain_integrity}")
     print(f"  Time: {response.verification_time_ms:.2f}ms")

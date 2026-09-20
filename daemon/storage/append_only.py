@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class AppendOnlyStorage:
         self._pending_remote: list = []
 
         # Statistics
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             'events_written': 0,
             'remote_sent': 0,
             'remote_failed': 0,
@@ -317,7 +317,7 @@ class AppendOnlyStorage:
             )
 
             # Set append-only attribute
-            result = subprocess.run(
+            subprocess.run(
                 ['chattr', '+a', str(log_path)],
                 capture_output=True,
                 check=True,
@@ -340,7 +340,7 @@ class AppendOnlyStorage:
         log_path = Path(self.config.log_path)
 
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ['chattr', '-a', str(log_path)],
                 capture_output=True,
                 check=True,
@@ -535,12 +535,12 @@ class AppendOnlyStorage:
         message = f"<{priority}>1 {timestamp} {hostname} {config.app_name} - - - {payload}"
 
         if config.protocol == "udp":
-            self._remote_socket.sendto(
+            self._remote_socket.sendto(  # type: ignore[union-attr]  # caller checks _remote_socket
                 message.encode('utf-8'),
                 (config.host, config.port)
             )
         else:
-            self._remote_socket.send(message.encode('utf-8') + b'\n')
+            self._remote_socket.send(message.encode('utf-8') + b'\n')  # type: ignore[union-attr]  # caller checks _remote_socket
 
         self._stats['remote_sent'] += 1
 

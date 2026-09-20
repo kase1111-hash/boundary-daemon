@@ -259,7 +259,7 @@ class ResourceMonitor:
         self._connection_alert_cooldown: int = 12  # 2 min between same type alerts
 
         # Process handle
-        self._process: Optional[Any] = None
+        self._process: Any = None
         if PSUTIL_AVAILABLE:
             self._process = psutil.Process(os.getpid())
 
@@ -270,7 +270,7 @@ class ResourceMonitor:
         if not self.config.disk_paths:
             self.config.disk_paths = [
                 '/var/log',
-                '/tmp',
+                '/tmp',  # nosec B108 - disk-usage monitoring target
                 str(Path.home()),
             ]
 
@@ -388,7 +388,7 @@ class ResourceMonitor:
         try:
             connections = self._process.connections()
             connection_count = len(connections)
-            connections_by_status = {}
+            connections_by_status: Dict[str, int] = {}
             for conn in connections:
                 status = conn.status if hasattr(conn, 'status') else 'unknown'
                 connections_by_status[status] = connections_by_status.get(status, 0) + 1
@@ -977,7 +977,7 @@ class ResourceMonitor:
             history_len = len(self._history)
             alert_count = len(self._alerts)
 
-        stats = {
+        stats: Dict[str, Any] = {
             'available': self.is_available,
             'running': self._running,
             'samples_collected': history_len,
@@ -1041,7 +1041,7 @@ class ResourceMonitor:
         cpu_values = [s.cpu_percent for s in history]
         recent_cpu = cpu_values[-min(6, len(cpu_values)):]  # Last minute (6 samples at 10s)
 
-        stats = {
+        stats: Dict[str, Any] = {
             'current': cpu_values[-1] if cpu_values else 0,
             'average_1min': sum(recent_cpu) / len(recent_cpu) if recent_cpu else 0,
             'average_all': sum(cpu_values) / len(cpu_values) if cpu_values else 0,
@@ -1077,7 +1077,7 @@ class ResourceMonitor:
             return {'available': False, 'message': 'No samples collected yet'}
 
         # Current state
-        stats = {
+        stats: Dict[str, Any] = {
             'current': {
                 'total': current.connection_count,
                 'by_status': current.connections_by_status,

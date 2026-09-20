@@ -122,7 +122,6 @@ class SecurityConfig:
     allowed_log_directories: List[str] = field(default_factory=lambda: [
         './logs',
         '/var/log/boundary-daemon',
-        '/tmp/boundary-daemon/logs',
     ])
     max_log_file_size_mb: int = 100
     log_rotation_count: int = 10
@@ -788,13 +787,13 @@ if __name__ == '__main__':
 
     # Get default config
     config = get_security_config()
-    print(f"\nSecurity Configuration:")
+    print("\nSecurity Configuration:")
     for key, value in config.to_dict().items():
         if not key.startswith('_'):
             print(f"  {key}: {value}")
 
     # Run audit
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print("Security Audit Results:")
     findings = run_security_audit()
 
@@ -809,12 +808,12 @@ if __name__ == '__main__':
 
     # Get summary
     summary = get_security_summary()
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print(f"Security Score: {summary['score']}/100 (Grade: {summary['grade']})")
     print(f"Total Findings: {summary['findings_count']}")
 
     # Test input validation
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print("Input Validation Tests:")
 
     test_cases = [
@@ -833,5 +832,5 @@ if __name__ == '__main__':
         if error:
             print(f"      Error: {error}")
 
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print("Security hardening test complete.")

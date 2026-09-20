@@ -542,7 +542,7 @@ class RAGInjectionDetector:
         self, documents: List[RetrievedDocument]
     ) -> List[RAGThreat]:
         """Analyze patterns across multiple documents"""
-        threats = []
+        threats: List[RAGThreat] = []
 
         if len(documents) < 2:
             return threats
@@ -642,7 +642,8 @@ class RAGInjectionDetector:
 
     def subscribe(self, callback: Callable[[RAGAnalysisResult], None]) -> None:
         """Subscribe to analysis events"""
-        self._callbacks.append(callback)
+        with self._lock:
+            self._callbacks[id(callback)] = callback
 
     def get_stats(self) -> Dict[str, Any]:
         """Get detector statistics"""

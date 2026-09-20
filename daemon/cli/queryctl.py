@@ -41,7 +41,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Iterator
+from typing import Any, Dict, List, Optional, Iterator, cast
 
 def _print_cli_error(code: str, message: str, hint: str = "") -> None:
     """Print a structured CLI error with code and optional hint."""
@@ -325,7 +325,7 @@ class QueryCLI:
     DEFAULT_LOG_PATH = '/var/log/boundary-daemon/boundary_chain.log'
 
     def __init__(self, log_path: Optional[str] = None):
-        self.log_path = log_path or os.environ.get('BOUNDARY_LOG', self.DEFAULT_LOG_PATH)
+        self.log_path = cast(str, log_path or os.environ.get('BOUNDARY_LOG', self.DEFAULT_LOG_PATH))
         self.reader = EventReader(self.log_path)
 
     def query(self, query: str, limit: int = 100, last: Optional[str] = None) -> List[QueryEvent]:
@@ -362,7 +362,7 @@ class QueryCLI:
         """
         events = self.query(query, limit=10000, last=last)
 
-        stats = {
+        stats: Dict[str, Any] = {
             'total': len(events),
             'by_type': {},
             'by_severity': {},

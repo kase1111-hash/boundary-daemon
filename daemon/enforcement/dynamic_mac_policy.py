@@ -41,7 +41,6 @@ import tempfile
 import shutil
 import logging
 import json
-import hashlib
 from enum import Enum
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -118,7 +117,7 @@ MODE_POLICIES: Dict[str, ModePolicy] = {
         allow_exec=True,
         allow_fork=True,
         allow_file_read={'/'},
-        allow_file_write={'/tmp', '/var/log', '/var/run'},
+        allow_file_write={'/tmp', '/var/log', '/var/run'},  # nosec B108 - MAC policy path list
         allowed_capabilities={'net_admin', 'sys_admin', 'dac_override'},
         audit_denials=True,
         audit_allows=False,
@@ -133,7 +132,7 @@ MODE_POLICIES: Dict[str, ModePolicy] = {
         allow_exec=True,
         allow_fork=True,
         allow_file_read={'/etc', '/usr', '/lib', '/proc', '/sys'},
-        allow_file_write={'/tmp', '/var/log/boundary-daemon', '/var/run/boundary-daemon'},
+        allow_file_write={'/tmp', '/var/log/boundary-daemon', '/var/run/boundary-daemon'},  # nosec B108 - MAC policy path list
         deny_file_paths={'/etc/shadow', '/etc/passwd-'},
         allowed_capabilities={'net_admin', 'audit_write'},
         audit_denials=True,
@@ -186,7 +185,7 @@ MODE_POLICIES: Dict[str, ModePolicy] = {
         allowed_executables={'/usr/bin/python3'},  # Only Python for daemon
         allow_file_read={'/etc/boundary-daemon', '/proc/self'},
         allow_file_write={'/var/log/boundary-daemon'},
-        deny_file_paths={'/home', '/root', '/tmp'},
+        deny_file_paths={'/home', '/root', '/tmp'},  # nosec B108 - MAC policy path list
         allowed_capabilities=set(),
         denied_capabilities={'all'},
         allow_ipc=False,
@@ -249,7 +248,7 @@ class SELinuxPolicyGenerator:
 
     def get_status(self) -> Dict[str, Any]:
         """Get SELinux status."""
-        status = {
+        status: Dict[str, Any] = {
             'available': self.is_available(),
             'mode': 'unknown',
             'policy': 'unknown',
@@ -548,7 +547,7 @@ class AppArmorPolicyGenerator:
 
     def get_status(self) -> Dict[str, Any]:
         """Get AppArmor status."""
-        status = {
+        status: Dict[str, Any] = {
             'available': self.is_available(),
             'mode': 'unknown',
             'profiles_enforcing': 0,
@@ -779,6 +778,10 @@ profile {profile_name} /opt/boundary-daemon/daemon/**  flags=(attach_disconnecte
                 text=True,
                 timeout=30,
             )
+            if result.returncode != 0:
+                logger.warning(
+                    f"apparmor_parser -R {profile_name} failed: {result.stderr.strip()}"
+                )
 
             # Remove file
             if profile_path.exists():
@@ -851,7 +854,7 @@ class DynamicMACPolicyManager:
     @property
     def mac_system(self) -> MACSystem:
         """Get detected MAC system."""
-        return self._mac_system
+        return self._mac_system or MACSystem.NONE
 
     @property
     def current_mode(self) -> Optional[str]:
@@ -962,14 +965,14 @@ class DynamicMACPolicyManager:
         except Exception as e:
             return False, f"Error removing policies: {e}"
 
-    def _log_policy_change(self, mode: str, action: str, from_mode: str = None):
+    def _log_policy_change(self, mode: str, action: str, from_mode: Optional[str] = None):
         """Log policy change to event logger."""
         if not self._event_logger:
             return
 
         try:
             metadata = {
-                'mac_system': self._mac_system.value,
+                'mac_system': self._mac_system.value,  # type: ignore[union-attr]  # set by _detect_mac_system() in __init__
                 'mode': mode,
                 'action': action,
             }
@@ -987,7 +990,7 @@ class DynamicMACPolicyManager:
 
 def check_mac_support() -> Dict[str, Any]:
     """Check system MAC support."""
-    result = {
+    result: Dict[str, Any] = {
         'platform': sys.platform,
         'is_linux': IS_LINUX,
         'is_root': os.geteuid() == 0 if IS_LINUX else False,

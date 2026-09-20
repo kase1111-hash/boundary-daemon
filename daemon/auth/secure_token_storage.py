@@ -41,7 +41,7 @@ try:
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
     # Fallback logging function
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub
         context_str = f" Context: {additional_context}" if additional_context else ""
         logger.error(f"Error in {op}: {type(e).__name__}: {e}{context_str}\n{traceback.format_exc()}")
         if reraise:
@@ -57,9 +57,9 @@ try:
     SECURE_MEMORY_AVAILABLE = True
 except ImportError:
     SECURE_MEMORY_AVAILABLE = False
-    SecureBytes = None
-    secure_zero_memory = None
-    secure_key_context = None
+    SecureBytes = None  # type: ignore[assignment,misc]
+    secure_zero_memory = None  # type: ignore[assignment]
+    secure_key_context = None  # type: ignore[assignment]
 
 # Import cryptography library - required for secure token storage
 # SECURITY: The cryptography library is now required. Fallback XOR encryption
@@ -71,8 +71,8 @@ try:
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
-    Fernet = None
-    InvalidToken = ValueError  # Fallback for exception handling
+    Fernet = None  # type: ignore[assignment,misc]
+    InvalidToken = ValueError  # type: ignore[assignment,misc]  # Fallback for exception handling
     logger.error(
         "SECURITY: cryptography library not available - secure token storage disabled. "
         "Install with: pip install cryptography"
@@ -202,12 +202,12 @@ class SecureTokenStorage:
             # Windows: Use machine GUID from registry
             try:
                 import winreg
-                key = winreg.OpenKey(
-                    winreg.HKEY_LOCAL_MACHINE,
+                key = winreg.OpenKey(  # type: ignore[attr-defined]  # winreg attrs only exist on Windows
+                    winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
                     r"SOFTWARE\Microsoft\Cryptography"
                 )
-                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-                winreg.CloseKey(key)
+                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
+                winreg.CloseKey(key)  # type: ignore[attr-defined]
                 machine_data.append(machine_guid)
             except (OSError, FileNotFoundError, PermissionError) as e:
                 logger.debug(f"Could not read Windows machine GUID: {e}")
@@ -382,7 +382,7 @@ class SecureTokenStorage:
         counter = 0
         while len(key_stream) < len(data):
             key_stream += hmac.new(
-                self._encryption_key,
+                self._encryption_key,  # type: ignore[arg-type]  # deprecated fallback path
                 iv + counter.to_bytes(4, 'big'),
                 hashlib.sha256
             ).digest()
@@ -392,7 +392,7 @@ class SecureTokenStorage:
         encrypted = bytes(a ^ b for a, b in zip(data, key_stream[:len(data)]))
 
         # Add HMAC for integrity
-        mac = hmac.new(self._encryption_key, iv + encrypted, hashlib.sha256).digest()
+        mac = hmac.new(self._encryption_key, iv + encrypted, hashlib.sha256).digest()  # type: ignore[arg-type]
 
         return iv + encrypted + mac
 
@@ -406,7 +406,7 @@ class SecureTokenStorage:
         mac = data[-32:]
 
         # Verify HMAC
-        expected_mac = hmac.new(self._encryption_key, iv + encrypted, hashlib.sha256).digest()
+        expected_mac = hmac.new(self._encryption_key, iv + encrypted, hashlib.sha256).digest()  # type: ignore[arg-type]
         if not hmac.compare_digest(mac, expected_mac):
             raise ValueError("Invalid MAC - data may be corrupted or tampered")
 
@@ -415,7 +415,7 @@ class SecureTokenStorage:
         counter = 0
         while len(key_stream) < len(encrypted):
             key_stream += hmac.new(
-                self._encryption_key,
+                self._encryption_key,  # type: ignore[arg-type]  # deprecated fallback path
                 iv + counter.to_bytes(4, 'big'),
                 hashlib.sha256
             ).digest()
@@ -735,13 +735,13 @@ if __name__ == '__main__':
     with tempfile.NamedTemporaryFile(delete=False, suffix='.enc') as f:
         test_file = f.name
 
-    print(f"\n2. Writing encrypted token to file...")
+    print("\n2. Writing encrypted token to file...")
     success, msg = storage.write_encrypted_token_file(
         test_file, test_token, "test-token", "readonly"
     )
     print(f"   {msg}")
 
-    print(f"\n3. Reading encrypted token from file...")
+    print("\n3. Reading encrypted token from file...")
     token, meta, msg = storage.read_encrypted_token_file(test_file)
     print(f"   Token: {token[:20] if token else 'None'}...")
     print(f"   Message: {msg}")

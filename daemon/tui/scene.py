@@ -14,21 +14,39 @@ This is the largest visual component (~7000 lines) containing:
 - Holiday decorations (Christmas, Halloween, etc.)
 """
 
+import logging
 import math
 import random
+import threading
+import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 # Handle curses import for Windows compatibility
 try:
     import curses
     CURSES_AVAILABLE = True
 except ImportError:
-    curses = None
+    curses = None  # type: ignore[assignment]
     CURSES_AVAILABLE = False
 
 from .colors import Colors
 from .weather import WeatherMode
+
+# Optional audio engine for TTS sound effects (mirrors dashboard.py). The
+# daemon.audio package is not shipped with the daemon, so these hooks stay
+# disabled unless it is installed alongside it.
+try:
+    from daemon.audio import get_audio_engine, TTSRequest, VoiceParameters
+    AUDIO_ENGINE_AVAILABLE = True
+except ImportError:
+    AUDIO_ENGINE_AVAILABLE = False
+    get_audio_engine = None
+    TTSRequest = None
+    VoiceParameters = None
+
+logger = logging.getLogger(__name__)
+
 
 class AlleyScene:
     """
@@ -1039,6 +1057,8 @@ class AlleyScene:
 
     def __init__(self, width: int, height: int):
         self.width = width
+        # Optional TTS engine; dashboard.py wires one in when daemon.audio is installed
+        self._tts_manager: Optional[Any] = None
         self.height = height
         self.scene: List[List[Tuple[str, int]]] = []
         # Store object positions for rat hiding
@@ -1068,7 +1088,7 @@ class AlleyScene:
         self._audio_muted = False
         self._car_sound_cooldown = 0
         # Close-up car (perspective effect - shrinks as it passes)
-        self._closeup_car: Dict = None
+        self._closeup_car: Optional[Dict] = None
         self._closeup_car_timer = 0
         # Pedestrians on the street
         self._pedestrians: List[Dict] = []
@@ -1076,23 +1096,23 @@ class AlleyScene:
         # Knocked out pedestrians from lightning
         self._knocked_out_peds: List[Dict] = []  # {x, y, timer, skin_color, clothing_color}
         # Ambulance for revival
-        self._ambulance: Dict = None  # {x, direction, state, target_ped, paramedic_x}
+        self._ambulance: Optional[Dict] = None  # {x, direction, state, target_ped, paramedic_x}
         self._ambulance_cooldown = 0
         # Lightning strike position for knockout detection
         self._last_lightning_x = -1
         # Interaction states for pedestrians
-        self._mailbox_interaction: Dict = None  # {ped, state, timer} - person mailing letter
+        self._mailbox_interaction: Optional[Dict] = None  # {ped, state, timer} - person mailing letter
         self._open_doors: List[Dict] = []  # [{building, door_idx, timer}] - currently open doors
         self._door_positions: List[Dict] = []  # Calculated door x positions
         self._waiting_taxi_peds: List[Dict] = []  # Peds waiting for taxi {ped, timer}
-        self._taxi_pickup: Dict = None  # {taxi, ped, state, timer} - taxi picking up person
+        self._taxi_pickup: Optional[Dict] = None  # {taxi, ped, state, timer} - taxi picking up person
         # Street light flicker effect
         self._street_light_positions: List[Tuple[int, int]] = []
         self._street_light_flicker = [1.0, 1.0]  # Brightness per light (0-1)
         self._flicker_timer = 0
         # Building window lights (same flicker pattern as street lights, no pole)
         self._building_window_lights: List[Tuple[int, int]] = []  # (x, y) positions
-        self._building_window_flicker = []  # Brightness per window light (0-1)
+        self._building_window_flicker: List[float] = []  # Brightness per window light (0-1)
         # All window data with scenes and light states
         # Each window: {x, y, width, height, building, scene_type, light_on, brightness, scene_chars}
         self._all_windows: List[Dict] = []
@@ -1137,7 +1157,7 @@ class AlleyScene:
         self._last_event_check = 0  # Timer for checking real daemon events
         self._known_event_ids: set = set()  # Track seen events to avoid duplicates
         # Prop plane with scrolling banner for announcements
-        self._prop_plane: Dict = None  # {x, y, direction, speed, message, scroll_offset}
+        self._prop_plane: Optional[Dict] = None  # {x, y, direction, speed, message, scroll_offset}
         self._prop_plane_queue: List[str] = []  # Queue of messages to display
         self._prop_plane_cooldown = 0  # Cooldown between planes
         # Manholes and drains with occasional steam
@@ -1338,10 +1358,10 @@ class AlleyScene:
         h = (19 * a + b - d - g + 15) % 30
         i = c // 4
         k = c % 4
-        l = (32 + 2 * e + 2 * i - h - k) % 7
-        m = (a + 11 * h + 22 * l) // 451
-        month = (h + l - 7 * m + 114) // 31
-        day = ((h + l - 7 * m + 114) % 31) + 1
+        ell = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * ell) // 451
+        month = (h + ell - 7 * m + 114) // 31
+        day = ((h + ell - 7 * m + 114) % 31) + 1
         easter = datetime(year, month, day)
         # Check if within 3 days of Easter
         diff = abs((today - easter).days)
@@ -1509,7 +1529,6 @@ class AlleyScene:
         # Garden parameters
         num_frames = 60  # Animation loop frames
         width = self._garden_width
-        height = 3  # 3 rows of garden
 
         # Flower/plant types with colors
         # Format: (char, color)
@@ -3783,6 +3802,7 @@ class AlleyScene:
 
         # Draw grass base (green textured ground)
         grass_height = 4
+        row: Any  # int for grass rows below, str for sprite rows further down
         for row in range(grass_height):
             for col in range(width):
                 px = x + col
@@ -3870,7 +3890,6 @@ class AlleyScene:
         self.cafe_y = y
 
         total_rows = len(self.CAFE)
-        total_cols = len(self.CAFE[0]) if self.CAFE else 0
 
         # Draw the cafe with warm lighting colors and fill empty space
         for row_idx, row in enumerate(self.CAFE):
@@ -4085,7 +4104,7 @@ class AlleyScene:
 
         # Determine direction first
         direction = 1 if random.random() < 0.5 else -1
-        extra_data = {}
+        extra_data: Dict[str, Any] = {}
 
         if vehicle_roll < 0.45:
             # Regular car with random color from 4 options
@@ -5884,7 +5903,6 @@ class AlleyScene:
         ground_y = self.height - 1
         for door in self._open_doors:
             door_x = door.get('x', 0)
-            building = door.get('building')
 
             # Door is at ground level, 5 rows tall
             door_y = ground_y - 4

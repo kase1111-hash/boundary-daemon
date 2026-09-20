@@ -416,7 +416,7 @@ class IOCFeedManager:
 
             # Check if signed
             if 'signature' in data and 'public_key' in data:
-                feed = SignedIOCFeed(
+                feed: IOCFeed = SignedIOCFeed(
                     name=data.get('name', Path(source).stem),
                     entries=entries,
                     version=data.get('version', '1.0'),
@@ -621,7 +621,7 @@ SAMPLE_IOC_FEED = {
             "description": "Malware CDN wildcard",
         },
         {
-            "value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  # pragma: allowlist secret
             "type": "sha256",
             "category": "malware",
             "confidence": "confirmed",
@@ -650,7 +650,7 @@ if __name__ == '__main__':
         ("evil-domain.com", IOCType.DOMAIN),
         ("test.malware-cdn.net", IOCType.DOMAIN),
         ("safe-domain.com", IOCType.DOMAIN),
-        ("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", IOCType.FILE_HASH_SHA256),
+        ("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", IOCType.FILE_HASH_SHA256),  # pragma: allowlist secret
     ]
 
     print("\nIOC Lookups:")

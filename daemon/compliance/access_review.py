@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, cast
 
 logger = logging.getLogger(__name__)
 
@@ -674,15 +674,15 @@ if __name__ == '__main__':
         due_days=14,
     )
 
-    print(f"\nCreated review:")
+    print("\nCreated review:")
     print(f"  ID: {review.review_id}")
     print(f"  Scope: {review.scope.value}")
     print(f"  Items: {len(review.items)}")
     print(f"  Due: {review.due_date}")
 
     # Start ceremony
-    ceremony = manager.start_ceremony(review.review_id)
-    print(f"\nCeremony started:")
+    ceremony = cast(AccessReviewCeremony, manager.start_ceremony(review.review_id))
+    print("\nCeremony started:")
     print(f"  Challenge: {ceremony.challenge_phrase}")
     print(f"  Expires: {ceremony.expired_at}")
 
@@ -711,10 +711,10 @@ if __name__ == '__main__':
     print(f"Review completion: {msg}")
 
     # Show summary
-    print(f"\nReview summary:")
+    print("\nReview summary:")
     print(f"  Approved: {review.approved_count}")
     print(f"  Revoked: {review.revoked_count}")
     print(f"  Modified: {review.modified_count}")
-    print(f"  Hash: {review.hash_chain[:32]}...")
+    print(f"  Hash: {review.hash_chain[:32]}...")  # type: ignore[index]  # demo: hash_chain populated by complete_review
 
     print("\nAccess review test complete.")

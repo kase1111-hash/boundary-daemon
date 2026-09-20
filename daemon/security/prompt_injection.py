@@ -1076,9 +1076,9 @@ def get_prompt_injection_detector(
     else:
         # Update existing instance with new configuration if provided
         if event_logger is not None:
-            _detector_instance._event_logger = event_logger
+            _detector_instance.event_logger = event_logger
         if policy_engine is not None:
-            _detector_instance._policy_engine = policy_engine
+            _detector_instance.policy_engine = policy_engine
         if sensitivity != "medium":
             _detector_instance.sensitivity = sensitivity
             _detector_instance._adjust_sensitivity()

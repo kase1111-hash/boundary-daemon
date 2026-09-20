@@ -29,7 +29,9 @@ import os
 import sys
 import signal
 import time
-from typing import Optional
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional
 
 # Attempt imports - graceful fallback for standalone usage
 try:
@@ -39,16 +41,16 @@ try:
         SandboxError,
         CgroupLimits,
         NetworkPolicy,
+        get_profile_loader,
     )
+    from daemon.policy_engine import BoundaryMode
     SANDBOX_AVAILABLE = True
 except ImportError:
     SANDBOX_AVAILABLE = False
 
-try:
-    from daemon.telemetry.prometheus_metrics import get_metrics_exporter
-    METRICS_AVAILABLE = True
-except ImportError:
-    METRICS_AVAILABLE = False
+# Metrics are served by the daemon's Prometheus exporter; the CLI reads them
+# over HTTP (see daemon/telemetry/prometheus_metrics.py).
+DEFAULT_METRICS_URL = os.environ.get('BOUNDARY_METRICS_URL', 'http://127.0.0.1:9090/metrics')
 
 
 # ANSI color codes
@@ -80,7 +82,7 @@ def format_bytes(n: int) -> str:
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if abs(n) < 1024.0:
             return f"{n:.1f}{unit}"
-        n /= 1024.0
+        n /= 1024.0  # type: ignore[assignment]  # int parameter becomes float after division
     return f"{n:.1f}PB"
 
 
@@ -145,6 +147,38 @@ class SandboxCLI:
 
         return self._manager
 
+    # Boundary-mode profile names accepted by --profile (see SandboxProfile.from_boundary_mode)
+    _MODE_PROFILES = ('open', 'restricted', 'trusted', 'airgap', 'coldroom', 'lockdown')
+
+    def _resolve_profile(self, name: str) -> 'SandboxProfile':
+        """
+        Resolve a profile name to a SandboxProfile.
+
+        Lookup order: profiles loaded from the sandbox profile configuration,
+        the built-in minimal/standard/strict profiles (``untrusted`` is an
+        alias for strict), then boundary-mode profiles (open, restricted,
+        trusted, airgap, coldroom, lockdown).
+        """
+        key = name.strip().lower()
+        try:
+            loaded = get_profile_loader().get_sandbox_profile(key)
+        except Exception:  # profile config is optional
+            loaded = None
+        if loaded is not None:
+            return loaded
+
+        builtin = {
+            'minimal': SandboxProfile.minimal,
+            'standard': SandboxProfile.standard,
+            'strict': SandboxProfile.strict,
+            'untrusted': SandboxProfile.strict,
+        }
+        if key in builtin:
+            return builtin[key]()
+        if key in self._MODE_PROFILES:
+            return SandboxProfile.from_boundary_mode(BoundaryMode[key.upper()].value)
+        raise ValueError(f"Unknown sandbox profile: {name}")
+
     def cmd_run(self, args: argparse.Namespace) -> int:
         """Run a command in a sandbox."""
         if not args.command:
@@ -154,39 +188,39 @@ class SandboxCLI:
 
         manager = self._get_manager()
 
-        # Parse profile
-        profile_name = args.profile.upper() if args.profile else 'STANDARD'
+        profile_name = (args.profile or 'standard').lower()
         try:
-            profile = SandboxProfile.from_name(profile_name)
-        except (ValueError, AttributeError):
-            # Use default profile
-            profile = SandboxProfile(name=profile_name)
+            profile = self._resolve_profile(profile_name)
+        except ValueError as e:
+            print_error(str(e), code="E012", hint="Run: sandboxctl profiles")
+            return 1
 
-        # Apply overrides
+        # Apply overrides (attribute names must match CgroupLimits exactly)
         if args.memory:
             profile.cgroup_limits = profile.cgroup_limits or CgroupLimits()
-            profile.cgroup_limits.memory_max = self._parse_memory(args.memory)
+            profile.cgroup_limits.memory_max_bytes = self._parse_memory(args.memory)
 
         if args.cpu:
             profile.cgroup_limits = profile.cgroup_limits or CgroupLimits()
-            profile.cgroup_limits.cpu_max = int(args.cpu * 100000)  # percent to quota
+            profile.cgroup_limits.cpu_period_us = 100000
+            profile.cgroup_limits.cpu_quota_us = int(args.cpu * 1000)  # percent -> quota per 100ms
 
         if args.timeout:
-            profile.timeout_seconds = args.timeout
+            profile.max_runtime_seconds = args.timeout
 
         if args.network_deny:
             profile.network_policy = NetworkPolicy(deny_all=True)
         elif args.network_allow:
             profile.network_policy = NetworkPolicy(
                 allow_all=False,
-                allowed_hosts=args.network_allow,
+                allowed_hosts=list(args.network_allow),
             )
 
         # Print info
         if not args.quiet:
-            print_info(f"Running in sandbox with profile: {profile_name}")
-            if profile.timeout_seconds:
-                print_info(f"Timeout: {profile.timeout_seconds}s")
+            print_info(f"Running in sandbox with profile: {profile.name}")
+            if profile.max_runtime_seconds:
+                print_info(f"Timeout: {profile.max_runtime_seconds}s")
 
         # Handle signals
         def signal_handler(sig, frame):
@@ -196,15 +230,17 @@ class SandboxCLI:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
+        env = dict(os.environ) if args.inherit_env else None
+
         # Run command
         start_time = time.time()
         try:
             result = manager.run_sandboxed(
-                command=args.command,
+                command=list(args.command),
+                env=env,
                 profile=profile,
-                stdin_data=None,
+                timeout=args.timeout,
                 capture_output=not args.interactive,
-                inherit_env=args.inherit_env,
             )
 
             elapsed = time.time() - start_time
@@ -217,23 +253,21 @@ class SandboxCLI:
                     sys.stderr.write(result.stderr)
 
             if not args.quiet:
+                if result.killed:
+                    print_warning(f"Sandbox terminated: {result.kill_reason or 'unknown reason'}")
                 if result.exit_code == 0:
                     print_success(f"Command completed in {format_duration(elapsed)}")
                 else:
                     print_warning(f"Command exited with code {result.exit_code}")
 
-                # Resource usage
+                # Resource usage (daemon.sandbox.cgroups.ResourceUsage)
                 if result.resource_usage and args.verbose:
                     usage = result.resource_usage
                     print(f"\n{Colors.BOLD}Resource Usage:{Colors.RESET}")
-                    if hasattr(usage, 'cpu_time_seconds'):
-                        print(f"  CPU time:     {usage.cpu_time_seconds:.2f}s")
-                    if hasattr(usage, 'memory_peak_bytes'):
-                        print(f"  Memory peak:  {format_bytes(usage.memory_peak_bytes)}")
-                    if hasattr(usage, 'io_read_bytes'):
-                        print(f"  I/O read:     {format_bytes(usage.io_read_bytes)}")
-                    if hasattr(usage, 'io_write_bytes'):
-                        print(f"  I/O write:    {format_bytes(usage.io_write_bytes)}")
+                    print(f"  CPU time:     {usage.cpu_usage_us / 1_000_000:.2f}s")
+                    print(f"  Memory peak:  {format_bytes(usage.memory_peak_bytes)}")
+                    print(f"  I/O read:     {format_bytes(usage.io_read_bytes)}")
+                    print(f"  I/O write:    {format_bytes(usage.io_write_bytes)}")
 
             return result.exit_code
 
@@ -250,7 +284,7 @@ class SandboxCLI:
             return 1
 
     def cmd_list(self, args: argparse.Namespace) -> int:
-        """List active sandboxes."""
+        """List active sandboxes (SandboxManager.list_sandboxes returns Sandbox.get_info dicts)."""
         manager = self._get_manager()
 
         sandboxes = manager.list_sandboxes()
@@ -259,63 +293,56 @@ class SandboxCLI:
             print("No active sandboxes")
             return 0
 
-        # Header
-        if args.output == 'table':
-            print(f"\n{Colors.BOLD}{'ID':<20} {'PROFILE':<12} {'STATUS':<10} {'PID':<8} {'UPTIME':<12} {'MEMORY':<10}{Colors.RESET}")
-            print("-" * 72)
+        if args.output == 'json':
+            print(json.dumps(sandboxes, indent=2, default=str))
+            return 0
 
+        if args.output == 'wide':
             for sbx in sandboxes:
-                status_color = Colors.GREEN if sbx.status == 'running' else Colors.YELLOW
-                uptime = format_duration(sbx.uptime_seconds) if sbx.uptime_seconds else '-'
-                memory = format_bytes(sbx.memory_usage_bytes) if sbx.memory_usage_bytes else '-'
+                usage = sbx.get('resource_usage') or {}
+                command = sbx.get('command')
+                print(f"\n{Colors.BOLD}Sandbox: {sbx['id']}{Colors.RESET}")
+                print(f"  Profile:  {sbx.get('profile')}")
+                print(f"  State:    {sbx.get('state')}")
+                print(f"  PID:      {sbx.get('pid') or 'N/A'}")
+                print(f"  Command:  {' '.join(command) if command else 'N/A'}")
+                print(f"  Cgroup:   {sbx.get('cgroup_path') or 'N/A'}")
+                if usage:
+                    print("  Resources:")
+                    print(f"    Memory: {format_bytes(usage.get('memory', {}).get('current_bytes', 0))}")
+                    print(f"    CPU:    {usage.get('cpu', {}).get('total_us', 0) / 1_000_000:.2f}s")
+            return 0
 
-                print(
-                    f"{sbx.id:<20} "
-                    f"{sbx.profile:<12} "
-                    f"{status_color}{sbx.status:<10}{Colors.RESET} "
-                    f"{sbx.pid or '-':<8} "
-                    f"{uptime:<12} "
-                    f"{memory:<10}"
-                )
+        # table
+        print(f"\n{Colors.BOLD}{'ID':<20} {'PROFILE':<12} {'STATE':<10} {'PID':<8} {'UPTIME':<12} {'MEMORY':<10}{Colors.RESET}")
+        print("-" * 72)
 
-            print(f"\n{len(sandboxes)} sandbox(es) total")
+        for sbx in sandboxes:
+            state = str(sbx.get('state') or 'UNKNOWN')
+            state_color = Colors.GREEN if state == 'RUNNING' else Colors.YELLOW
+            uptime = format_duration(sbx['uptime_seconds']) if sbx.get('uptime_seconds') else '-'
+            usage = sbx.get('resource_usage') or {}
+            memory_bytes = (usage.get('memory') or {}).get('current_bytes')
+            memory = format_bytes(memory_bytes) if memory_bytes else '-'
 
-        elif args.output == 'json':
-            output = [
-                {
-                    'id': sbx.id,
-                    'profile': sbx.profile,
-                    'status': sbx.status,
-                    'pid': sbx.pid,
-                    'uptime_seconds': sbx.uptime_seconds,
-                    'memory_usage_bytes': sbx.memory_usage_bytes,
-                }
-                for sbx in sandboxes
-            ]
-            print(json.dumps(output, indent=2))
+            print(
+                f"{sbx['id']:<20} "
+                f"{str(sbx.get('profile') or '-'):<12} "
+                f"{state_color}{state:<10}{Colors.RESET} "
+                f"{str(sbx.get('pid') or '-'):<8} "
+                f"{uptime:<12} "
+                f"{memory:<10}"
+            )
 
-        elif args.output == 'wide':
-            for sbx in sandboxes:
-                print(f"\n{Colors.BOLD}Sandbox: {sbx.id}{Colors.RESET}")
-                print(f"  Profile:  {sbx.profile}")
-                print(f"  Status:   {sbx.status}")
-                print(f"  PID:      {sbx.pid or 'N/A'}")
-                print(f"  Command:  {' '.join(sbx.command) if sbx.command else 'N/A'}")
-                print(f"  Cgroup:   {sbx.cgroup_path or 'N/A'}")
-                if sbx.resource_usage:
-                    print(f"  Resources:")
-                    print(f"    Memory: {format_bytes(sbx.memory_usage_bytes or 0)}")
-                    print(f"    CPU:    {sbx.cpu_usage_percent or 0:.1f}%")
-
+        print(f"\n{len(sandboxes)} sandbox(es) total")
         return 0
 
     def cmd_inspect(self, args: argparse.Namespace) -> int:
         """Inspect a sandbox."""
         manager = self._get_manager()
 
-        try:
-            sandbox = manager.get_sandbox(args.sandbox_id)
-        except Exception as e:
+        sandbox = manager.get_sandbox(args.sandbox_id)
+        if sandbox is None:
             print_error(f"Sandbox not found: {args.sandbox_id}",
                         code="E011", hint="Run: sandboxctl list")
             return 1
@@ -324,46 +351,54 @@ class SandboxCLI:
 
         if args.output == 'json':
             print(json.dumps(info, indent=2, default=str))
-        else:
-            print(f"\n{Colors.BOLD}Sandbox: {sandbox.id}{Colors.RESET}")
-            print(f"\n{Colors.CYAN}Configuration:{Colors.RESET}")
-            print(f"  Profile:    {info.get('profile', 'N/A')}")
-            print(f"  Status:     {info.get('status', 'N/A')}")
-            print(f"  PID:        {info.get('pid', 'N/A')}")
-            print(f"  Command:    {info.get('command', 'N/A')}")
+            return 0
 
-            print(f"\n{Colors.CYAN}Isolation:{Colors.RESET}")
-            print(f"  Namespaces: {', '.join(info.get('namespaces', []))}")
-            print(f"  Cgroup:     {info.get('cgroup_path', 'N/A')}")
-            print(f"  Seccomp:    {info.get('seccomp_profile', 'N/A')}")
+        command = info.get('command')
+        print(f"\n{Colors.BOLD}Sandbox: {info['id']}{Colors.RESET}")
+        print(f"\n{Colors.CYAN}Configuration:{Colors.RESET}")
+        print(f"  Profile:    {info.get('profile', 'N/A')}")
+        print(f"  State:      {info.get('state', 'N/A')}")
+        print(f"  PID:        {info.get('pid') or 'N/A'}")
+        print(f"  Command:    {' '.join(command) if command else 'N/A'}")
 
-            if info.get('network_policy'):
-                print(f"\n{Colors.CYAN}Network Policy:{Colors.RESET}")
-                np = info['network_policy']
-                if np.get('deny_all'):
-                    print("  Mode:       DENY ALL")
-                elif np.get('allow_all'):
-                    print("  Mode:       ALLOW ALL")
-                else:
-                    print("  Mode:       FILTERED")
-                    if np.get('allowed_hosts'):
-                        print(f"  Allowed:    {', '.join(np['allowed_hosts'])}")
+        print(f"\n{Colors.CYAN}Isolation:{Colors.RESET}")
+        print(f"  Namespaces: {info.get('namespace_flags', 'N/A')}")
+        print(f"  Cgroup:     {info.get('cgroup_path') or 'N/A'}")
+        print(f"  Seccomp:    {'enabled' if info.get('seccomp_enabled') else 'disabled'}")
+        print(f"  Read-only:  {'yes' if info.get('readonly_filesystem') else 'no'}")
 
-            if info.get('resource_limits'):
-                print(f"\n{Colors.CYAN}Resource Limits:{Colors.RESET}")
-                limits = info['resource_limits']
-                if limits.get('memory_max'):
-                    print(f"  Memory:     {format_bytes(limits['memory_max'])}")
-                if limits.get('cpu_max'):
-                    print(f"  CPU:        {limits['cpu_max'] / 1000:.0f}%")
-                if limits.get('pids_max'):
-                    print(f"  PIDs:       {limits['pids_max']}")
+        np = info.get('network_policy')
+        if info.get('network_disabled'):
+            print(f"\n{Colors.CYAN}Network Policy:{Colors.RESET}")
+            print("  Mode:       DISABLED")
+        elif np:
+            print(f"\n{Colors.CYAN}Network Policy:{Colors.RESET}")
+            if np.get('deny_all'):
+                print("  Mode:       DENY ALL")
+            elif np.get('allow_all'):
+                print("  Mode:       ALLOW ALL")
+            else:
+                print("  Mode:       FILTERED")
+                if np.get('allowed_hosts'):
+                    print(f"  Allowed:    {', '.join(np['allowed_hosts'])}")
 
-            if info.get('resource_usage'):
-                print(f"\n{Colors.CYAN}Resource Usage:{Colors.RESET}")
-                usage = info['resource_usage']
-                print(f"  Memory:     {format_bytes(usage.get('memory_current', 0))}")
-                print(f"  CPU:        {usage.get('cpu_usage_percent', 0):.1f}%")
+        limits = info.get('resource_limits')
+        if limits:
+            print(f"\n{Colors.CYAN}Resource Limits:{Colors.RESET}")
+            if limits.get('memory_max_bytes'):
+                print(f"  Memory:     {format_bytes(limits['memory_max_bytes'])}")
+            if limits.get('cpu_max_cores'):
+                print(f"  CPU:        {limits['cpu_max_cores']} cores")
+            elif limits.get('cpu_quota_us') and limits.get('cpu_period_us'):
+                print(f"  CPU:        {100 * limits['cpu_quota_us'] / limits['cpu_period_us']:.0f}%")
+            if limits.get('pids_max'):
+                print(f"  PIDs:       {limits['pids_max']}")
+
+        usage = info.get('resource_usage')
+        if usage:
+            print(f"\n{Colors.CYAN}Resource Usage:{Colors.RESET}")
+            print(f"  Memory:     {format_bytes(usage.get('memory', {}).get('current_bytes', 0))}")
+            print(f"  CPU time:   {usage.get('cpu', {}).get('total_us', 0) / 1_000_000:.2f}s")
 
         return 0
 
@@ -371,21 +406,24 @@ class SandboxCLI:
         """Kill a sandbox."""
         manager = self._get_manager()
 
-        sandbox_ids = args.sandbox_ids
+        sandbox_ids = list(args.sandbox_ids)
         if args.all:
-            sandboxes = manager.list_sandboxes()
-            sandbox_ids = [s.id for s in sandboxes]
+            sandbox_ids = [s['id'] for s in manager.list_sandboxes()]
 
         if not sandbox_ids:
             print("No sandboxes to kill")
             return 0
 
+        reason = "sandboxctl kill --force" if args.force else "sandboxctl kill"
         errors = 0
         for sandbox_id in sandbox_ids:
             try:
-                sig = signal.SIGKILL if args.force else signal.SIGTERM
-                manager.terminate_sandbox(sandbox_id, signal=sig.value)
-                print_success(f"Killed sandbox: {sandbox_id}")
+                if manager.terminate_sandbox(sandbox_id, reason=reason):
+                    print_success(f"Killed sandbox: {sandbox_id}")
+                else:
+                    print_error(f"Sandbox not found: {sandbox_id}",
+                                code="E011", hint="Run: sandboxctl list")
+                    errors += 1
             except Exception as e:
                 print_error(f"Failed to kill {sandbox_id}: {e}", code="E010")
                 errors += 1
@@ -395,13 +433,22 @@ class SandboxCLI:
     def cmd_profiles(self, args: argparse.Namespace) -> int:
         """List available sandbox profiles."""
         profiles = [
-            ('minimal', 'Minimal isolation, basic resource limits only'),
-            ('standard', 'Standard isolation with namespace and seccomp'),
-            ('restricted', 'Restricted - limited syscalls, no network'),
-            ('untrusted', 'Untrusted code - strict isolation'),
-            ('airgap', 'Air-gapped - no network, filesystem restrictions'),
-            ('coldroom', 'Maximum isolation, minimal attack surface'),
+            ('minimal', 'Basic resource limits, minimal isolation'),
+            ('standard', 'Namespace isolation with resource limits (default)'),
+            ('strict', 'Full isolation for untrusted code (alias: untrusted)'),
+            ('open', 'Boundary-mode profile: same as minimal'),
+            ('restricted', 'Boundary-mode profile: light isolation'),
+            ('trusted', 'Boundary-mode profile: standard isolation'),
+            ('airgap', 'Boundary-mode profile: network-isolated'),
+            ('coldroom', 'Boundary-mode profile: maximum isolation'),
+            ('lockdown', 'Boundary-mode profile: no execution allowed'),
         ]
+        if SANDBOX_AVAILABLE:
+            try:
+                for name in get_profile_loader().list_profiles():
+                    profiles.append((name, 'Loaded from sandbox profile configuration'))
+            except Exception:  # profile config is optional
+                pass
 
         if args.output == 'json':
             output = [{'name': name, 'description': desc} for name, desc in profiles]
@@ -420,6 +467,11 @@ class SandboxCLI:
         manager = self._get_manager()
 
         profile_name = args.profile.upper() if args.profile else 'STANDARD'
+        try:
+            self._resolve_profile(profile_name)
+        except ValueError as e:
+            print_error(str(e), code="E012", hint="Run: sandboxctl profiles")
+            return 1
 
         print(f"\n{Colors.BOLD}Testing Sandbox Profile: {profile_name}{Colors.RESET}\n")
 
@@ -450,22 +502,23 @@ class SandboxCLI:
 
         # Check capabilities
         print(f"\n{Colors.BOLD}System Capabilities:{Colors.RESET}")
+        # SandboxManager.get_capabilities() returns {'namespaces': {<ns>_ns: bool, ...},
+        # 'cgroups': {'cgroups_v2': bool, 'can_create': bool, ...},
+        # 'firewall': {'available': bool, ...}, 'can_sandbox': bool}
         caps = manager.get_capabilities()
+        ns_caps = caps.get('namespaces') if isinstance(caps.get('namespaces'), dict) else {}
+        cg_caps = caps.get('cgroups') if isinstance(caps.get('cgroups'), dict) else {}
+        fw_caps = caps.get('firewall') if isinstance(caps.get('firewall'), dict) else {}
 
         cap_items = [
-            ('namespaces', 'Namespace support'),
-            ('seccomp', 'Seccomp-BPF support'),
-            ('cgroups_v2', 'Cgroups v2 support'),
-            ('firewall', 'Firewall support'),
+            ('Namespace support', any(bool(v) for k, v in ns_caps.items() if k.endswith('_ns'))),
+            ('Cgroups v2 support', bool(cg_caps.get('cgroups_v2'))),
+            ('Cgroup management', bool(cg_caps.get('can_create'))),
+            ('Firewall support', bool(fw_caps.get('available'))),
+            ('Sandboxing possible', bool(caps.get('can_sandbox'))),
         ]
 
-        for cap_id, cap_name in cap_items:
-            status = caps.get(cap_id, {})
-            if isinstance(status, dict):
-                available = status.get('available', False)
-            else:
-                available = bool(status)
-
+        for cap_name, available in cap_items:
             icon = Colors.GREEN + '✓' if available else Colors.RED + '✗'
             print(f"  {icon}{Colors.RESET} {cap_name}")
 
@@ -478,7 +531,7 @@ class SandboxCLI:
             # Test that PID 1 is not visible
             result = manager.run_sandboxed(
                 command=['cat', '/proc/1/cmdline'],
-                profile=SandboxProfile.from_name(profile_name),
+                profile=self._resolve_profile(profile_name),
                 capture_output=True,
             )
             return result.exit_code != 0 or 'systemd' not in result.stdout
@@ -487,7 +540,7 @@ class SandboxCLI:
             # Test that blocked syscalls fail
             result = manager.run_sandboxed(
                 command=['python3', '-c', 'import os; os.setuid(0)'],
-                profile=SandboxProfile.from_name(profile_name),
+                profile=self._resolve_profile(profile_name),
                 capture_output=True,
             )
             return result.exit_code != 0
@@ -497,7 +550,7 @@ class SandboxCLI:
             # This is a simple check that the sandbox ran
             result = manager.run_sandboxed(
                 command=['true'],
-                profile=SandboxProfile.from_name(profile_name),
+                profile=self._resolve_profile(profile_name),
                 capture_output=True,
             )
             return result.exit_code == 0
@@ -507,7 +560,7 @@ class SandboxCLI:
             if profile_name in ('AIRGAP', 'COLDROOM', 'RESTRICTED'):
                 result = manager.run_sandboxed(
                     command=['ping', '-c', '1', '-W', '1', '8.8.8.8'],
-                    profile=SandboxProfile.from_name(profile_name),
+                    profile=self._resolve_profile(profile_name),
                     capture_output=True,
                 )
                 return result.exit_code != 0
@@ -516,33 +569,55 @@ class SandboxCLI:
         return False
 
     def cmd_metrics(self, args: argparse.Namespace) -> int:
-        """Show sandbox metrics."""
-        if not METRICS_AVAILABLE:
-            print_error("Metrics module not available.",
-                        code="E009", hint="Install boundary-daemon telemetry dependencies.")
+        """Show daemon metrics, read from the Prometheus exporter endpoint."""
+        url = args.metrics_url or DEFAULT_METRICS_URL
+        if not url.lower().startswith(('http://', 'https://')):
+            print_error(f"Metrics URL must be http(s): {url}", code="E013")
             return 1
 
-        exporter = get_metrics_exporter()
-        metrics = exporter.get_all_metrics()
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:  # nosec B310 - scheme validated above
+                text = response.read().decode('utf-8', errors='replace')
+        except (urllib.error.URLError, OSError) as e:
+            print_error(f"Could not read metrics from {url}: {e}", code="E013",
+                        hint="Is the daemon running with the Prometheus exporter enabled?")
+            return 1
+
+        samples = self._parse_prometheus_text(text)
 
         if args.output == 'json':
-            print(json.dumps(metrics, indent=2))
+            print(json.dumps(samples, indent=2))
         else:
-            print(f"\n{Colors.BOLD}Sandbox Metrics:{Colors.RESET}\n")
-
-            for metric in metrics:
-                name = metric.get('name', 'unknown')
-                value = metric.get('value', 0)
-                mtype = metric.get('type', 'gauge')
-                labels = metric.get('labels', {})
-
-                label_str = ', '.join(f"{k}={v}" for k, v in labels.items())
+            print(f"\n{Colors.BOLD}Daemon Metrics ({url}):{Colors.RESET}\n")
+            for sample in samples:
+                label_str = ', '.join(f"{k}={v}" for k, v in sample['labels'].items())
                 if label_str:
                     label_str = f" {{{label_str}}}"
-
-                print(f"  {Colors.CYAN}{name}{Colors.RESET}{label_str}: {value}")
+                print(f"  {Colors.CYAN}{sample['name']}{Colors.RESET}{label_str}: {sample['value']}")
 
         return 0
+
+    @staticmethod
+    def _parse_prometheus_text(text: str) -> List[Dict[str, Any]]:
+        """Parse Prometheus exposition text into {name, labels, value} samples."""
+        samples: List[Dict[str, Any]] = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            name_labels, _, value = line.rpartition(' ')
+            name, _, labels = name_labels.partition('{')
+            label_dict: Dict[str, str] = {}
+            if labels:
+                for item in labels.rstrip('}').split(','):
+                    key, _, val = item.partition('=')
+                    if key:
+                        label_dict[key.strip()] = val.strip().strip('"')
+            try:
+                samples.append({'name': name, 'labels': label_dict, 'value': float(value)})
+            except ValueError:
+                continue
+        return samples
 
     def _parse_memory(self, value: str) -> int:
         """Parse memory string (e.g., '512M', '1G') to bytes."""
@@ -600,7 +675,8 @@ Examples:
         help='Path to configuration file'
     )
 
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    # dest must not collide with the 'run' positional argument named 'command'
+    subparsers = parser.add_subparsers(dest='subcommand', help='Available commands')
 
     # run command
     run_parser = subparsers.add_parser('run', help='Run command in sandbox')
@@ -692,6 +768,10 @@ Examples:
         '-o', '--output', choices=['text', 'json'], default='text',
         help='Output format'
     )
+    metrics_parser.add_argument(
+        '--metrics-url', metavar='URL', default=None,
+        help=f'Prometheus exporter URL (default: $BOUNDARY_METRICS_URL or {DEFAULT_METRICS_URL})'
+    )
 
     return parser
 
@@ -712,7 +792,7 @@ def main() -> int:
     )
 
     # Dispatch command
-    if not args.command:
+    if not args.subcommand:
         parser.print_help()
         return 0
 
@@ -727,11 +807,11 @@ def main() -> int:
         'metrics': cli.cmd_metrics,
     }
 
-    handler = command_map.get(args.command)
+    handler = command_map.get(args.subcommand)
     if handler:
         return handler(args)
     else:
-        print_error(f"Unknown command: {args.command}",
+        print_error(f"Unknown command: {args.subcommand}",
                      code="E003", hint="Run: sandboxctl --help")
         return 1
 

@@ -217,8 +217,8 @@ class ErrorAggregator:
     def get_error_summary(self) -> Dict[str, Any]:
         """Get a summary of aggregated errors."""
         with self._lock:
-            by_category = {}
-            by_severity = {}
+            by_category: Dict[str, int] = {}
+            by_severity: Dict[str, int] = {}
 
             for ctx in self._errors:
                 cat = ctx.category.value
@@ -300,7 +300,7 @@ def determine_severity(
     return ErrorSeverity.ERROR
 
 
-def handle_error(
+def _handle_error_base(
     error: Exception,
     operation: str,
     category: ErrorCategory = ErrorCategory.UNKNOWN,
@@ -464,7 +464,7 @@ def with_error_handling(
                     )
 
                     # Build additional context
-                    additional_context = {
+                    additional_context: Dict[str, Any] = {
                         'attempt': attempts,
                         'max_attempts': retry_count + 1,
                         'will_retry': should_retry,
@@ -696,18 +696,6 @@ def _forward_to_siem(context: ErrorContext):
         return
 
     try:
-        # Map error severity to SIEM severity
-        from daemon.security.siem_integration import SecurityEventSeverity
-
-        severity_map = {
-            ErrorSeverity.INFO: SecurityEventSeverity.LOW,
-            ErrorSeverity.WARNING: SecurityEventSeverity.MEDIUM,
-            ErrorSeverity.ERROR: SecurityEventSeverity.HIGH,
-            ErrorSeverity.CRITICAL: SecurityEventSeverity.CRITICAL,
-            ErrorSeverity.FATAL: SecurityEventSeverity.EMERGENCY,
-        }
-        siem_severity = severity_map.get(context.severity, SecurityEventSeverity.MEDIUM)
-
         # Forward based on category
         if context.category == ErrorCategory.SECURITY:
             _siem_integration.log_security_error(
@@ -947,7 +935,7 @@ def get_all_circuit_breaker_status() -> Dict[str, Dict[str, Any]]:
 
 
 # Update handle_error to forward to SIEM
-_original_handle_error = handle_error
+_original_handle_error = _handle_error_base
 
 
 def handle_error(

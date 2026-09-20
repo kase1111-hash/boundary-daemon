@@ -306,7 +306,7 @@ class NetworkAttestor:
                 reason = f"VPN connected via {vpn.provider}"
             else:
                 trust_level = NetworkTrustLevel.PARTIALLY_TRUSTED
-                reason = f"VPN connected but certificate not verified"
+                reason = "VPN connected but certificate not verified"
 
             return AttestationResult(
                 trust_level=trust_level,
@@ -715,7 +715,7 @@ class NetworkAttestor:
     def is_vpn_connected(self) -> bool:
         """Check if VPN is currently connected."""
         with self._lock:
-            return self._current_result and self._current_result.vpn_connection is not None
+            return self._current_result is not None and self._current_result.vpn_connection is not None
 
     def get_status(self) -> Dict:
         """Get current attestation status."""
@@ -779,7 +779,7 @@ if __name__ == "__main__":
 
     # Single check
     result = attestor.check_network()
-    print(f"\nNetwork Check Result:")
+    print("\nNetwork Check Result:")
     print(f"  Trust Level: {result.trust_level.name}")
     print(f"  Status: {result.status.name}")
     print(f"  Reason: {result.reason}")
@@ -788,7 +788,7 @@ if __name__ == "__main__":
         print(f"    Provider: {result.vpn_connection.provider}")
         print(f"    Interface: {result.vpn_connection.interface}")
     if result.fingerprint:
-        print(f"  Network Fingerprint:")
+        print("  Network Fingerprint:")
         print(f"    Gateway IP: {result.fingerprint.gateway_ip}")
         print(f"    Gateway MAC: {result.fingerprint.gateway_mac}")
         print(f"    DNS: {result.fingerprint.dns_servers}")

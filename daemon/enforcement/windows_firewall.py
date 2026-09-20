@@ -201,7 +201,7 @@ class WindowsFirewallEnforcer:
 
         try:
             import ctypes
-            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # ctypes.windll is win32-only
         except (AttributeError, OSError, ImportError) as e:
             logger.debug(f"Admin check failed: {e}")
             return False

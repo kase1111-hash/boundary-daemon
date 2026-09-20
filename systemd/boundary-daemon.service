@@ -22,6 +22,9 @@
 #   systemctl start boundary-watchdog
 
 [Unit]
+# Restart rate limiting (must be in [Unit]; systemd ignores these keys in [Service])
+StartLimitIntervalSec=60
+StartLimitBurst=5
 Description=Boundary Daemon - Agent Smith Policy & Audit Service
 Documentation=man:boundary-daemon(8)
 After=network.target local-fs.target
@@ -48,8 +51,10 @@ WorkingDirectory=/opt/boundary-daemon
 
 # Environment for enforcement modules
 Environment="PYTHONUNBUFFERED=1"
+# pragma: allowlist nextline secret
 Environment="BOUNDARY_LOG_DIR=/var/log/boundary-daemon"
 Environment="BOUNDARY_RUN_DIR=/var/run/boundary-daemon"
+# pragma: allowlist nextline secret
 Environment="BOUNDARY_CONFIG_DIR=/etc/boundary-daemon"
 
 # PHASE 1 ENFORCEMENT: Enable kernel-level enforcement
@@ -76,8 +81,6 @@ Restart=always
 RestartSec=3
 
 # If daemon crashes repeatedly, trigger system halt (fail-closed)
-StartLimitIntervalSec=60
-StartLimitBurst=5
 # Uncomment for maximum security (halts system if daemon can't stay running):
 # FailureAction=poweroff
 

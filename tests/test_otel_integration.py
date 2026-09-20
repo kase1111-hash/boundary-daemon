@@ -189,7 +189,7 @@ class TestSensitiveDataRedaction:
 
     def test_redaction_in_span_events(self, telemetry_manager):
         with telemetry_manager.start_span("op") as span:
-            span.add_event("login", {"username": "bob", "password": "hunter2"})
+            span.add_event("login", {"username": "bob", "password": "hunter2"})  # pragma: allowlist secret
 
         spans = telemetry_manager.get_recent_spans()
         event_attrs = spans[0]["events"][0]["attributes"]
@@ -199,8 +199,8 @@ class TestSensitiveDataRedaction:
     def test_redaction_processor_standalone(self):
         attrs = {
             "host": "example.com",
-            "api_key": "sk-abc",
-            "secret_value": "hidden",
+            "api_key": "sk-abc",  # pragma: allowlist secret
+            "secret_value": "hidden",  # pragma: allowlist secret
             "normal": "visible",
         }
         redacted = RedactionProcessor.redact_attributes(attrs)

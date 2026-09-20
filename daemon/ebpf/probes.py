@@ -161,7 +161,7 @@ class ExecProbe(BaseProbe):
                 target="syscalls/sys_enter_execve",
             )
         super().__init__(config)
-        self._bpf = None
+        self._bpf: Any = None
         self._events: List[ProbeEvent] = []
         self._lock = threading.Lock()
 
@@ -274,7 +274,7 @@ class OpenProbe(BaseProbe):
                 target="syscalls/sys_enter_openat",
             )
         super().__init__(config)
-        self._bpf = None
+        self._bpf: Any = None
         self._events: List[ProbeEvent] = []
         self._lock = threading.Lock()
 
@@ -390,7 +390,7 @@ class ConnectProbe(BaseProbe):
                 target="__sys_connect",
             )
         super().__init__(config)
-        self._bpf = None
+        self._bpf: Any = None
         self._events: List[ProbeEvent] = []
         self._lock = threading.Lock()
 

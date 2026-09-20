@@ -33,13 +33,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Type
 
 logger = logging.getLogger(__name__)
 
 try:
     import psutil
-    _PsutilProcessErrors = (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError)
+    _PsutilProcessErrors: Tuple[Type[BaseException], ...] = (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError)
 except ImportError:
     psutil = None
     _PsutilProcessErrors = (OSError,)
@@ -297,9 +297,9 @@ class SecureProcessTerminator:
 
     # Known malicious exe patterns (must match full path)
     KNOWN_MALICIOUS_PATHS = {
-        '/tmp/',           # Executables in /tmp are suspicious
-        '/dev/shm/',       # Memory-mapped executables
-        '/var/tmp/',       # Temp files
+        '/tmp/',           # nosec B108 - detection pattern: executables in /tmp are suspicious
+        '/dev/shm/',       # nosec B108 - detection pattern: memory-mapped executables
+        '/var/tmp/',       # nosec B108 - detection pattern: temp files
         '(deleted)',       # Deleted executables still running
     }
 
@@ -389,7 +389,7 @@ class SecureProcessTerminator:
         expected_name: Optional[str] = None,
         expected_exe_path: Optional[str] = None,
         expected_uid: Optional[int] = None,
-    ) -> Tuple[bool, ProcessInfo, str]:
+    ) -> Tuple[bool, Optional[ProcessInfo], str]:
         """
         Verify a process identity before termination.
 

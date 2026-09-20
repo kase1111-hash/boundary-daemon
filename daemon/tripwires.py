@@ -301,12 +301,10 @@ class TripwireSystem:
                 return None
 
             # Initialize baselines on first check
-            first_check = False
             if self._baseline_usb_devices is None:
                 self._baseline_usb_devices = env_state.usb_devices.copy()
                 self._previous_mode = current_mode
                 self._previous_network_state = env_state.network
-                first_check = True
                 # Don't return early - still check for obvious violations!
 
             # Check all violation types and collect all that fire
@@ -586,7 +584,7 @@ class TripwireSystem:
     def get_violations(self) -> List[TripwireViolation]:
         """Get all recorded violations"""
         with self._lock:
-            return self._violations.copy()
+            return list(self._violations)
 
     def get_violation_count(self) -> int:
         """Get total number of violations"""
@@ -703,7 +701,9 @@ class TripwireSystem:
         Returns:
             The simulated violation
         """
-        from .state_monitor import EnvironmentState, NetworkState, HardwareTrust
+        from .state_monitor import (
+            EnvironmentState, NetworkState, HardwareTrust, SpecialtyNetworkStatus,
+        )
 
         # Create a dummy environment state
         env_state = EnvironmentState(
@@ -714,6 +714,18 @@ class TripwireSystem:
             has_internet=False,
             vpn_active=False,
             dns_available=False,
+            interface_types={},
+            specialty_networks=SpecialtyNetworkStatus(
+                lora_devices=[], thread_devices=[], wimax_interfaces=[],
+                irda_devices=[], ant_plus_devices=[], cellular_alerts=[],
+            ),
+            dns_security_alerts=[],
+            arp_security_alerts=[],
+            wifi_security_alerts=[],
+            threat_intel_alerts=[],
+            file_integrity_alerts=[],
+            traffic_anomaly_alerts=[],
+            process_security_alerts=[],
             usb_devices=set(),
             block_devices=set(),
             camera_available=False,
@@ -772,7 +784,7 @@ class LockdownManager:
             self._lockdown_violation = violation
 
             print(f"\n{'='*70}")
-            print(f"LOCKDOWN TRIGGERED")
+            print("LOCKDOWN TRIGGERED")
             print(f"{'='*70}")
             print(f"Reason: {violation.violation_type.value}")
             print(f"Details: {violation.details}")
@@ -846,7 +858,7 @@ if __name__ == '__main__':
 
     # Register callback to trigger lockdown
     def on_violation(violation: TripwireViolation):
-        print(f"\n*** VIOLATION DETECTED ***")
+        print("\n*** VIOLATION DETECTED ***")
         print(f"Type: {violation.violation_type.value}")
         print(f"Details: {violation.details}")
         lockdown_mgr.trigger_lockdown(violation)

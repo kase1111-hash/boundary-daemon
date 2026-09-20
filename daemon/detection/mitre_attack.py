@@ -496,7 +496,7 @@ class MITREDetector:
     def _get_nested_value(self, data: Dict, key: str) -> Any:
         """Get a value from nested dict using dot notation."""
         parts = key.split('.')
-        value = data
+        value: Any = data
 
         for part in parts:
             if isinstance(value, dict):
@@ -553,12 +553,12 @@ if __name__ == '__main__':
 
     detector = MITREDetector()
 
-    print(f"\nLoaded:")
+    print("\nLoaded:")
     print(f"  Techniques: {len(detector._techniques)}")
     print(f"  Patterns: {len(detector._patterns)}")
 
     # Test detection
-    test_events = [
+    test_events: List[Dict[str, Any]] = [
         {"event_type": "LOCKDOWN", "details": "Network in AIRGAP"},
         {"event_type": "AUTH_FAILURE", "user": "attacker", "attempts": 5},
         {"event_type": "CEREMONY_ABORT", "reason": "timeout"},

@@ -13,7 +13,7 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Callable, Any
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ class FprintdClient:
 
     def enroll_finger(self, finger: str = 'right-index-finger',
                      username: Optional[str] = None,
-                     on_progress: Optional[callable] = None) -> Tuple[bool, str]:
+                     on_progress: Optional[Callable[..., Any]] = None) -> Tuple[bool, str]:
         """
         Enroll a finger using fprintd.
 
@@ -315,7 +315,7 @@ class BiometricVerifier:
         self.enrolled_templates: List[BiometricTemplate] = []
         self._load_templates()
 
-        logger.info(f"BiometricVerifier initialized:")
+        logger.info("BiometricVerifier initialized:")
         logger.info(f"  Template directory: {self.template_dir}")
         logger.info(f"  Fingerprint reader: {'fprintd' if self.fprintd_mode else ('Mock' if self.fingerprint_available else 'Not available')}")
         logger.info(f"  Camera/Face recognition: {'Available' if self.camera_available else 'Not available'}")
@@ -487,7 +487,7 @@ class BiometricVerifier:
         self._save_template_metadata(template)
         self.enrolled_templates.append(template)
 
-        print(f"\n✓ Fingerprint enrolled successfully")
+        print("\n✓ Fingerprint enrolled successfully")
         print(f"  Template ID: {template.template_id}\n")
 
         return (True, None)
@@ -581,7 +581,6 @@ class BiometricVerifier:
 
         # Mock implementation (fallback when fprintd not available)
         time.sleep(1)  # Simulate scan time
-        mock_sample = os.urandom(256)
         liveness_passed = True  # Mock liveness check
 
         # Compare with enrolled templates
@@ -707,7 +706,7 @@ class BiometricVerifier:
             self._save_template_metadata(template)
             self.enrolled_templates.append(template)
 
-            print(f"\n✓ Face enrolled successfully")
+            print("\n✓ Face enrolled successfully")
             print(f"  Template ID: {template.template_id}\n")
 
             return (True, None)
@@ -972,7 +971,7 @@ if __name__ == '__main__':
         for template in verifier.enrolled_templates:
             if template.biometric_type == BiometricType.FINGERPRINT:
                 result = verifier.verify_fingerprint()
-                print(f"\nFingerprint verification:")
+                print("\nFingerprint verification:")
                 print(f"  Success: {result.success}")
                 print(f"  Match score: {result.match_score:.2f}")
                 print(f"  Liveness: {result.liveness_passed}")

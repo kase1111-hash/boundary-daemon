@@ -406,7 +406,7 @@ class LEEFExporter:
             attrs.append(f"devTime={_escape_leef_value(devTime)}")
 
         if 'event_id' in event:
-            attrs.append(f"devTimeFormat=MMM dd yyyy HH:mm:ss")
+            attrs.append("devTimeFormat=MMM dd yyyy HH:mm:ss")
             attrs.append(f"externalId={_escape_leef_value(event['event_id'])}")
 
         # Category and severity
@@ -693,7 +693,7 @@ if __name__ == '__main__':
         'event_type': 'VIOLATION',
         'timestamp': '2024-01-15T10:30:00Z',
         'details': 'Network detected in AIRGAP mode',
-        'hash_chain': 'abc123def456',
+        'hash_chain': 'abc123def456',  # pragma: allowlist secret
         'metadata': {
             'boundary_mode': 'AIRGAP',
             'source_ip': '192.168.1.100',

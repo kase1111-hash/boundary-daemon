@@ -30,7 +30,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
@@ -317,7 +317,7 @@ class EntropyAnalyzer:
         if not text:
             return 0.0
 
-        freq = {}
+        freq: Dict[str, int] = {}
         for char in text:
             freq[char] = freq.get(char, 0) + 1
 
@@ -526,7 +526,7 @@ class BypassDetector:
                 })
 
         # Merge overlapping regions
-        merged = []
+        merged: List[Dict[str, Any]] = []
         for region in sorted(regions, key=lambda x: x['start']):
             if merged and region['start'] < merged[-1]['end']:
                 merged[-1]['end'] = max(merged[-1]['end'], region['end'])
@@ -577,7 +577,7 @@ class BypassResistantPIIDetector:
         self.scan_decoded_content = scan_decoded_content
         self.flag_suspicious_entropy = flag_suspicious_entropy
 
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             'scans': 0,
             'bypass_attempts_detected': 0,
             'by_technique': {},
@@ -601,7 +601,7 @@ class BypassResistantPIIDetector:
         """
         self._stats['scans'] += 1
 
-        result = {
+        result: Dict[str, Any] = {
             'entities': [],
             'bypass_attempts': [],
             'normalized': False,
@@ -708,7 +708,7 @@ class BypassResistantPIIDetector:
             key=lambda e: (e.start, -e.confidence)
         )
 
-        result = []
+        result: List[Any] = []
         for entity in sorted_entities:
             # Check if overlaps with existing
             overlaps = False
@@ -757,10 +757,7 @@ class BypassResistantPIIDetector:
 
         First normalizes, then detects, then redacts.
         """
-        # Normalize first
-        norm_result = self.normalizer.normalize(text)
-
-        # Detect on normalized
+        # detect() applies normalization internally before matching
         detection = self.detect(text, types)
 
         # Redact using base detector

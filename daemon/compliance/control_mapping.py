@@ -466,7 +466,7 @@ if __name__ == '__main__':
 
     # Generate NIST mapping
     nist_mapping = exporter.generate_nist_mapping()
-    print(f"\nNIST 800-53 Mapping:")
+    print("\nNIST 800-53 Mapping:")
     print(f"  Framework: {nist_mapping.framework.value}")
     print(f"  Version: {nist_mapping.version}")
     print(f"  Controls mapped: {len(nist_mapping.mappings)}")
@@ -480,7 +480,7 @@ if __name__ == '__main__':
 
     # Generate ISO mapping
     iso_mapping = exporter.generate_iso_mapping()
-    print(f"\nISO 27001 Mapping:")
+    print("\nISO 27001 Mapping:")
     print(f"  Framework: {iso_mapping.framework.value}")
     print(f"  Controls mapped: {len(iso_mapping.mappings)}")
     print(f"  Summary: {iso_mapping.summary}")

@@ -49,7 +49,7 @@ try:
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
     # Fallback logging function
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub
         context_str = f" Context: {additional_context}" if additional_context else ""
         logger.error(f"Error in {op}: {type(e).__name__}: {e}{context_str}\n{traceback.format_exc()}")
         if reraise:
@@ -530,12 +530,12 @@ class ARPSecurityMonitor:
         try:
             if self._has_ip:
                 interface = self._detect_interface_for_ip(ip) or 'eth0'
-                result = subprocess.run(
+                subprocess.run(
                     ['ip', 'neigh', 'del', ip, 'dev', interface],
                     capture_output=True, timeout=5
                 )
             elif self._has_arp:
-                result = subprocess.run(
+                subprocess.run(
                     ['arp', '-d', ip],
                     capture_output=True, timeout=5
                 )
@@ -912,7 +912,7 @@ class ARPSecurityMonitor:
             if not detected_ip:
                 try:
                     result = subprocess.run(
-                        ['route', 'print', '0.0.0.0'],
+                        ['route', 'print', '0.0.0.0'],  # nosec B104 - route-table query argument, not a bind address
                         capture_output=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW
                     )
                     if result.returncode == 0:
@@ -987,7 +987,7 @@ class ARPSecurityMonitor:
                 result = subprocess.run(
                     ['arp', '-a', ip],
                     capture_output=True, timeout=2,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    creationflags=subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]  # Windows-only; guarded by IS_WINDOWS
                 )
                 if result.returncode == 0:
                     output = result.stdout.decode()
@@ -1064,7 +1064,6 @@ class ARPSecurityMonitor:
                             ip = match.group(1)
                             # Convert dash-separated MAC to colon-separated
                             mac = match.group(2).lower().replace('-', ':')
-                            entry_type = match.group(3)
 
                             # Skip incomplete or invalid entries
                             if mac == '00:00:00:00:00:00' or mac == 'ff:ff:ff:ff:ff:ff':
@@ -1266,7 +1265,7 @@ if __name__ == '__main__':
     monitor = ARPSecurityMonitor()
 
     # Display gateway info
-    print(f"\n--- Gateway Detection ---")
+    print("\n--- Gateway Detection ---")
     print(f"Gateway IP: {monitor._gateway_ip}")
     print(f"Gateway MAC: {monitor._gateway_mac}")
 
@@ -1274,19 +1273,19 @@ if __name__ == '__main__':
     monitor._update_arp_table()
 
     # Get status
-    print(f"\n--- ARP Table Status ---")
+    print("\n--- ARP Table Status ---")
     status = monitor.get_status()
     print(f"Table size: {status.arp_table_size}")
     print(f"Recent changes: {status.recent_changes}")
     print(f"Alerts: {status.alerts}")
 
     # Display ARP table
-    print(f"\n--- Current ARP Table ---")
+    print("\n--- Current ARP Table ---")
     for entry in monitor.get_arp_table()[:10]:  # First 10 entries
         print(f"  {entry['ip']:15} -> {entry['mac']} ({entry['interface']})")
 
     # Simulate attacks
-    print(f"\n--- Attack Simulation ---")
+    print("\n--- Attack Simulation ---")
 
     # Simulate MAC change (spoofing)
     print("\nSimulating ARP spoofing attack...")
@@ -1303,12 +1302,12 @@ if __name__ == '__main__':
 
     # Simulate gateway impersonation
     if monitor._gateway_ip:
-        print(f"\nSimulating gateway impersonation...")
+        print("\nSimulating gateway impersonation...")
         alerts = monitor.analyze_arp_entry(monitor._gateway_ip, "de:ad:be:ef:ca:fe")
         print(f"Alerts after gateway impersonation: {alerts}")
 
     # Final status
-    print(f"\n--- Final Status ---")
+    print("\n--- Final Status ---")
     status = monitor.get_status()
     print(f"Suspicious IPs: {status.suspicious_ips}")
     print(f"Duplicate MACs: {status.duplicate_macs}")

@@ -76,7 +76,7 @@ requirements once the regulation is finalized:
 
 - **Vulnerability handling:** SECURITY.md documents responsible disclosure.
 - **SBOM:** Generate with `pip-audit` or `cyclonedx-py` for each release.
-- **Security updates:** Pin dependencies and monitor with `safety check` in CI.
+- **Security updates:** Pin dependencies and monitor with `pip-audit` in CI.
 
 ---
 

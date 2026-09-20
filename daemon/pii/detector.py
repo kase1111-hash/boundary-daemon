@@ -19,7 +19,7 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Pattern, Set, Tuple, Callable
+from typing import Any, Dict, List, Optional, Pattern, Set, Tuple, Callable
 
 
 class PIIEntityType(Enum):
@@ -48,10 +48,10 @@ class PIIEntityType(Enum):
     ZIP_CODE = "zip_code"                 # ZIP/postal codes
 
     # Authentication & Secrets
-    PASSWORD = "password"                 # Passwords in text
-    API_KEY = "api_key"                   # API keys
+    PASSWORD = "password"                 # Passwords in text  # pragma: allowlist secret
+    API_KEY = "api_key"                   # API keys  # pragma: allowlist secret
     ACCESS_TOKEN = "access_token"         # OAuth/JWT tokens
-    PRIVATE_KEY = "private_key"           # Private keys (RSA, SSH, etc.)
+    PRIVATE_KEY = "private_key"           # Private keys (RSA, SSH, etc.)  # pragma: allowlist secret
     AWS_KEY = "aws_key"                   # AWS access keys
 
     # Personal Information
@@ -176,7 +176,7 @@ class PIIDetector:
         self.thresholds = thresholds or self.DEFAULT_THRESHOLDS.copy()
         self.context_window = context_window
         self._patterns: List[PIIPattern] = []
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             'scans': 0,
             'entities_found': 0,
             'by_type': {},
@@ -611,7 +611,7 @@ class PIIDetector:
                 if char.isdigit():
                     value = int(char)
                 else:
-                    value = trans.get(char)
+                    value = trans.get(char)  # type: ignore[assignment]  # None is handled on the next line
                     if value is None:
                         return False
                 total += value * weights[i]
@@ -778,7 +778,7 @@ class PIIDetector:
             token = hashlib.sha256(entity.value.encode()).hexdigest()[:12]
             return f"<PII:{token}>"
         else:
-            return f"[REDACTED]"
+            return "[REDACTED]"
 
     def _mask_value(self, entity: PIIEntity) -> str:
         """Create masked version of value."""

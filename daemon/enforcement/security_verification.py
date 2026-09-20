@@ -34,15 +34,13 @@ import sys
 import json
 import socket
 import subprocess
-import tempfile
-import threading
 import time
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +166,7 @@ class SecurityReport:
             avail = "Available" if phase.available else "Not Available"
             enabled = "Enabled" if phase.enabled else "Disabled"
 
-            lines.append(f"Phase {phase.phase}: {phase.name}")
+            lines.append(f"Phase {phase.phase}: {phase.name} [{status}]")
             lines.append(f"  Status: {avail}, {enabled}")
             lines.append(f"  Score:  {phase.score:.1f}% ({phase.passed}/{len(phase.tests)} tests passed)")
 
@@ -295,7 +293,7 @@ class SecurityVerifier:
 
         # Check BCC availability
         try:
-            from bcc import BPF
+            import bcc  # noqa: F401 - availability probe
             phase.available = True
         except ImportError:
             pass
@@ -623,7 +621,7 @@ class SecurityVerifier:
         """Test if BCC is installed."""
         start = time.time()
         try:
-            from bcc import BPF
+            import bcc  # noqa: F401 - availability probe
             return TestCase(
                 name="BCC Installed",
                 phase=2,
@@ -707,7 +705,7 @@ class SecurityVerifier:
         try:
             # Try to import and check availability
             sys.path.insert(0, '/opt/boundary-daemon')
-            from daemon.enforcement.ebpf_monitor import EBPFMonitor, check_ebpf_requirements
+            from daemon.enforcement.ebpf_monitor import check_ebpf_requirements
 
             all_met, issues = check_ebpf_requirements()
             if all_met:
@@ -1051,7 +1049,7 @@ class SecurityVerifier:
         try:
             if mac == 'selinux':
                 # Check if SELinux is actually enforcing denials
-                result = subprocess.run(
+                result: subprocess.CompletedProcess[Any] = subprocess.run(
                     ['ausearch', '-m', 'avc', '-ts', 'recent'],
                     capture_output=True,
                     timeout=5,

@@ -24,9 +24,9 @@ try:
     ERROR_HANDLING_AVAILABLE = True
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
-    def log_security_error(e, op, **ctx):
+    def log_security_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub, signature differs
         logger.error(f"SECURITY: {op}: {e}")
-    def log_filesystem_error(e, op, **ctx):
+    def log_filesystem_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub, signature differs
         logger.error(f"FILESYSTEM: {op}: {e}")
 
 
@@ -135,7 +135,8 @@ class SignedEventLogger(EventLogger):
         return signing_key
 
     def log_event(self, event_type: EventType, details: str,
-                  metadata: Optional[Dict] = None) -> BoundaryEvent:
+                  metadata: Optional[Dict] = None,
+                  reasoning_chain: Optional[Dict] = None) -> BoundaryEvent:
         """
         Log a boundary event with cryptographic signature.
 
@@ -143,6 +144,7 @@ class SignedEventLogger(EventLogger):
             event_type: Type of event
             details: Human-readable details
             metadata: Additional structured data
+            reasoning_chain: Optional decision reasoning (passed through to the chain)
 
         Returns:
             The logged event
@@ -150,7 +152,7 @@ class SignedEventLogger(EventLogger):
         # Hold sig_lock across both log write and signature write
         # to prevent race where events and sigs get out of sync
         with self._sig_lock:
-            event = super().log_event(event_type, details, metadata)
+            event = super().log_event(event_type, details, metadata, reasoning_chain)
             self._sign_event_unlocked(event)
         return event
 
@@ -240,7 +242,8 @@ class SignedEventLogger(EventLogger):
                     event_type=EventType(event_data['event_type']),
                     details=event_data['details'],
                     metadata=event_data.get('metadata', {}),
-                    hash_chain=event_data['hash_chain']
+                    hash_chain=event_data['hash_chain'],
+                    reasoning_chain=event_data.get('reasoning_chain'),
                 )
 
                 # Verify the signature record's public key matches our known-good key
@@ -309,8 +312,8 @@ class SignedEventLogger(EventLogger):
         """
         try:
             with open(output_path, 'w') as f:
-                f.write(f"# Boundary Daemon Event Log Public Verification Key\n")
-                f.write(f"# This key can be used to verify the authenticity of event log signatures\n")
+                f.write("# Boundary Daemon Event Log Public Verification Key\n")
+                f.write("# This key can be used to verify the authenticity of event log signatures\n")
                 f.write(f"# Generated: {__import__('datetime').datetime.utcnow().isoformat()}Z\n\n")
                 f.write(self.get_public_key_hex() + '\n')
             logger.info(f"Public key exported to {output_path}")
@@ -322,7 +325,7 @@ class SignedEventLogger(EventLogger):
 
 
 if __name__ == '__main__':
-    # Test signed event logger
+    # Test signed event demo_logger
     print("Testing Signed Event Logger...")
 
     import tempfile
@@ -335,38 +338,38 @@ if __name__ == '__main__':
 
     print(f"\nUsing temporary directory: {temp_dir}")
 
-    # Create logger
-    logger = SignedEventLogger(log_file, key_file)
+    # Create demo_logger
+    demo_logger = SignedEventLogger(log_file, key_file)
 
     # Log some events
     print("\nLogging events...")
-    logger.log_event(EventType.DAEMON_START, "Boundary daemon started")
-    logger.log_event(EventType.MODE_CHANGE, "Transitioned from OPEN to RESTRICTED",
+    demo_logger.log_event(EventType.DAEMON_START, "Boundary daemon started")
+    demo_logger.log_event(EventType.MODE_CHANGE, "Transitioned from OPEN to RESTRICTED",
                     metadata={'old_mode': 'open', 'new_mode': 'restricted'})
-    logger.log_event(EventType.RECALL_ATTEMPT, "Memory class 3 recall requested",
+    demo_logger.log_event(EventType.RECALL_ATTEMPT, "Memory class 3 recall requested",
                     metadata={'memory_class': 3, 'decision': 'allow'})
-    logger.log_event(EventType.VIOLATION, "Network came online in AIRGAP mode",
+    demo_logger.log_event(EventType.VIOLATION, "Network came online in AIRGAP mode",
                     metadata={'violation_type': 'network_in_airgap'})
 
-    print(f"Total events logged: {logger.get_event_count()}")
+    print(f"Total events logged: {demo_logger.get_event_count()}")
 
     # Verify hash chain
     print("\nVerifying hash chain...")
-    chain_valid, chain_error = logger.verify_chain()
+    chain_valid, chain_error = demo_logger.verify_chain()
     print(f"Hash chain valid: {chain_valid}")
     if chain_error:
         print(f"Error: {chain_error}")
 
     # Verify signatures
     print("\nVerifying signatures...")
-    sig_valid, sig_error = logger.verify_signatures()
+    sig_valid, sig_error = demo_logger.verify_signatures()
     print(f"Signatures valid: {sig_valid}")
     if sig_error:
         print(f"Error: {sig_error}")
 
     # Full integrity check
     print("\nFull integrity verification...")
-    full_valid, full_error = logger.verify_full_integrity()
+    full_valid, full_error = demo_logger.verify_full_integrity()
     print(f"Full integrity valid: {full_valid}")
     if full_error:
         print(f"Error: {full_error}")
@@ -374,10 +377,10 @@ if __name__ == '__main__':
     # Export public key
     print("\nExporting public key...")
     pub_key_file = os.path.join(temp_dir, 'public_key.txt')
-    logger.export_public_key(pub_key_file)
+    demo_logger.export_public_key(pub_key_file)
 
     # Display public key
-    print(f"\nPublic verification key: {logger.get_public_key_hex()}")
+    print(f"\nPublic verification key: {demo_logger.get_public_key_hex()}")
 
     # Test tampering detection
     print("\n\n=== Testing Tamper Detection ===")
@@ -401,7 +404,7 @@ if __name__ == '__main__':
 
         # Try to verify
         print("\nVerifying tampered log...")
-        tampered_valid, tampered_error = logger.verify_signatures()
+        tampered_valid, tampered_error = demo_logger.verify_signatures()
         print(f"Signatures valid: {tampered_valid}")
         if tampered_error:
             print(f"Error detected: {tampered_error}")
@@ -410,4 +413,4 @@ if __name__ == '__main__':
     print(f"\nCleaning up {temp_dir}...")
     shutil.rmtree(temp_dir)
 
-    print("\nSigned event logger test complete.")
+    print("\nSigned event demo_logger test complete.")

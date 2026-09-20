@@ -40,18 +40,18 @@ try:
     ENFORCEMENT_AVAILABLE = True
 except ImportError:
     ENFORCEMENT_AVAILABLE = False
-    NetworkEnforcer = None
-    FirewallBackend = None
-    NetworkEnforcementError = None
-    USBEnforcer = None
-    USBEnforcementError = None
-    USBDeviceClass = None
-    ProcessEnforcer = None
-    ProcessEnforcementError = None
-    ContainerRuntime = None
-    IsolationLevel = None
-    ContainerConfig = None
-    ExternalWatchdog = None
+    NetworkEnforcer = None  # type: ignore[assignment,misc]
+    FirewallBackend = None  # type: ignore[assignment,misc]
+    NetworkEnforcementError = None  # type: ignore[assignment,misc]
+    USBEnforcer = None  # type: ignore[assignment,misc]
+    USBEnforcementError = None  # type: ignore[assignment,misc]
+    USBDeviceClass = None  # type: ignore[assignment,misc]
+    ProcessEnforcer = None  # type: ignore[assignment,misc]
+    ProcessEnforcementError = None  # type: ignore[assignment,misc]
+    ContainerRuntime = None  # type: ignore[assignment,misc]
+    IsolationLevel = None  # type: ignore[assignment,misc]
+    ContainerConfig = None  # type: ignore[assignment,misc]
+    ExternalWatchdog = None  # type: ignore[assignment,misc]
 
 # Import hardware module (Plan 2: TPM Integration)
 try:
@@ -62,13 +62,13 @@ try:
     TPM_AVAILABLE = True
 except ImportError:
     TPM_AVAILABLE = False
-    TPMManager = None
-    TPMError = None
-    TPMNotAvailableError = None
-    TPMSealingError = None
-    TPMUnsealingError = None
-    TPMAttestationError = None
-    SealedSecret = None
+    TPMManager = None  # type: ignore[assignment,misc]
+    TPMError = None  # type: ignore[assignment,misc]
+    TPMNotAvailableError = None  # type: ignore[assignment,misc]
+    TPMSealingError = None  # type: ignore[assignment,misc]
+    TPMUnsealingError = None  # type: ignore[assignment,misc]
+    TPMAttestationError = None  # type: ignore[assignment,misc]
+    SealedSecret = None  # type: ignore[assignment,misc]
 
 # Import distributed module (Plan 4: Distributed Deployment)
 try:
@@ -79,11 +79,11 @@ try:
     DISTRIBUTED_AVAILABLE = True
 except ImportError:
     DISTRIBUTED_AVAILABLE = False
-    ClusterManager = None
-    ClusterNode = None
-    ClusterState = None
-    FileCoordinator = None
-    Coordinator = None
+    ClusterManager = None  # type: ignore[assignment,misc]
+    ClusterNode = None  # type: ignore[assignment,misc]
+    ClusterState = None  # type: ignore[assignment,misc]
+    FileCoordinator = None  # type: ignore[assignment,misc]
+    Coordinator = None  # type: ignore[assignment,misc]
 
 # Import custom policy module (Plan 5: Custom Policy Language)
 try:
@@ -93,9 +93,9 @@ try:
     CUSTOM_POLICY_AVAILABLE = True
 except ImportError:
     CUSTOM_POLICY_AVAILABLE = False
-    CustomPolicyEngine = None
-    PolicyRule = None
-    PolicyAction = None
+    CustomPolicyEngine = None  # type: ignore[assignment,misc]
+    PolicyRule = None  # type: ignore[assignment,misc]
+    PolicyAction = None  # type: ignore[assignment,misc]
 
 # Import auth module (Plan 6: Biometric Authentication)
 try:
@@ -106,11 +106,11 @@ try:
     BIOMETRIC_AVAILABLE = True
 except ImportError:
     BIOMETRIC_AVAILABLE = False
-    BiometricVerifier = None
-    BiometricType = None
-    BiometricResult = None
-    EnhancedCeremonyManager = None
-    BiometricCeremonyConfig = None
+    BiometricVerifier = None  # type: ignore[assignment,misc]
+    BiometricType = None  # type: ignore[assignment,misc]
+    BiometricResult = None  # type: ignore[assignment,misc]
+    EnhancedCeremonyManager = None  # type: ignore[assignment,misc]
+    BiometricCeremonyConfig = None  # type: ignore[assignment,misc]
 
 # Import security module (Plan 7: Code Vulnerability Advisor)
 try:
@@ -121,11 +121,11 @@ try:
     SECURITY_ADVISOR_AVAILABLE = True
 except ImportError:
     SECURITY_ADVISOR_AVAILABLE = False
-    CodeVulnerabilityAdvisor = None
-    SecurityAdvisory = None
-    AdvisorySeverity = None
-    AdvisoryStatus = None
-    ScanResult = None
+    CodeVulnerabilityAdvisor = None  # type: ignore[assignment,misc]
+    SecurityAdvisory = None  # type: ignore[assignment,misc]
+    AdvisorySeverity = None  # type: ignore[assignment,misc]
+    AdvisoryStatus = None  # type: ignore[assignment,misc]
+    ScanResult = None  # type: ignore[assignment,misc]
 
 # Import watchdog module (Plan 8: Log Watchdog Agent)
 try:
@@ -136,11 +136,11 @@ try:
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
-    LogWatchdog = None
-    WatchdogAlert = None
-    WatchdogConfig = None
-    AlertSeverity = None
-    AlertStatus = None
+    LogWatchdog = None  # type: ignore[assignment,misc]
+    WatchdogAlert = None  # type: ignore[assignment,misc]
+    WatchdogConfig = None  # type: ignore[assignment,misc]
+    AlertSeverity = None  # type: ignore[assignment,misc]
+    AlertStatus = None  # type: ignore[assignment,misc]
 
 # Import telemetry module (Plan 9: OpenTelemetry Integration)
 try:
@@ -152,11 +152,11 @@ try:
     TELEMETRY_AVAILABLE = True
 except ImportError:
     TELEMETRY_AVAILABLE = False
-    TelemetryManager = None
-    TelemetryConfig = None
-    ExportMode = None
-    RedactionProcessor = None
-    instrument = None
+    TelemetryManager = None  # type: ignore[assignment,misc]
+    TelemetryConfig = None  # type: ignore[assignment,misc]
+    ExportMode = None  # type: ignore[assignment,misc]
+    RedactionProcessor = None  # type: ignore[assignment,misc]
+    instrument = None  # type: ignore[assignment]
     OTEL_AVAILABLE = False
     OTLP_AVAILABLE = False
 

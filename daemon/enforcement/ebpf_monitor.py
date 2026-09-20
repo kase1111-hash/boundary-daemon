@@ -32,8 +32,6 @@ import sys
 import threading
 import logging
 import time
-import ctypes
-import json
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Dict, List, Set, Any, Tuple
@@ -47,11 +45,9 @@ IS_LINUX = sys.platform.startswith('linux')
 
 # Try to import BCC
 BCC_AVAILABLE = False
-bcc = None
 if IS_LINUX:
     try:
         from bcc import BPF
-        import bcc
         BCC_AVAILABLE = True
         logger.info("BCC (BPF Compiler Collection) available")
     except ImportError:
@@ -732,7 +728,7 @@ class EBPFMonitor:
                 return MonitorAction.ALERT
 
             # Check for suspicious execution locations
-            suspicious_paths = ['/tmp/', '/dev/shm/', '/var/tmp/']
+            suspicious_paths = ['/tmp/', '/dev/shm/', '/var/tmp/']  # nosec B108 - detection pattern
             for path in suspicious_paths:
                 if filename.startswith(path):
                     return MonitorAction.ALERT

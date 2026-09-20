@@ -49,6 +49,12 @@ config/signing.key
 *.key
 !requirements*.txt
 
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+
 # Coverage
 .coverage
 .coverage.*

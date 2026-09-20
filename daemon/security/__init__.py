@@ -46,11 +46,11 @@ try:
     SECURE_MEMORY_AVAILABLE = True
 except ImportError:
     SECURE_MEMORY_AVAILABLE = False
-    SecureBytes = None
-    secure_zero_memory = None
-    secure_key_context = None
-    secure_compare = None
-    generate_secure_random = None
+    SecureBytes = None  # type: ignore[assignment,misc]
+    secure_zero_memory = None  # type: ignore[assignment]
+    secure_key_context = None  # type: ignore[assignment]
+    secure_compare = None  # type: ignore[assignment]
+    generate_secure_random = None  # type: ignore[assignment]
 
 # Daemon integrity protection (SECURITY: Binary tampering prevention)
 try:
@@ -66,13 +66,13 @@ try:
     DAEMON_INTEGRITY_AVAILABLE = True
 except ImportError:
     DAEMON_INTEGRITY_AVAILABLE = False
-    DaemonIntegrityProtector = None
-    IntegrityConfig = None
-    IntegrityStatus = None
-    IntegrityAction = None
-    IntegrityManifest = None
-    IntegrityCheckResult = None
-    verify_daemon_integrity = None
+    DaemonIntegrityProtector = None  # type: ignore[assignment,misc]
+    IntegrityConfig = None  # type: ignore[assignment,misc]
+    IntegrityStatus = None  # type: ignore[assignment,misc]
+    IntegrityAction = None  # type: ignore[assignment,misc]
+    IntegrityManifest = None  # type: ignore[assignment,misc]
+    IntegrityCheckResult = None  # type: ignore[assignment,misc]
+    verify_daemon_integrity = None  # type: ignore[assignment]
 
 # Prompt injection detection (SECURITY: AI/Agent jailbreak prevention)
 try:
@@ -90,15 +90,15 @@ try:
     PROMPT_INJECTION_AVAILABLE = True
 except ImportError:
     PROMPT_INJECTION_AVAILABLE = False
-    PromptInjectionDetector = None
-    InjectionType = None
-    InjectionPattern = None
-    InjectionDetection = None
-    DetectionSeverity = None
-    DetectionAction = None
-    DetectionResult = None
-    get_prompt_injection_detector = None
-    configure_prompt_injection_detector = None
+    PromptInjectionDetector = None  # type: ignore[assignment,misc]
+    InjectionType = None  # type: ignore[assignment,misc]
+    InjectionPattern = None  # type: ignore[assignment,misc]
+    InjectionDetection = None  # type: ignore[assignment,misc]
+    DetectionSeverity = None  # type: ignore[assignment,misc]
+    DetectionAction = None  # type: ignore[assignment,misc]
+    DetectionResult = None  # type: ignore[assignment,misc]
+    get_prompt_injection_detector = None  # type: ignore[assignment]
+    configure_prompt_injection_detector = None  # type: ignore[assignment]
 
 # Tool output validation (SECURITY: AI tool response validation)
 try:
@@ -117,16 +117,16 @@ try:
     TOOL_VALIDATOR_AVAILABLE = True
 except ImportError:
     TOOL_VALIDATOR_AVAILABLE = False
-    ToolOutputValidator = None
-    ToolPolicy = None
-    ToolCall = None
-    ToolValidationResult = None
-    ValidationResult = None
-    ViolationType = None
-    ValidationViolation = None
-    SanitizationAction = None
-    get_tool_validator = None
-    configure_tool_validator = None
+    ToolOutputValidator = None  # type: ignore[assignment,misc]
+    ToolPolicy = None  # type: ignore[assignment,misc]
+    ToolCall = None  # type: ignore[assignment,misc]
+    ToolValidationResult = None  # type: ignore[assignment,misc]
+    ValidationResult = None  # type: ignore[assignment,misc]
+    ViolationType = None  # type: ignore[assignment,misc]
+    ValidationViolation = None  # type: ignore[assignment,misc]
+    SanitizationAction = None  # type: ignore[assignment,misc]
+    get_tool_validator = None  # type: ignore[assignment]
+    configure_tool_validator = None  # type: ignore[assignment]
 
 # Response guardrails (SECURITY: AI response safety validation)
 try:
@@ -146,17 +146,17 @@ try:
     RESPONSE_GUARDRAILS_AVAILABLE = True
 except ImportError:
     RESPONSE_GUARDRAILS_AVAILABLE = False
-    ResponseGuardrails = None
-    GuardrailPolicy = None
-    GuardrailResult = None
-    GuardrailViolation = None
-    GuardrailSeverity = None
-    GuardrailAction = None
-    ContentCategory = None
-    HallucinationIndicator = None
-    HallucinationDetection = None
-    get_response_guardrails = None
-    configure_response_guardrails = None
+    ResponseGuardrails = None  # type: ignore[assignment,misc]
+    GuardrailPolicy = None  # type: ignore[assignment,misc]
+    GuardrailResult = None  # type: ignore[assignment,misc]
+    GuardrailViolation = None  # type: ignore[assignment,misc]
+    GuardrailSeverity = None  # type: ignore[assignment,misc]
+    GuardrailAction = None  # type: ignore[assignment,misc]
+    ContentCategory = None  # type: ignore[assignment,misc]
+    HallucinationIndicator = None  # type: ignore[assignment,misc]
+    HallucinationDetection = None  # type: ignore[assignment,misc]
+    get_response_guardrails = None  # type: ignore[assignment]
+    configure_response_guardrails = None  # type: ignore[assignment]
 
 # RAG injection detection (SECURITY: RAG poisoning prevention)
 try:
@@ -178,18 +178,18 @@ try:
     RAG_INJECTION_AVAILABLE = True
 except ImportError:
     RAG_INJECTION_AVAILABLE = False
-    RAGInjectionDetector = None
-    RAGThreatType = None
-    RAGAnalysisResult = None
-    RAGDetectionResult = None
-    RAGThreat = None
-    RetrievedDocument = None
-    DocumentTrustLevel = None
-    ThreatSeverity = None
-    get_rag_detector = None
-    get_rag_injection_detector = None
-    configure_rag_detector = None
-    configure_rag_injection_detector = None
+    RAGInjectionDetector = None  # type: ignore[assignment,misc]
+    RAGThreatType = None  # type: ignore[assignment,misc]
+    RAGAnalysisResult = None  # type: ignore[assignment,misc]
+    RAGDetectionResult = None  # type: ignore[assignment,misc]
+    RAGThreat = None  # type: ignore[assignment,misc]
+    RetrievedDocument = None  # type: ignore[assignment,misc]
+    DocumentTrustLevel = None  # type: ignore[assignment,misc]
+    ThreatSeverity = None  # type: ignore[assignment,misc]
+    get_rag_detector = None  # type: ignore[assignment]
+    get_rag_injection_detector = None  # type: ignore[assignment]
+    configure_rag_detector = None  # type: ignore[assignment]
+    configure_rag_injection_detector = None  # type: ignore[assignment]
 
 # Agent attestation (SECURITY: Cryptographic agent identity)
 try:
@@ -208,16 +208,16 @@ try:
     AGENT_ATTESTATION_AVAILABLE = True
 except ImportError:
     AGENT_ATTESTATION_AVAILABLE = False
-    AgentAttestationSystem = None
-    AgentIdentity = None
-    AttestationToken = None
-    AttestationResult = None
-    AttestationStatus = None
-    AgentCapability = None
-    TrustLevel = None
-    ActionBinding = None
-    get_attestation_system = None
-    configure_attestation_system = None
+    AgentAttestationSystem = None  # type: ignore[assignment,misc]
+    AgentIdentity = None  # type: ignore[assignment,misc]
+    AttestationToken = None  # type: ignore[assignment,misc]
+    AttestationResult = None  # type: ignore[assignment,misc]
+    AttestationStatus = None  # type: ignore[assignment,misc]
+    AgentCapability = None  # type: ignore[assignment,misc]
+    TrustLevel = None  # type: ignore[assignment,misc]
+    ActionBinding = None  # type: ignore[assignment,misc]
+    get_attestation_system = None  # type: ignore[assignment]
+    configure_attestation_system = None  # type: ignore[assignment]
 
 __all__ = [
     # Code advisor

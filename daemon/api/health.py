@@ -23,7 +23,6 @@ Usage:
     status = server.get_health_status()
 """
 
-import json
 import logging
 import os
 import socket

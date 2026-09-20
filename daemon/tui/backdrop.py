@@ -5,14 +5,14 @@ Extracted from dashboard.py for maintainability.
 """
 
 import math
-from typing import Optional
+from typing import List, Optional, Tuple
 
 # Handle curses import for Windows compatibility
 try:
     import curses
     CURSES_AVAILABLE = True
 except ImportError:
-    curses = None
+    curses = None  # type: ignore[assignment]
     CURSES_AVAILABLE = False
 
 from .colors import Colors
@@ -75,7 +75,7 @@ class TunnelBackdrop:
             self._sin_table.append(math.sin(i * math.pi / 180))
 
         # Frame cache - list of frames, each frame is list of (y, x, char, color, bold) tuples
-        self._frame_cache = []
+        self._frame_cache: List[List[Tuple[int, int, str, int, int]]] = []
         self._cache_valid = False
         self._cached_weather = weather_mode
         self._cached_width = width
