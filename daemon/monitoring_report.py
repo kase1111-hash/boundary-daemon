@@ -109,16 +109,23 @@ class OllamaClient:
             pass
         return False
 
+    def _api_url(self, path: str) -> str:
+        """Build an API URL, refusing non-http(s) endpoints (e.g. file://)."""
+        endpoint = str(self.config.endpoint)
+        if not endpoint.lower().startswith(('http://', 'https://')):
+            raise ValueError(f"Ollama endpoint must be http(s): {endpoint!r}")
+        return f"{endpoint}{path}"
+
     def is_available(self) -> bool:
         """Check if Ollama is running and accessible"""
         if self._is_network_blocked():
             return False
         try:
-            url = f"{self.config.endpoint}/api/tags"
+            url = self._api_url('/api/tags')
             req = urllib.request.Request(url, method='GET')
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 - scheme validated
                 return response.status == 200
-        except OSError:
+        except (OSError, ValueError):
             return False
 
     def list_models(self) -> List[str]:
@@ -126,9 +133,9 @@ class OllamaClient:
         if self._is_network_blocked():
             return []
         try:
-            url = f"{self.config.endpoint}/api/tags"
+            url = self._api_url('/api/tags')
             req = urllib.request.Request(url, method='GET')
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=10) as response:  # nosec B310 - scheme validated
                 data = json.loads(response.read().decode('utf-8'))
                 return [m['name'] for m in data.get('models', [])]
         except Exception as e:
@@ -141,7 +148,7 @@ class OllamaClient:
             logger.debug("Ollama generation blocked: network-isolated mode")
             return None
         try:
-            url = f"{self.config.endpoint}/api/generate"
+            url = self._api_url('/api/generate')
 
             payload = {
                 'model': self.config.model,
@@ -164,7 +171,7 @@ class OllamaClient:
                 method='POST'
             )
 
-            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
+            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:  # nosec B310 - scheme validated
                 result = json.loads(response.read().decode('utf-8'))
                 return result.get('response')
 
@@ -225,7 +232,7 @@ class MonitoringReportGenerator:
         try:
             return {
                 'enabled': True,
-                'stats': self.daemon.memory_monitor.get_stats(),
+                'stats': self.daemon.memory_monitor.get_summary_stats(),
             }
         except Exception as e:
             return {'enabled': True, 'error': str(e)}
@@ -242,7 +249,7 @@ class MonitoringReportGenerator:
             return {'enabled': False}
 
         try:
-            data = {'enabled': True}
+            data: Dict[str, Any] = {'enabled': True}
 
             if hasattr(self.daemon.resource_monitor, 'get_cpu_stats'):
                 data['cpu'] = self.daemon.resource_monitor.get_cpu_stats()
@@ -256,7 +263,10 @@ class MonitoringReportGenerator:
                     data['current'] = {
                         'fd_count': snapshot.fd_count,
                         'thread_count': snapshot.thread_count,
-                        'disk_used_percent': snapshot.disk_used_percent,
+                        'disk_used_percent': max(
+                            (float(d.get('percent', 0)) for d in snapshot.disk_usage.values()),
+                            default=0.0,
+                        ),
                         'cpu_percent': snapshot.cpu_percent,
                         'connection_count': snapshot.connection_count,
                     }
@@ -305,7 +315,7 @@ class MonitoringReportGenerator:
 
     def _collect_alerts(self) -> List[Dict[str, Any]]:
         """Collect recent alerts from all monitors"""
-        alerts = []
+        alerts: List[Dict[str, Any]] = []
 
         if not self.daemon:
             return alerts
@@ -345,7 +355,7 @@ class MonitoringReportGenerator:
         """Generate raw monitoring report data"""
         start_time = time.monotonic()
 
-        report_data = {
+        report_data: Dict[str, Any] = {
             'generated_at': datetime.now().isoformat(),
             'report_type': report_type.value,
             'daemon': self._collect_daemon_status(),
@@ -406,9 +416,9 @@ class MonitoringReportGenerator:
         lines.append("DAEMON STATUS")
         lines.append("-" * 40)
         lines.append(f"  Running: {daemon.get('running', 'Unknown')}")
-        lines.append(f"    (Whether the daemon process is actively running)")
+        lines.append("    (Whether the daemon process is actively running)")
         lines.append(f"  Mode: {daemon.get('mode', 'Unknown')}")
-        lines.append(f"    (Security mode: OPEN=permissive, GUARDED=monitored, AIRGAP=isolated, LOCKDOWN=blocked)")
+        lines.append("    (Security mode: OPEN=permissive, GUARDED=monitored, AIRGAP=isolated, LOCKDOWN=blocked)")
         lines.append("")
 
         # Memory Monitoring
@@ -419,18 +429,18 @@ class MonitoringReportGenerator:
             lines.append("MEMORY USAGE")
             lines.append("-" * 40)
             lines.append(f"  Current Memory: {stats.get('current_mb', 'N/A')} MB")
-            lines.append(f"    (RAM currently used by the daemon process)")
+            lines.append("    (RAM currently used by the daemon process)")
             lines.append(f"  Peak Memory: {stats.get('peak_mb', 'N/A')} MB")
-            lines.append(f"    (Highest RAM usage since daemon started)")
+            lines.append("    (Highest RAM usage since daemon started)")
             lines.append(f"  Warning Threshold: {stats.get('warning_threshold_mb', 'N/A')} MB")
-            lines.append(f"    (Memory usage above this triggers a warning)")
+            lines.append("    (Memory usage above this triggers a warning)")
             lines.append(f"  Critical Threshold: {stats.get('critical_threshold_mb', 'N/A')} MB")
-            lines.append(f"    (Memory usage above this is a critical issue)")
+            lines.append("    (Memory usage above this is a critical issue)")
             lines.append(f"  Samples Collected: {stats.get('samples', 'N/A')}")
-            lines.append(f"    (Number of memory readings taken)")
+            lines.append("    (Number of memory readings taken)")
             if stats.get('leak_detected'):
                 lines.append(f"  ⚠ MEMORY LEAK DETECTED: {stats.get('leak_details', 'Unknown')}")
-                lines.append(f"    (Memory is growing over time without being freed - investigate immediately)")
+                lines.append("    (Memory is growing over time without being freed - investigate immediately)")
             lines.append("")
 
         # Resource Monitoring
@@ -441,30 +451,30 @@ class MonitoringReportGenerator:
             lines.append("SYSTEM RESOURCES")
             lines.append("-" * 40)
             lines.append(f"  CPU Usage: {current.get('cpu_percent', 'N/A')}%")
-            lines.append(f"    (Percentage of CPU being used - high sustained values indicate heavy load)")
+            lines.append("    (Percentage of CPU being used - high sustained values indicate heavy load)")
             lines.append(f"  Open File Descriptors: {current.get('fd_count', 'N/A')}")
-            lines.append(f"    (Number of open files/sockets - growth over time may indicate resource leak)")
+            lines.append("    (Number of open files/sockets - growth over time may indicate resource leak)")
             lines.append(f"  Thread Count: {current.get('thread_count', 'N/A')}")
-            lines.append(f"    (Number of active threads - unexpected growth is concerning)")
+            lines.append("    (Number of active threads - unexpected growth is concerning)")
             lines.append(f"  Disk Usage: {current.get('disk_used_percent', 'N/A')}%")
-            lines.append(f"    (Percentage of disk space used - above 90% is a warning, above 95% is critical)")
+            lines.append("    (Percentage of disk space used - above 90% is a warning, above 95% is critical)")
             lines.append(f"  Network Connections: {current.get('connection_count', 'N/A')}")
-            lines.append(f"    (Active network connections - sudden spikes may indicate attack or leak)")
+            lines.append("    (Active network connections - sudden spikes may indicate attack or leak)")
 
             # CPU stats if available
             cpu = resources.get('cpu', {})
             if cpu:
                 lines.append(f"  CPU Average (1min): {cpu.get('avg_1min', 'N/A')}%")
                 lines.append(f"  CPU Average (5min): {cpu.get('avg_5min', 'N/A')}%")
-                lines.append(f"    (Sustained high averages indicate ongoing heavy load)")
+                lines.append("    (Sustained high averages indicate ongoing heavy load)")
 
             # Connection stats if available
             conn = resources.get('connections', {})
             if conn:
                 lines.append(f"  CLOSE_WAIT Connections: {conn.get('close_wait', 'N/A')}")
-                lines.append(f"    (Connections waiting to close - high count indicates connection leak)")
+                lines.append("    (Connections waiting to close - high count indicates connection leak)")
                 lines.append(f"  TIME_WAIT Connections: {conn.get('time_wait', 'N/A')}")
-                lines.append(f"    (Connections in cooldown - high count may indicate rapid connect/disconnect)")
+                lines.append("    (Connections in cooldown - high count may indicate rapid connect/disconnect)")
             lines.append("")
 
         # Health Monitoring
@@ -477,17 +487,17 @@ class MonitoringReportGenerator:
             status = summary.get('status', 'Unknown')
             lines.append(f"  Overall Health: {status}")
             if status == 'healthy':
-                lines.append(f"    (All systems operating normally)")
+                lines.append("    (All systems operating normally)")
             elif status == 'degraded':
-                lines.append(f"    (Some issues detected but system is functional)")
+                lines.append("    (Some issues detected but system is functional)")
             elif status == 'unhealthy':
-                lines.append(f"    (Significant issues detected - investigate immediately)")
+                lines.append("    (Significant issues detected - investigate immediately)")
             lines.append(f"  Last Heartbeat: {summary.get('last_heartbeat', 'N/A')}")
-            lines.append(f"    (Time of last health check - stale heartbeats indicate daemon problems)")
+            lines.append("    (Time of last health check - stale heartbeats indicate daemon problems)")
             lines.append(f"  Uptime: {summary.get('uptime_seconds', 'N/A')} seconds")
-            lines.append(f"    (How long the daemon has been running)")
+            lines.append("    (How long the daemon has been running)")
             if summary.get('issues'):
-                lines.append(f"  Active Issues:")
+                lines.append("  Active Issues:")
                 for issue in summary.get('issues', []):
                     lines.append(f"    - {issue}")
             lines.append("")
@@ -500,16 +510,16 @@ class MonitoringReportGenerator:
             lines.append("EVENT QUEUES")
             lines.append("-" * 40)
             lines.append(f"  Queue Depth: {summary.get('current_depth', 'N/A')}")
-            lines.append(f"    (Number of events waiting to be processed - high values indicate backlog)")
+            lines.append("    (Number of events waiting to be processed - high values indicate backlog)")
             lines.append(f"  Peak Depth: {summary.get('peak_depth', 'N/A')}")
-            lines.append(f"    (Highest queue size seen - indicates peak load)")
+            lines.append("    (Highest queue size seen - indicates peak load)")
             lines.append(f"  Events Processed: {summary.get('total_processed', 'N/A')}")
-            lines.append(f"    (Total events handled since startup)")
+            lines.append("    (Total events handled since startup)")
             lines.append(f"  Warning Threshold: {summary.get('warning_threshold', 'N/A')}")
-            lines.append(f"    (Queue depth above this triggers a warning)")
+            lines.append("    (Queue depth above this triggers a warning)")
             if summary.get('is_backed_up'):
-                lines.append(f"  ⚠ QUEUE BACKUP DETECTED")
-                lines.append(f"    (Events are arriving faster than they can be processed)")
+                lines.append("  ⚠ QUEUE BACKUP DETECTED")
+                lines.append("    (Events are arriving faster than they can be processed)")
             lines.append("")
 
         # Recent Alerts

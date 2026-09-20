@@ -49,7 +49,7 @@ try:
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
-    yaml = None
+    yaml = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -85,19 +85,26 @@ class CgroupLimitsConfig:
 
         limits = CgroupLimits()
 
+        # Attribute names must match CgroupLimits exactly: assigning an unknown
+        # attribute on the dataclass is silently accepted and the limit is then
+        # never written to the cgroup.
         if self.memory_max:
-            limits.memory_max = self._parse_size(self.memory_max)
+            limits.memory_max_bytes = self._parse_size(self.memory_max)
         if self.memory_high:
-            limits.memory_high = self._parse_size(self.memory_high)
+            limits.memory_high_bytes = self._parse_size(self.memory_high)
         if self.cpu_percent:
-            limits.cpu_max = self.cpu_percent * 1000  # percent to quota
-            limits.cpu_period = 100000
+            limits.cpu_period_us = 100000
+            limits.cpu_quota_us = int(self.cpu_percent * 1000)  # percent -> quota per 100ms period
         if self.pids_max:
             limits.pids_max = self.pids_max
-        if self.io_max_read:
-            limits.io_rbps_max = self._parse_size(self.io_max_read)
-        if self.io_max_write:
-            limits.io_wbps_max = self._parse_size(self.io_max_write)
+        if self.io_max_read or self.io_max_write:
+            # cgroup io.max needs per-device "MAJ:MIN rbps=... wbps=..." entries
+            # (CgroupLimits.io_max); a bare size cannot be applied, so say so
+            # instead of silently dropping the limit.
+            logger.warning(
+                "io_max_read/io_max_write are not applied: cgroup io.max requires "
+                "per-device entries; set cgroup_limits.io_max explicitly"
+            )
 
         return limits
 
@@ -253,7 +260,7 @@ class SandboxProfileConfig:
 
         # Set timeout
         if self.timeout_seconds:
-            profile.timeout_seconds = self.timeout_seconds
+            profile.max_runtime_seconds = self.timeout_seconds
 
         return profile
 
@@ -421,7 +428,7 @@ class ProfileConfigLoader:
         path = Path(path)
 
         try:
-            data = {
+            data: Dict[str, Any] = {
                 'version': '1',
                 'profiles': {},
             }

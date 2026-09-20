@@ -146,7 +146,7 @@ class LogWatchdog:
 
         # Storage
         if storage_dir:
-            self.storage_dir = Path(storage_dir)
+            self.storage_dir: Optional[Path] = Path(storage_dir)
             self.storage_dir.mkdir(parents=True, exist_ok=True)
         else:
             self.storage_dir = None
@@ -663,8 +663,8 @@ Generate a search query (just the query, no explanation):"""
         """Get summary statistics"""
         with self._alerts_lock:
             total = len(self.alerts)
-            by_severity = {}
-            by_status = {}
+            by_severity: Dict[str, int] = {}
+            by_status: Dict[str, int] = {}
 
             for alert in self.alerts:
                 sev = alert.severity.value

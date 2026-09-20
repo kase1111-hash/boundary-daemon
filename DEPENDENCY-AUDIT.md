@@ -27,8 +27,8 @@
 |---|---|---|---|---|---|
 | **psutil** | 5.9.8 | ESSENTIAL | Pervasive | 12+ files, 26+ import sites | Keep |
 | **cffi** | 1.17.1 | DEAD (transitive) | None (0 imports) | 0 Python files | **Removed** |
-| **pynacl** | 1.5.0 | ESSENTIAL | Heavy | 14 files | Keep (upgrade recommended) |
-| **cryptography** | 44.0.0 | ESSENTIAL | Heavy | 6 files | Keep (upgrade recommended) |
+| **pynacl** | 1.6.2 | ESSENTIAL | Heavy | 14 files | Keep (upgraded from 1.5.0) |
+| **cryptography** | 50.0.1 | ESSENTIAL | Heavy | 6 files | Keep (upgraded from 44.0.0) |
 | **yara-python** | 4.5.1 | ESSENTIAL | Moderate | 1 core module + consumers | Keep |
 | **PyYAML** | 6.0.2 | JUSTIFIED | Moderate | 6 files | Keep |
 
@@ -82,7 +82,7 @@
 
 **Why essential:** There is no stdlib alternative for cross-platform process enumeration, network connection listing, disk usage monitoring, or memory introspection. This functionality is core to a security daemon.
 
-### pynacl==1.5.0 — ESSENTIAL
+### pynacl==1.6.2 — ESSENTIAL
 
 **Purpose:** Python binding to libsodium for Ed25519 signatures, key management, and secret-box encryption.
 
@@ -98,7 +98,7 @@
 
 **Why essential:** Ed25519 signatures are fundamental to the trust enforcement model. `pynacl` (libsodium) is the standard library for this. No stdlib alternative exists.
 
-### cryptography==44.0.0 — ESSENTIAL
+### cryptography==50.0.1 — ESSENTIAL
 
 **Purpose:** Fernet symmetric encryption, PBKDF2 key derivation, AES-GCM, PEM key loading.
 
@@ -143,14 +143,18 @@
 
 ## Health Warnings
 
-### CRITICAL: pynacl 1.5.0 — CVE-2025-69277 (Medium, CVSS 4.5)
+### RESOLVED: pynacl 1.5.0 — CVE-2025-69277 (Medium, CVSS 4.5)
+
+- **Status:** Fixed — `requirements.txt` now pins `pynacl==1.6.2`.
 
 - **Issue:** libsodium (bundled in pynacl wheels) before a specific commit mishandles `crypto_core_ed25519_is_valid_point` validation, potentially allowing invalid elliptic curve points.
 - **Impact:** Local attack vector; some loss of confidentiality possible under specific conditions.
 - **Fix:** Upgrade to **pynacl>=1.6.2** (released 2026-01-01, bundles libsodium 1.0.20-stable).
 - **Note:** pynacl 1.6.x dropped Python 3.6/3.7 support, which is compatible with this project's >=3.9 requirement.
 
-### HIGH PRIORITY: cryptography 44.0.0 — CVE-2024-12797 (Medium, CVSS 6.3)
+### RESOLVED: cryptography 44.0.0 — CVE-2024-12797 (Medium, CVSS 6.3) and later advisories
+
+- **Status:** Fixed — `requirements.txt` now pins `cryptography==50.0.1`, which clears every advisory `pip-audit` reports for 44.0.0 (the CI security job now runs `pip-audit` against `requirements.txt`).
 
 - **Issue:** Bundled OpenSSL vulnerable to RFC7250 Raw Public Key authentication bypass (man-in-the-middle).
 - **Impact:** Network attack vector, low complexity. Affects TLS connections when RPK is enabled.
@@ -176,8 +180,8 @@
 
 | Dependency | Concern | Recommendation |
 |---|---|---|
-| **pynacl** 1.5.0 | CVE-2025-69277 in bundled libsodium | Upgrade to >=1.6.2 |
-| **cryptography** 44.0.0 | CVE-2024-12797 in bundled OpenSSL | Upgrade to >=44.0.1 (patch) or >=46.0.5 (latest) |
+| **pynacl** 1.6.2 | Previously CVE-2025-69277 in bundled libsodium | Upgraded; keep current |
+| **cryptography** 50.0.1 | Previously CVE-2024-12797 in bundled OpenSSL | Upgraded; keep current |
 | **psutil** 5.9.8 | Significantly outdated (latest 7.2.2) | Upgrade after testing for breaking changes |
 
 ---

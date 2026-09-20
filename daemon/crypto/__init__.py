@@ -7,4 +7,4 @@ archived (see archive/crypto/) — they were interface stubs without
 working implementations.
 """
 
-__all__ = []
+__all__: list = []

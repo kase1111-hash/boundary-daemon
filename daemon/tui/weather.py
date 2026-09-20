@@ -8,14 +8,14 @@ Contains WeatherMode enum and MatrixRain particle system.
 import math
 import random
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable, Any
 
 # Handle curses import for Windows compatibility
 try:
     import curses
     CURSES_AVAILABLE = True
 except ImportError:
-    curses = None
+    curses = None  # type: ignore[assignment]
     CURSES_AVAILABLE = False
 
 from .colors import Colors
@@ -182,9 +182,9 @@ class MatrixRain:
         # Roof/sill snow - lasts 10x longer and doesn't count towards max
         self._roof_sill_snow: List[Dict] = []
         # Snow filter callback - returns True if position is valid for snow collection
-        self._snow_filter: Optional[callable] = None
+        self._snow_filter: Optional[Callable[..., Any]] = None
         # Roof/sill checker callback - returns True if position is on roof or window sill
-        self._roof_sill_checker: Optional[callable] = None
+        self._roof_sill_checker: Optional[Callable[..., Any]] = None
 
         # Snow wind gusts - temporary bursts of sideways movement
         self._snow_gusts: List[Dict] = []
@@ -212,14 +212,14 @@ class MatrixRain:
             if mode == WeatherMode.SAND:
                 self._init_sand_gusts()
 
-    def set_snow_filter(self, filter_func: callable):
+    def set_snow_filter(self, filter_func: Callable[..., Any]):
         """Set a callback function that checks if a position is valid for snow collection.
 
         The function should accept (x, y) and return True if snow can collect there.
         """
         self._snow_filter = filter_func
 
-    def set_roof_sill_checker(self, checker_func: callable):
+    def set_roof_sill_checker(self, checker_func: Callable[..., Any]):
         """Set a callback function that checks if a position is on roof or window sill.
 
         Snow on these positions lasts 10x longer and doesn't count towards max.
@@ -638,7 +638,6 @@ class MatrixRain:
     def resize(self, width: int, height: int):
         """Handle terminal resize."""
         old_width = self.width
-        old_height = self.height
         self.width = width
         self.height = height
         self._target_drops = max(28, width * 7 // 10)  # Massive rain density

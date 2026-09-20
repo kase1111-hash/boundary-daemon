@@ -43,7 +43,7 @@ try:
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
     # Fallback logging function
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub, deliberately untyped
         context_str = f" Context: {additional_context}" if additional_context else ""
         logger.error(f"Error in {op}: {type(e).__name__}: {e}{context_str}\n{traceback.format_exc()}")
         if reraise:

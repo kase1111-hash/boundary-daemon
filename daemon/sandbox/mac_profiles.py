@@ -33,6 +33,7 @@ Usage:
 """
 
 import logging
+import tempfile
 import os
 import subprocess
 import threading
@@ -167,16 +168,16 @@ class MACProfileConfig:
             config.network_deny_all = True
             config.allow_ptrace = False
             config.allow_mount = False
-            config.file_read = ['/usr/**', '/lib/**', '/lib64/**', '/etc/**', '/tmp/**']
-            config.file_write = ['/tmp/**', '/var/tmp/**']
+            config.file_read = ['/usr/**', '/lib/**', '/lib64/**', '/etc/**', '/tmp/**']  # nosec B108 - MAC policy globs
+            config.file_write = ['/tmp/**', '/var/tmp/**']  # nosec B108 - MAC policy globs
             config.file_execute = ['/usr/bin/**', '/bin/**', '/usr/local/bin/**']
 
         elif profile_name in ('RESTRICTED', 'TRUSTED'):
             # Limited network and filesystem
             config.network_enabled = True
             config.allow_ptrace = False
-            config.file_read = ['/usr/**', '/lib/**', '/lib64/**', '/etc/**', '/tmp/**', '/home/**']
-            config.file_write = ['/tmp/**', '/var/tmp/**']
+            config.file_read = ['/usr/**', '/lib/**', '/lib64/**', '/etc/**', '/tmp/**', '/home/**']  # nosec B108 - MAC policy globs
+            config.file_write = ['/tmp/**', '/var/tmp/**']  # nosec B108 - MAC policy globs
             config.file_execute = ['/usr/bin/**', '/bin/**', '/usr/local/bin/**']
 
         else:  # OPEN, STANDARD
@@ -184,7 +185,7 @@ class MACProfileConfig:
             config.network_enabled = True
             config.allow_ptrace = False
             config.file_read = ['/**']
-            config.file_write = ['/tmp/**', '/var/tmp/**', '/home/**']
+            config.file_write = ['/tmp/**', '/var/tmp/**', '/home/**']  # nosec B108 - MAC policy globs
             config.file_execute = ['/usr/bin/**', '/bin/**', '/usr/local/bin/**', '/home/**']
             config.file_deny = ['/etc/shadow', '/etc/passwd-', '/root/**']
 
@@ -504,7 +505,11 @@ domain_entry_file({type_name}, {type_name}_exec_t)
 {contexts}
 '''
 
-    def __init__(self, modules_dir: str = "/tmp/boundary-selinux"):
+    def __init__(self, modules_dir: Optional[str] = None):
+        # SECURITY: default to a private mkdtemp() directory (mode 0700) rather
+        # than a fixed, predictable path under world-writable /tmp.
+        if modules_dir is None:
+            modules_dir = tempfile.mkdtemp(prefix='boundary-selinux-')
         self.modules_dir = Path(modules_dir)
         self.modules_dir.mkdir(parents=True, exist_ok=True)
         self._module_cache: Dict[str, Tuple[str, str]] = {}
@@ -579,7 +584,7 @@ domain_entry_file({type_name}, {type_name}_exec_t)
         rules.append(f"allow {type_name} lib_t:file {{ read getattr open execute }};")
 
         # Tmp access
-        if any('/tmp' in p for p in config.file_write):
+        if any('/tmp' in p for p in config.file_write):  # nosec B108 - policy path check
             rules.append(f"allow {type_name} tmp_t:file {{ create read write getattr open unlink }};")
             rules.append(f"allow {type_name} tmp_t:dir {{ create read write getattr open search add_name remove_name }};")
 
@@ -600,14 +605,14 @@ domain_entry_file({type_name}, {type_name}_exec_t)
         rules = []
 
         if config.network_deny_all:
-            rules.append(f"# Network denied")
+            rules.append("# Network denied")
         elif config.network_enabled:
             if 'tcp' in config.network_protocols:
                 rules.append(f"allow {type_name} self:tcp_socket {{ create connect accept listen bind getattr }};")
             if 'udp' in config.network_protocols:
                 rules.append(f"allow {type_name} self:udp_socket {{ create connect bind getattr }};")
             # DNS always allowed if network enabled
-            rules.append(f"# DNS access via UDP")
+            rules.append("# DNS access via UDP")
 
         return '\n'.join(rules) if rules else "# No network access"
 
@@ -620,7 +625,7 @@ domain_entry_file({type_name}, {type_name}_exec_t)
         if config.allow_ptrace:
             rules.append(f"allow {type_name} self:process ptrace;")
         else:
-            rules.append(f"# ptrace denied")
+            rules.append("# ptrace denied")
 
         return '\n'.join(rules)
 
@@ -629,11 +634,11 @@ domain_entry_file({type_name}, {type_name}_exec_t)
         rules = []
 
         # Deny shadow file access
-        rules.append(f"# Deny sensitive files")
+        rules.append("# Deny sensitive files")
         rules.append(f"neverallow {type_name} shadow_t:file *;")
 
         if not config.allow_mount:
-            rules.append(f"# Deny mount operations")
+            rules.append("# Deny mount operations")
 
         return '\n'.join(rules)
 

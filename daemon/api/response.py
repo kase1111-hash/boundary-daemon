@@ -6,7 +6,7 @@ and metrics APIs.
 """
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional, Any
 
@@ -20,7 +20,7 @@ class APIResponse:
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
 
     def to_json(self) -> str:
-        result = {"status": self.status, "timestamp": self.timestamp}
+        result: Dict[str, Any] = {"status": self.status, "timestamp": self.timestamp}
         if self.data is not None:
             result["data"] = self.data
         if self.error is not None:

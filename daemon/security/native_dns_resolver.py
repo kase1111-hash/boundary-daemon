@@ -29,7 +29,7 @@ import secrets
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Any
 from enum import IntEnum
 from datetime import datetime
 
@@ -452,7 +452,7 @@ class NativeDNSResolver:
                 if attempt < self.retries:
                     continue
                 raise
-            except OSError as e:
+            except OSError:
                 if attempt < self.retries:
                     continue
                 raise
@@ -612,7 +612,7 @@ class NativeDNSResolver:
         """
         resolvers = resolvers or self.DEFAULT_RESOLVERS
 
-        results = {
+        results: Dict[str, Any] = {
             'domain': domain,
             'record_type': record_type,
             'timestamp': datetime.utcnow().isoformat() + 'Z',

@@ -227,7 +227,7 @@ class SandboxEventEmitter:
         **kwargs,
     ) -> Dict[str, Any]:
         """Build base event structure."""
-        event = {
+        event: Dict[str, Any] = {
             'event_id': self._generate_event_id(),
             'event_type': event_type.value,
             'timestamp': datetime.utcnow().isoformat() + 'Z',

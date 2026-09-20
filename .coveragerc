@@ -21,7 +21,8 @@ parallel = True
 data_file = .coverage
 
 [report]
-# Minimum coverage percentage (target: 50%, current: 26%)
+# Minimum coverage percentage (target: 50%, measured: ~27% line+branch as of 2026-09).
+# CI runs pytest --cov and fails below this floor; raise it as coverage grows.
 fail_under = 25
 
 # Exclude lines from coverage

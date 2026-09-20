@@ -111,12 +111,12 @@ class SecureProfileManager:
             # Windows: Use machine GUID from registry
             try:
                 import winreg
-                key = winreg.OpenKey(
-                    winreg.HKEY_LOCAL_MACHINE,
+                key = winreg.OpenKey(  # type: ignore[attr-defined]  # winreg stubs are win32-only
+                    winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
                     r"SOFTWARE\Microsoft\Cryptography"
                 )
-                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-                winreg.CloseKey(key)
+                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
+                winreg.CloseKey(key)  # type: ignore[attr-defined]
                 components.append(machine_guid)
             except (OSError, FileNotFoundError, PermissionError) as e:
                 logger.debug(f"Could not read Windows machine GUID: {e}")
@@ -167,7 +167,7 @@ class SecureProfileManager:
         if IS_WINDOWS:
             try:
                 import ctypes
-                return ctypes.windll.shell32.IsUserAnAdmin() != 0
+                return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # ctypes.windll is win32-only
             except (OSError, AttributeError, ImportError) as e:
                 logger.debug(f"Could not check admin privileges: {e}")
                 return False
@@ -547,8 +547,8 @@ class SecureProfileManager:
 
         # Print to console as well
         print(f"\n{'!'*70}")
-        print(f"  CRITICAL SECURITY ALERT")
-        print(f"  Seccomp profile tampering detected!")
+        print("  CRITICAL SECURITY ALERT")
+        print("  Seccomp profile tampering detected!")
         print(f"  Profile: {profile_name}")
         print(f"  Reason: {reason}")
         print(f"{'!'*70}\n")
@@ -705,7 +705,7 @@ if __name__ == '__main__':
     if IS_WINDOWS:
         try:
             import ctypes
-            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # ctypes.windll is win32-only
         except (OSError, AttributeError, ImportError):
             is_admin = False
     else:
@@ -719,7 +719,7 @@ if __name__ == '__main__':
 
     # Create manager
     manager = SecureProfileManager(
-        profile_dir='/tmp/test_seccomp',
+        profile_dir=tempfile.mkdtemp(prefix='boundary-seccomp-test-'),
         use_immutable=False,  # Don't use immutable for testing
     )
 

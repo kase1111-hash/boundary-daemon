@@ -14,8 +14,17 @@ import sys
 import time
 import threading
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import logging
+import importlib
+import hashlib as _hashlib_for_verify
+
+# Import core components
+from .state_monitor import StateMonitor, EnvironmentState
+from .policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision, Operator, MemoryClass
+from .tripwires import TripwireSystem, LockdownManager, TripwireViolation
+from .event_logger import EventLogger, EventType
+from .constants import Paths
 
 # Import enhanced logging configuration
 try:
@@ -23,7 +32,7 @@ try:
     ENHANCED_LOGGING_AVAILABLE = True
 except ImportError:
     ENHANCED_LOGGING_AVAILABLE = False
-    get_enhanced_logger = None
+    get_enhanced_logger = None  # type: ignore[assignment]
 
 # Use enhanced logger if available, otherwise standard
 if ENHANCED_LOGGING_AVAILABLE and get_enhanced_logger is not None:
@@ -34,19 +43,10 @@ else:
 # Cross-platform detection
 IS_WINDOWS = sys.platform == 'win32'
 
-# Import core components
-from .state_monitor import StateMonitor, EnvironmentState
-from .policy_engine import PolicyEngine, BoundaryMode, PolicyRequest, PolicyDecision, Operator, MemoryClass
-from .tripwires import TripwireSystem, LockdownManager, TripwireViolation
-from .event_logger import EventLogger, EventType
-from .constants import Paths
-
 # SECURITY (Vuln #3 - Supply Chain): API server is loaded via importlib.exec_module()
 # which executes arbitrary code. We DEFER loading until after integrity verification
 # in __init__ to prevent execution of tampered modules.
 # Previously, this loaded at module import time (before integrity checks).
-import importlib
-import hashlib as _hashlib_for_verify
 
 API_SERVER_AVAILABLE = False
 BoundaryAPIServer = None
@@ -58,7 +58,7 @@ _API_MODULE_PATH = os.path.join(
 )
 
 
-def _verify_file_hash(file_path: str, manifest_path: str = None) -> bool:
+def _verify_file_hash(file_path: str, manifest_path: Optional[str] = None) -> bool:
     """
     Verify a file's SHA-256 hash against the signing manifest BEFORE loading it.
 
@@ -203,7 +203,7 @@ try:
     SIGNED_LOGGING_AVAILABLE = True
 except ImportError:
     SIGNED_LOGGING_AVAILABLE = False
-    SignedEventLogger = None
+    SignedEventLogger = None  # type: ignore[assignment,misc]
 
 # Import enforcement module (Plan 1: Kernel-Level Enforcement)
 try:
@@ -211,9 +211,9 @@ try:
     ENFORCEMENT_AVAILABLE = True
 except ImportError:
     ENFORCEMENT_AVAILABLE = False
-    NetworkEnforcer = None
-    USBEnforcer = None
-    ProcessEnforcer = None
+    NetworkEnforcer = None  # type: ignore[assignment,misc]
+    USBEnforcer = None  # type: ignore[assignment,misc]
+    ProcessEnforcer = None  # type: ignore[assignment,misc]
 
 # Import protection persistence (Critical: Survives Daemon Restarts)
 try:
@@ -224,8 +224,8 @@ try:
     PROTECTION_PERSISTENCE_AVAILABLE = True
 except ImportError:
     PROTECTION_PERSISTENCE_AVAILABLE = False
-    ProtectionPersistenceManager = None
-    CleanupPolicy = None
+    ProtectionPersistenceManager = None  # type: ignore[assignment,misc]
+    CleanupPolicy = None  # type: ignore[assignment,misc]
 
 # Import privilege manager (Critical: Prevents Silent Enforcement Failures)
 try:
@@ -237,8 +237,8 @@ try:
     PRIVILEGE_MANAGER_AVAILABLE = True
 except ImportError:
     PRIVILEGE_MANAGER_AVAILABLE = False
-    PrivilegeManager = None
-    EnforcementModule = None
+    PrivilegeManager = None  # type: ignore[assignment,misc]
+    EnforcementModule = None  # type: ignore[assignment,misc]
 
 # Import hardware module (Plan 2: TPM Integration)
 try:
@@ -246,7 +246,7 @@ try:
     TPM_MODULE_AVAILABLE = True
 except ImportError:
     TPM_MODULE_AVAILABLE = False
-    TPMManager = None
+    TPMManager = None  # type: ignore[assignment,misc]
 
 # Import distributed module (Plan 4: Distributed Deployment)
 try:
@@ -254,8 +254,8 @@ try:
     DISTRIBUTED_AVAILABLE = True
 except ImportError:
     DISTRIBUTED_AVAILABLE = False
-    ClusterManager = None
-    FileCoordinator = None
+    ClusterManager = None  # type: ignore[assignment,misc]
+    FileCoordinator = None  # type: ignore[assignment,misc]
 
 # Import sandbox enforcement bridge (ROADMAP §5: Sandbox as Enforcement Bridge)
 try:
@@ -265,11 +265,11 @@ try:
     SANDBOX_BRIDGE_AVAILABLE = True
 except ImportError:
     SANDBOX_BRIDGE_AVAILABLE = False
-    SandboxManager = None
-    SandboxProfile = None
-    SandboxEnforcementBridge = None
-    EnforcementConsumer = None
-    SandboxTelemetryCollector = None
+    SandboxManager = None  # type: ignore[assignment,misc]
+    SandboxProfile = None  # type: ignore[assignment,misc]
+    SandboxEnforcementBridge = None  # type: ignore[assignment,misc]
+    EnforcementConsumer = None  # type: ignore[assignment,misc]
+    SandboxTelemetryCollector = None  # type: ignore[assignment,misc]
 
 # Import operator observability (ROADMAP §6: Operator Observability)
 try:
@@ -282,10 +282,10 @@ try:
     OPERATOR_OBSERVABILITY_AVAILABLE = True
 except ImportError:
     OPERATOR_OBSERVABILITY_AVAILABLE = False
-    OperatorConsole = None
-    IntegrationHealthRegistry = None
-    DecisionTrace = None
-    trace_policy_decision = None
+    OperatorConsole = None  # type: ignore[assignment,misc]
+    IntegrationHealthRegistry = None  # type: ignore[assignment,misc]
+    DecisionTrace = None  # type: ignore[assignment,misc]
+    trace_policy_decision = None  # type: ignore[assignment]
 
 # Import custom policy module (Plan 5: Custom Policy Language)
 try:
@@ -293,7 +293,7 @@ try:
     CUSTOM_POLICY_AVAILABLE = True
 except ImportError:
     CUSTOM_POLICY_AVAILABLE = False
-    CustomPolicyEngine = None
+    CustomPolicyEngine = None  # type: ignore[assignment,misc]
 
 # Import auth module (Plan 6: Biometric Authentication)
 try:
@@ -301,9 +301,9 @@ try:
     BIOMETRIC_AVAILABLE = True
 except ImportError:
     BIOMETRIC_AVAILABLE = False
-    BiometricVerifier = None
-    EnhancedCeremonyManager = None
-    BiometricCeremonyConfig = None
+    BiometricVerifier = None  # type: ignore[assignment,misc]
+    EnhancedCeremonyManager = None  # type: ignore[assignment,misc]
+    BiometricCeremonyConfig = None  # type: ignore[assignment,misc]
 
 # Import security module (Plan 7: Code Vulnerability Advisor)
 try:
@@ -311,8 +311,8 @@ try:
     SECURITY_ADVISOR_AVAILABLE = True
 except ImportError:
     SECURITY_ADVISOR_AVAILABLE = False
-    CodeVulnerabilityAdvisor = None
-    AdvisoryStatus = None
+    CodeVulnerabilityAdvisor = None  # type: ignore[assignment,misc]
+    AdvisoryStatus = None  # type: ignore[assignment,misc]
 
 # Import watchdog module (Plan 8: Log Watchdog Agent)
 try:
@@ -320,10 +320,10 @@ try:
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
-    LogWatchdog = None
-    WatchdogConfig = None
-    WatchdogSeverity = None
-    WatchdogStatus = None
+    LogWatchdog = None  # type: ignore[assignment,misc]
+    WatchdogConfig = None  # type: ignore[assignment,misc]
+    WatchdogSeverity = None  # type: ignore[assignment,misc]
+    WatchdogStatus = None  # type: ignore[assignment,misc]
 
 # Import hardened watchdog (SECURITY: Addresses "External Watchdog Can Be Killed")
 try:
@@ -335,9 +335,9 @@ try:
     HARDENED_WATCHDOG_AVAILABLE = True
 except ImportError:
     HARDENED_WATCHDOG_AVAILABLE = False
-    DaemonWatchdogEndpoint = None
-    generate_shared_secret = None
-    WatchdogState = None
+    DaemonWatchdogEndpoint = None  # type: ignore[assignment,misc]
+    generate_shared_secret = None  # type: ignore[assignment]
+    WatchdogState = None  # type: ignore[assignment,misc]
 
 # Import telemetry module (Plan 9: OpenTelemetry Integration)
 try:
@@ -345,9 +345,9 @@ try:
     TELEMETRY_AVAILABLE = True
 except ImportError:
     TELEMETRY_AVAILABLE = False
-    TelemetryManager = None
-    TelemetryConfig = None
-    ExportMode = None
+    TelemetryManager = None  # type: ignore[assignment,misc]
+    TelemetryConfig = None  # type: ignore[assignment,misc]
+    ExportMode = None  # type: ignore[assignment,misc]
 
 # Import message checking module (Plan 10: Message Checking for NatLangChain/Agent-OS)
 try:
@@ -355,10 +355,10 @@ try:
     MESSAGE_CHECKER_AVAILABLE = True
 except ImportError:
     MESSAGE_CHECKER_AVAILABLE = False
-    MessageChecker = None
-    MessageSource = None
-    NatLangChainEntry = None
-    AgentOSMessage = None
+    MessageChecker = None  # type: ignore[assignment,misc]
+    MessageSource = None  # type: ignore[assignment,misc]
+    NatLangChainEntry = None  # type: ignore[assignment,misc]
+    AgentOSMessage = None  # type: ignore[assignment,misc]
 
 # Import clock monitor module (Clock Drift Protection)
 try:
@@ -366,9 +366,9 @@ try:
     CLOCK_MONITOR_AVAILABLE = True
 except ImportError:
     CLOCK_MONITOR_AVAILABLE = False
-    ClockMonitor = None
-    ClockStatus = None
-    TimeJumpEvent = None
+    ClockMonitor = None  # type: ignore[assignment,misc]
+    ClockStatus = None  # type: ignore[assignment,misc]
+    TimeJumpEvent = None  # type: ignore[assignment,misc]
 
 # Import daemon integrity protection (SECURITY: Binary tampering prevention)
 try:
@@ -381,10 +381,10 @@ try:
     DAEMON_INTEGRITY_AVAILABLE = True
 except ImportError:
     DAEMON_INTEGRITY_AVAILABLE = False
-    DaemonIntegrityProtector = None
-    IntegrityConfig = None
-    IntegrityAction = None
-    verify_daemon_integrity = None
+    DaemonIntegrityProtector = None  # type: ignore[assignment,misc]
+    IntegrityConfig = None  # type: ignore[assignment,misc]
+    IntegrityAction = None  # type: ignore[assignment,misc]
+    verify_daemon_integrity = None  # type: ignore[assignment]
 
 # Import network attestation (Phase 1: Network Trust Verification)
 try:
@@ -397,10 +397,10 @@ try:
     NETWORK_ATTESTATION_AVAILABLE = True
 except ImportError:
     NETWORK_ATTESTATION_AVAILABLE = False
-    NetworkAttestor = None
-    NetworkAttestationConfig = None
-    NetworkTrustLevel = None
-    AttestationResult = None
+    NetworkAttestor = None  # type: ignore[assignment,misc]
+    NetworkAttestationConfig = None  # type: ignore[assignment,misc]
+    NetworkTrustLevel = None  # type: ignore[assignment,misc]
+    AttestationResult = None  # type: ignore[assignment,misc]
 
 # Import secure config storage (SECURITY: Configuration encryption)
 try:
@@ -413,10 +413,10 @@ try:
     SECURE_CONFIG_AVAILABLE = True
 except ImportError:
     SECURE_CONFIG_AVAILABLE = False
-    SecureConfigStorage = None
-    SecureConfigOptions = None
-    EncryptionMode = None
-    load_secure_config = None
+    SecureConfigStorage = None  # type: ignore[assignment,misc]
+    SecureConfigOptions = None  # type: ignore[assignment,misc]
+    EncryptionMode = None  # type: ignore[assignment,misc]
+    load_secure_config = None  # type: ignore[assignment]
 
 # Import redundant event logger (SECURITY: Logging redundancy)
 try:
@@ -430,11 +430,11 @@ try:
     REDUNDANT_LOGGING_AVAILABLE = True
 except ImportError:
     REDUNDANT_LOGGING_AVAILABLE = False
-    RedundantEventLogger = None
-    RedundantLoggerConfig = None
-    BackendConfig = None
-    LogBackendType = None
-    create_redundant_logger = None
+    RedundantEventLogger = None  # type: ignore[assignment,misc]
+    RedundantLoggerConfig = None  # type: ignore[assignment,misc]
+    BackendConfig = None  # type: ignore[assignment,misc]
+    LogBackendType = None  # type: ignore[assignment,misc]
+    create_redundant_logger = None  # type: ignore[assignment]
 
 # Import memory monitor (Plan 11: Memory Leak Monitoring)
 try:
@@ -450,13 +450,13 @@ try:
     MEMORY_MONITOR_AVAILABLE = True
 except ImportError:
     MEMORY_MONITOR_AVAILABLE = False
-    MemoryMonitor = None
-    MemoryMonitorConfig = None
-    MemoryAlertLevel = None
-    LeakIndicator = None
-    TraceMallocDebugger = None
-    LeakReport = None
-    create_memory_monitor = None
+    MemoryMonitor = None  # type: ignore[assignment,misc]
+    MemoryMonitorConfig = None  # type: ignore[assignment,misc]
+    MemoryAlertLevel = None  # type: ignore[assignment,misc]
+    LeakIndicator = None  # type: ignore[assignment,misc]
+    TraceMallocDebugger = None  # type: ignore[assignment,misc]
+    LeakReport = None  # type: ignore[assignment,misc]
+    create_memory_monitor = None  # type: ignore[assignment]
 
 # Import resource monitor (Plan 11: Resource Monitoring)
 try:
@@ -470,11 +470,11 @@ try:
     RESOURCE_MONITOR_AVAILABLE = True
 except ImportError:
     RESOURCE_MONITOR_AVAILABLE = False
-    ResourceMonitor = None
-    ResourceMonitorConfig = None
-    ResourceAlertLevel = None
-    ResourceType = None
-    create_resource_monitor = None
+    ResourceMonitor = None  # type: ignore[assignment,misc]
+    ResourceMonitorConfig = None  # type: ignore[assignment,misc]
+    ResourceAlertLevel = None  # type: ignore[assignment,misc]
+    ResourceType = None  # type: ignore[assignment,misc]
+    create_resource_monitor = None  # type: ignore[assignment]
 
 # Import health monitor (Plan 11: Health Monitoring)
 try:
@@ -488,11 +488,11 @@ try:
     HEALTH_MONITOR_AVAILABLE = True
 except ImportError:
     HEALTH_MONITOR_AVAILABLE = False
-    HealthMonitor = None
-    HealthMonitorConfig = None
-    HealthStatus = None
-    ComponentStatus = None
-    create_health_monitor = None
+    HealthMonitor = None  # type: ignore[assignment,misc]
+    HealthMonitorConfig = None  # type: ignore[assignment,misc]
+    HealthStatus = None  # type: ignore[assignment,misc]
+    ComponentStatus = None  # type: ignore[assignment,misc]
+    create_health_monitor = None  # type: ignore[assignment]
 
 # Import queue monitor (Plan 11: Queue Monitoring)
 try:
@@ -507,12 +507,12 @@ try:
     QUEUE_MONITOR_AVAILABLE = True
 except ImportError:
     QUEUE_MONITOR_AVAILABLE = False
-    QueueMonitor = None
-    QueueMonitorConfig = None
-    QueueConfig = None
-    QueueAlertLevel = None
-    BackpressureState = None
-    create_queue_monitor = None
+    QueueMonitor = None  # type: ignore[assignment,misc]
+    QueueMonitorConfig = None  # type: ignore[assignment,misc]
+    QueueConfig = None  # type: ignore[assignment,misc]
+    QueueAlertLevel = None  # type: ignore[assignment,misc]
+    BackpressureState = None  # type: ignore[assignment,misc]
+    create_queue_monitor = None  # type: ignore[assignment]
 
 # Import monitoring report generator (Plan 11: Report Generation)
 try:
@@ -525,10 +525,10 @@ try:
     REPORT_GENERATOR_AVAILABLE = True
 except ImportError:
     REPORT_GENERATOR_AVAILABLE = False
-    MonitoringReportGenerator = None
-    OllamaConfig = None
-    ReportType = None
-    create_report_generator = None
+    MonitoringReportGenerator = None  # type: ignore[assignment,misc]
+    OllamaConfig = None  # type: ignore[assignment,misc]
+    ReportType = None  # type: ignore[assignment,misc]
+    create_report_generator = None  # type: ignore[assignment]
 
 # Import detection event publisher (Attack Detection Integration)
 try:
@@ -540,9 +540,9 @@ try:
     EVENT_PUBLISHER_AVAILABLE = True
 except ImportError:
     EVENT_PUBLISHER_AVAILABLE = False
-    EventPublisher = None
-    get_event_publisher = None
-    configure_event_publisher = None
+    EventPublisher = None  # type: ignore[assignment,misc]
+    get_event_publisher = None  # type: ignore[assignment]
+    configure_event_publisher = None  # type: ignore[assignment]
 
 # Import SIEM integration (SECURITY: Security event forwarding)
 try:
@@ -558,13 +558,13 @@ try:
     SIEM_AVAILABLE = True
 except ImportError:
     SIEM_AVAILABLE = False
-    SIEMIntegration = None
-    SIEMConfig = None
-    SIEMTransport = None
-    SIEMFormat = None
-    SecurityEventSeverity = None
-    init_siem = None
-    set_siem_integration = None
+    SIEMIntegration = None  # type: ignore[assignment,misc]
+    SIEMConfig = None  # type: ignore[assignment,misc]
+    SIEMTransport = None  # type: ignore[assignment,misc]
+    SIEMFormat = None  # type: ignore[assignment,misc]
+    SecurityEventSeverity = None  # type: ignore[assignment,misc]
+    init_siem = None  # type: ignore[assignment]
+    set_siem_integration = None  # type: ignore[assignment]
 
 
 
@@ -662,7 +662,7 @@ class BoundaryDaemon:
         if SIGNED_LOGGING_AVAILABLE and SignedEventLogger is not None:
             try:
                 signing_key_path = os.path.join(self.log_dir, 'signing.key')
-                self.event_logger = SignedEventLogger(log_file, signing_key_path)
+                self.event_logger: EventLogger = SignedEventLogger(log_file, signing_key_path)
                 self.signed_logging = True
                 logger.info(f"Signed event logging enabled (key: {signing_key_path})")
                 logger.info(f"Public verification key: {self.event_logger.get_public_key_hex()[:32]}...")
@@ -1028,7 +1028,7 @@ class BoundaryDaemon:
 
         # Wire ceremony_manager to sandbox_manager now that biometric auth is initialized
         if self.sandbox_manager is not None and self.ceremony_manager is not None:
-            self.sandbox_manager.ceremony_manager = self.ceremony_manager
+            self.sandbox_manager.set_ceremony_manager(self.ceremony_manager)
 
         # Initialize code vulnerability advisor (Plan 7: LLM-Powered Security)
         self.security_advisor = None
@@ -1100,7 +1100,7 @@ class BoundaryDaemon:
             telemetry_dir = os.environ.get('BOUNDARY_TELEMETRY_DIR', None)
             if telemetry_dir:
                 try:
-                    config = TelemetryConfig.from_env()
+                    config: Any = TelemetryConfig.from_env()
                     self.telemetry_manager = TelemetryManager(
                         daemon=self,
                         config=config
@@ -1267,8 +1267,7 @@ class BoundaryDaemon:
                 disk_warning = float(os.environ.get('BOUNDARY_DISK_WARNING_PERCENT', '90'))
 
                 # Get log directory for disk monitoring
-                # nosec B108 - monitoring paths, not writing to them
-                disk_paths = [log_dir, '/var/log', '/tmp']
+                disk_paths = [log_dir, '/var/log', '/tmp']  # nosec B108 - monitored paths, nothing is written
 
                 config = ResourceMonitorConfig(
                     sample_interval=sample_interval,
@@ -1396,8 +1395,8 @@ class BoundaryDaemon:
                 self.message_checker_enabled = True
                 mode_str = "strict" if strict_mode else "permissive"
                 logger.info(f"Message checker available (mode: {mode_str})")
-                logger.info(f"  NatLangChain: Enabled")
-                logger.info(f"  Agent-OS: Enabled")
+                logger.info("  NatLangChain: Enabled")
+                logger.info("  Agent-OS: Enabled")
             except Exception as e:
                 logger.warning(f"Message checker failed to initialize: {e}")
         else:
@@ -1944,7 +1943,7 @@ class BoundaryDaemon:
             violation = self.tripwire_system.trigger_violation(
                 violation_type=ViolationType.CLOCK_MANIPULATION,
                 details=f"Time jump {direction}: {abs(event.jump_seconds):.1f}s (severity: {event.severity})",
-                current_mode=self.policy_engine.current_mode,
+                current_mode=self.policy_engine.get_current_mode(),
                 environment_snapshot={
                     'time_before': event.timestamp_before.isoformat(),
                     'time_after': event.timestamp_after.isoformat(),
@@ -1991,7 +1990,7 @@ class BoundaryDaemon:
         violation = self.tripwire_system.trigger_violation(
             violation_type=ViolationType.CLOCK_MANIPULATION,
             details=f"Confirmed clock manipulation: {reason}",
-            current_mode=self.policy_engine.current_mode,
+            current_mode=self.policy_engine.get_current_mode(),
             environment_snapshot={
                 'reason': reason,
                 'timestamp': datetime.utcnow().isoformat(),
@@ -2022,8 +2021,8 @@ class BoundaryDaemon:
         logger.info(f"[NETWORK] Trust level: {trust_level}")
 
         # Validate mode-network binding
-        if self.network_attestor and self.network_attestor.requires_vpn_for_mode(self.policy_engine.current_mode):
-            is_valid, reason = self.network_attestor.validate_mode_network_binding(self.policy_engine.current_mode)
+        if self.network_attestor and self.network_attestor.requires_vpn_for_mode(self.policy_engine.get_current_mode()):
+            is_valid, reason = self.network_attestor.validate_mode_network_binding(self.policy_engine.get_current_mode())
             if not is_valid:
                 logger.warning(f"[NETWORK] Mode-network binding violation: {reason}")
                 self._on_network_trust_violation(f"Mode requires VPN but {reason}")
@@ -2052,7 +2051,7 @@ class BoundaryDaemon:
         violation = self.tripwire_system.trigger_violation(
             violation_type=ViolationType.NETWORK_TRUST_VIOLATION,
             details=f"Network trust violation: {reason}",
-            current_mode=self.policy_engine.current_mode,
+            current_mode=self.policy_engine.get_current_mode(),
             environment_snapshot={
                 'reason': reason,
                 'timestamp': datetime.utcnow().isoformat(),
@@ -2750,7 +2749,7 @@ class BoundaryDaemon:
         if self.lockdown_manager.is_in_lockdown():
             self.event_logger.log_event(
                 EventType.RECALL_ATTEMPT,
-                f"Memory recall denied: system in LOCKDOWN",
+                "Memory recall denied: system in LOCKDOWN",
                 metadata={'memory_class': memory_class.value, 'decision': 'deny'}
             )
             return (False, "System in LOCKDOWN mode")
@@ -2859,7 +2858,7 @@ class BoundaryDaemon:
         if decision == PolicyDecision.ALLOW:
             return (True, "Tool execution permitted")
         elif decision == PolicyDecision.DENY:
-            return (False, f"Tool execution denied by policy")
+            return (False, "Tool execution denied by policy")
         else:
             return (False, "Tool requires human override ceremony")
 
@@ -3029,7 +3028,7 @@ class BoundaryDaemon:
         env_state = self.state_monitor.get_current_state()
         lockdown_info = self.lockdown_manager.get_lockdown_info()
 
-        status = {
+        status: Dict[str, Any] = {
             'running': self._running,
             'boundary_state': boundary_state.to_dict(),
             'environment': env_state.to_dict() if env_state else None,
@@ -3277,7 +3276,7 @@ class BoundaryDaemon:
             if IS_WINDOWS:
                 try:
                     import ctypes
-                    has_root = ctypes.windll.shell32.IsUserAnAdmin() != 0
+                    has_root = ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # Windows only
                     effective_uid = 0 if has_root else 1000
                 except (OSError, AttributeError):
                     has_root = False
@@ -3609,8 +3608,7 @@ class BoundaryDaemon:
             import os
             if os.path.isfile(path):
                 # Scan single file
-                result = self.security_advisor.scan_file(path)
-                advisories = result.advisories if result else []
+                advisories = list(self.security_advisor.scan_file(path) or [])
                 msg = f"Scanned {path}: {len(advisories)} advisory(ies) found"
             elif os.path.isdir(path):
                 # Scan directory/repository
@@ -3634,14 +3632,14 @@ class BoundaryDaemon:
             # Convert advisories to dicts for serialization
             advisory_dicts = [
                 {
-                    'id': a.id,
+                    'id': a.advisory_id,
                     'file_path': a.file_path,
                     'line_start': a.line_start,
                     'line_end': a.line_end,
                     'severity': a.severity.value if hasattr(a.severity, 'value') else str(a.severity),
-                    'title': a.title,
-                    'description': a.description,
-                    'recommendation': a.recommendation,
+                    'title': a.issue_type,
+                    'description': a.explanation,
+                    'recommendation': a.recommended_action,
                     'status': a.status.value if hasattr(a.status, 'value') else str(a.status),
                     'created_at': a.created_at
                 }
@@ -3680,14 +3678,14 @@ class BoundaryDaemon:
             # Convert to dicts
             return [
                 {
-                    'id': a.id,
+                    'id': a.advisory_id,
                     'file_path': a.file_path,
                     'line_start': a.line_start,
                     'line_end': a.line_end,
                     'severity': a.severity.value if hasattr(a.severity, 'value') else str(a.severity),
-                    'title': a.title,
-                    'description': a.description,
-                    'recommendation': a.recommendation,
+                    'title': a.issue_type,
+                    'description': a.explanation,
+                    'recommendation': a.recommended_action,
                     'status': a.status.value if hasattr(a.status, 'value') else str(a.status),
                     'created_at': a.created_at
                 }

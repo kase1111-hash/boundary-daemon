@@ -37,7 +37,7 @@ import json
 import ctypes
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict, Set
+from typing import Optional, List, Tuple, Dict, Set, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ try:
     SECURE_PROFILE_AVAILABLE = True
 except ImportError:
     SECURE_PROFILE_AVAILABLE = False
-    SecureProfileManager = None
+    SecureProfileManager = None  # type: ignore[assignment,misc]
 
 # Import secure process termination (SECURITY: replaces broad pattern matching)
 try:
@@ -64,10 +64,10 @@ try:
     SECURE_TERMINATION_AVAILABLE = True
 except ImportError:
     SECURE_TERMINATION_AVAILABLE = False
-    SecureProcessTerminator = None
-    ProcessInfo = None
-    TerminationReason = None
-    TerminationResult = None
+    SecureProcessTerminator = None  # type: ignore[assignment,misc]
+    ProcessInfo = None  # type: ignore[assignment,misc]
+    TerminationReason = None  # type: ignore[assignment,misc]
+    TerminationResult = None  # type: ignore[assignment,misc]
 
 
 class ProcessEnforcementError(Exception):
@@ -176,14 +176,14 @@ class SeccompFilter:
 class ContainerConfig:
     """Configuration for container isolation"""
     network: str = "none"  # none, host, bridge
-    capabilities: List[str] = None  # Capabilities to drop
+    capabilities: Optional[List[str]] = None  # Capabilities to drop
     read_only: bool = True
     no_new_privileges: bool = True
     seccomp_profile: Optional[str] = None
     memory_limit: Optional[str] = None
     cpu_limit: Optional[float] = None
-    devices: List[str] = None
-    volumes: List[str] = None
+    devices: Optional[List[str]] = None
+    volumes: Optional[List[str]] = None
 
 
 class ProcessEnforcer:
@@ -480,7 +480,7 @@ class ProcessEnforcer:
             if num in num_to_name:
                 syscall_names.append(num_to_name[num])
 
-        profile = {
+        profile: Dict[str, Any] = {
             "defaultAction": "SCMP_ACT_ALLOW",
             "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_X86", "SCMP_ARCH_AARCH64"],
             "syscalls": [
@@ -504,6 +504,37 @@ class ProcessEnforcer:
         })
 
         return profile
+
+    @staticmethod
+    def _to_seccomp_profile(profile: Dict[str, Any]) -> Any:
+        """
+        Convert a docker-style seccomp JSON profile into the SeccompProfile model
+        that SeccompFilter.load_profile() expects.
+
+        Argument-level rules (e.g. the PROT_EXEC mask on mmap/mprotect) cannot be
+        expressed by SeccompFilter's BPF builder; they are logged and skipped rather
+        than turned into whole-syscall denials that would break every process.
+        """
+        from ..sandbox.seccomp_filter import SeccompProfile, SeccompAction
+
+        allow_default = str(profile.get('defaultAction', '')).upper() == 'SCMP_ACT_ALLOW'
+        converted = SeccompProfile(
+            name=str(profile.get('name', 'boundary')),
+            description='converted from docker-style profile',
+            default_action=SeccompAction.ALLOW if allow_default else SeccompAction.DENY,
+        )
+        for entry in profile.get('syscalls', []):
+            names = list(entry.get('names') or ([entry['name']] if entry.get('name') else []))
+            if entry.get('args'):
+                logger.warning(
+                    f"seccomp: argument filter on {names} is not supported by SeccompFilter; skipped"
+                )
+                continue
+            if str(entry.get('action', '')).upper() == 'SCMP_ACT_ALLOW':
+                converted.allowed_syscalls.update(names)
+            else:  # SCMP_ACT_ERRNO / KILL / TRAP -> deny (EPERM)
+                converted.denied_syscalls.update(names)
+        return converted
 
     def _install_seccomp_profile(self, profile: Dict):
         """
@@ -544,7 +575,7 @@ class ProcessEnforcer:
         try:
             from ..sandbox.seccomp_filter import SeccompFilter
             seccomp = SeccompFilter()
-            seccomp.load_profile(profile)
+            seccomp.load_profile(self._to_seccomp_profile(profile))
             seccomp.apply()
             logger.info(f"Seccomp filter applied: {profile_name}")
         except ImportError:
@@ -735,9 +766,9 @@ class ProcessEnforcer:
             # Use exact path matching, not pattern matching
             # nosec B108 - detecting malicious processes, not writing to tmp
             suspicious_exe_prefixes = [
-                '/tmp/',
-                '/dev/shm/',
-                '/var/tmp/',
+                '/tmp/',  # nosec B108 - detection pattern
+                '/dev/shm/',  # nosec B108 - detection pattern
+                '/var/tmp/',  # nosec B108 - detection pattern
             ]
 
             for prefix in suspicious_exe_prefixes:
@@ -809,7 +840,7 @@ class ProcessEnforcer:
                 if self.daemon:
                     # Verify daemon is responsive
                     try:
-                        status = self.daemon.policy_engine.get_current_mode()
+                        self.daemon.policy_engine.get_current_mode()
                         # Daemon is healthy
                     except (AttributeError, RuntimeError):
                         logger.error("Daemon health check failed in watchdog")

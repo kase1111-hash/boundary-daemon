@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +301,7 @@ class ServiceNowClient(IntegrationClient):
 
             response = requests.post(
                 url,
-                auth=(self.user, self.password),
+                auth=(self.user, self.password),  # type: ignore[arg-type]  # non-None when self.enabled
                 headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
                 json=payload,
                 timeout=30,
@@ -331,7 +331,7 @@ class ServiceNowClient(IntegrationClient):
             # Get incident sys_id
             response = requests.get(
                 query_url,
-                auth=(self.user, self.password),
+                auth=(self.user, self.password),  # type: ignore[arg-type]  # non-None when self.enabled
                 headers={'Accept': 'application/json'},
                 timeout=30,
             )
@@ -350,7 +350,7 @@ class ServiceNowClient(IntegrationClient):
 
                     requests.patch(
                         update_url,
-                        auth=(self.user, self.password),
+                        auth=(self.user, self.password),  # type: ignore[arg-type]  # non-None when self.enabled
                         headers={'Content-Type': 'application/json'},
                         json={'work_notes': work_note},
                         timeout=30,
@@ -413,12 +413,12 @@ class SlackClient(IntegrationClient):
                 },
             ]
 
-            payload = {"blocks": blocks}
+            payload: Dict[str, Any] = {"blocks": blocks}
             if self.channel:
                 payload["channel"] = self.channel
 
             response = requests.post(
-                self.webhook_url,
+                self.webhook_url,  # type: ignore[arg-type]  # non-None when self.enabled
                 json=payload,
                 timeout=10,
             )

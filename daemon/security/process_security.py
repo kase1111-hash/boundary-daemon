@@ -107,8 +107,8 @@ class ProcessSecurityConfig:
         r'nc\s+-e',  # Netcat shell
         r'curl.*\|\s*sh',  # Download and execute
         r'wget.*\|\s*sh',
-        r'/dev/shm/',  # Execution from shared memory
-        r'/tmp/\..*',  # Hidden files in /tmp
+        r'/dev/shm/',  # nosec B108 - detection pattern: execution from shared memory
+        r'/tmp/\..*',  # nosec B108 - detection pattern: hidden files in /tmp
         r'nohup.*&$',  # Background persistence
         r'chmod\s+\+s',  # SUID bit setting
     ])
@@ -316,7 +316,6 @@ class ProcessSecurityMonitor:
             List of detected alerts
         """
         alerts = []
-        now = datetime.utcnow()
 
         with self._lock:
             proc_info = ProcessInfo(
@@ -540,7 +539,7 @@ class ProcessSecurityMonitor:
                     cmdline=' '.join(proc.cmdline()) if proc.cmdline() else "",
                     uid=0,  # Windows doesn't have UID in the same way
                     gid=0,
-                    username=proc.username() if proc.username() else "",
+                    state="running",
                     start_time=proc.create_time(),
                     environ={}
                 )
@@ -626,7 +625,7 @@ class ProcessSecurityMonitor:
                 environ=environ
             )
 
-        except (IOError, OSError, PermissionError) as e:
+        except (IOError, OSError, PermissionError):
             return None
 
     def _check_injection(self, proc_info: ProcessInfo) -> List[ProcessAlert]:
@@ -684,7 +683,7 @@ class ProcessSecurityMonitor:
         all_processes: Dict[int, ProcessInfo]
     ) -> List[ProcessAlert]:
         """Check for unusual parent-child relationships"""
-        alerts = []
+        alerts: List[ProcessAlert] = []
         now = datetime.utcnow()
 
         # Skip kernel threads and safe processes
@@ -781,7 +780,7 @@ class ProcessSecurityMonitor:
 
     def _check_suspicious_cmdline(self, proc_info: ProcessInfo) -> List[ProcessAlert]:
         """Check for suspicious command line patterns"""
-        alerts = []
+        alerts: List[ProcessAlert] = []
         now = datetime.utcnow()
 
         if not proc_info.cmdline:

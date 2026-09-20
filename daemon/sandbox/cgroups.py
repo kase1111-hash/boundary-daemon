@@ -20,7 +20,7 @@ import signal
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Any
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class CgroupManager:
         self._capabilities = self._detect_capabilities()
         self._created_cgroups: Set[Path] = set()
 
-    def _detect_capabilities(self) -> Dict[str, bool]:
+    def _detect_capabilities(self) -> Dict[str, Any]:
         """Detect cgroup capabilities."""
         caps = {
             'cgroups_v2': False,
@@ -213,7 +213,6 @@ class CgroupManager:
             # Check for cgroups v2
             if self._base_path.exists():
                 # Check for unified hierarchy (cgroups v2)
-                cgroup_type = self._base_path / 'cgroup.type'
                 controllers = self._base_path / 'cgroup.controllers'
 
                 if controllers.exists():
@@ -262,7 +261,7 @@ class CgroupManager:
             pass
         return None
 
-    def get_capabilities(self) -> Dict[str, bool]:
+    def get_capabilities(self) -> Dict[str, Any]:
         """Get detected capabilities."""
         return self._capabilities.copy()
 
@@ -360,7 +359,7 @@ class CgroupManager:
             if limits.cpu_quota_us is not None or limits.cpu_max_cores is not None:
                 if limits.cpu_max_cores is not None:
                     # Convert cores to quota
-                    quota = int(limits.cpu_max_cores * limits.cpu_period_us)
+                    quota: Optional[int] = int(limits.cpu_max_cores * limits.cpu_period_us)
                 else:
                     quota = limits.cpu_quota_us
 
@@ -616,16 +615,16 @@ if __name__ == '__main__':
 
             # Set limits
             limits = CgroupLimits.standard()
-            print(f"\nSetting limits:")
+            print("\nSetting limits:")
             print(f"  CPU: {limits.cpu_max_cores} cores")
-            print(f"  Memory: {limits.memory_max_bytes / 1024 / 1024:.0f} MB")
+            print(f"  Memory: {limits.memory_max_bytes / 1024 / 1024:.0f} MB")  # type: ignore[operator]  # demo code: standard() always sets memory_max_bytes
             print(f"  PIDs: {limits.pids_max}")
 
             manager.set_limits(cgroup, limits)
 
             # Check usage
             usage = manager.get_usage(cgroup)
-            print(f"\nCurrent usage:")
+            print("\nCurrent usage:")
             print(f"  Memory: {usage.memory_current_bytes / 1024:.1f} KB")
             print(f"  PIDs: {usage.pids_current}")
 

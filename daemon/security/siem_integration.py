@@ -25,6 +25,7 @@ Security Note:
 import json
 import logging
 import hashlib
+import os
 import socket
 import ssl
 import threading
@@ -203,7 +204,7 @@ class SIEMConnector:
         self._running = False
         self._flush_thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
-        self._stats = {
+        self._stats: Dict[str, Any] = {
             'events_sent': 0,
             'events_failed': 0,
             'events_dropped': 0,
@@ -502,9 +503,9 @@ class SIEMConnector:
             data = (message + '\n').encode('utf-8')
 
             if self.config.transport == SIEMTransport.UDP:
-                self._socket.sendto(data, (self.config.host, self.config.port))
+                self._socket.sendto(data, (self.config.host, self.config.port))  # type: ignore[union-attr]  # connect() above sets _socket
             else:
-                self._socket.sendall(data)
+                self._socket.sendall(data)  # type: ignore[union-attr]  # connect() above sets _socket
 
             return True
 
@@ -530,6 +531,9 @@ class SIEMConnector:
 
         try:
             url = f"{self.config.transport.value}://{self.config.host}:{self.config.port}{self.config.http_endpoint}"
+            if not url.startswith(('http://', 'https://')):
+                logger.error(f"HTTP forwarding requires an http(s) transport, got {url!r}")
+                return False
 
             # Wrap in Splunk HEC format
             payload = json.dumps({'event': json.loads(message)})
@@ -551,7 +555,7 @@ class SIEMConnector:
             else:
                 context = None
 
-            with urllib.request.urlopen(request, timeout=10, context=context) as response:
+            with urllib.request.urlopen(request, timeout=10, context=context) as response:  # nosec B310 - scheme validated
                 return response.status == 200
 
         except urllib.error.URLError as e:
@@ -1073,9 +1077,8 @@ class SIEMIntegration:
             severity=SecurityEventSeverity.HIGH,
             event_type=f"security_error_{error_type}",
             message=f"Security error: {error_message}",
-            source_component=component or "boundary-daemon",
             outcome="error",
-            details=details or {},
+            details={**(details or {}), "component": component or "boundary-daemon"},
             tags=["error", "security"],
         )
         self._send_event(event)
@@ -1089,10 +1092,6 @@ class SIEMIntegration:
             'transport': self.config.transport.value,
             'target': f"{self.config.host}:{self.config.port}",
         }
-
-
-# Import os for process ID
-import os
 
 
 # Singleton instance for global access

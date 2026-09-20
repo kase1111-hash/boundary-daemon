@@ -375,7 +375,7 @@ class HardwareWatchdog:
         Args:
             timeout: Seconds before hardware reset if not pinged
         """
-        self._fd = None
+        self._fd: Optional[int] = None
         self._timeout = timeout
         self._enabled = False
 
@@ -1005,12 +1005,12 @@ def generate_shared_secret() -> bytes:
         # Windows: Use machine GUID from registry
         try:
             import winreg
-            key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
+            key = winreg.OpenKey(  # type: ignore[attr-defined]  # winreg stubs are win32-only
+                winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
                 r"SOFTWARE\Microsoft\Cryptography"
             )
-            machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-            winreg.CloseKey(key)
+            machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
+            winreg.CloseKey(key)  # type: ignore[attr-defined]
             components.append(machine_guid)
         except OSError:
             pass

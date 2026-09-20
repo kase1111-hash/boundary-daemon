@@ -296,7 +296,7 @@ class FileIntegrityMonitor:
                 link_target=link_target
             )
 
-        except (OSError, PermissionError, IOError) as e:
+        except (OSError, PermissionError, IOError):
             # Can't access file
             return None
 
@@ -312,7 +312,7 @@ class FileIntegrityMonitor:
             elif self.config.hash_algorithm == "sha384":
                 hasher = hashlib.sha384()
             elif self.config.hash_algorithm == "blake2b":
-                hasher = hashlib.blake2b()
+                hasher = hashlib.blake2b()  # type: ignore[assignment]  # typeshed: blake2b is not a HASH subclass
             elif self.config.hash_algorithm == "md5":
                 # SECURITY: MD5 is insecure - reject with error
                 raise ValueError(
@@ -445,7 +445,7 @@ class FileIntegrityMonitor:
         Returns:
             List of detected changes
         """
-        changes = []
+        changes: List[FileChange] = []
 
         with self._lock:
             if not self._baseline:
@@ -678,7 +678,7 @@ class FileIntegrityMonitor:
 
             return True
 
-        except (OSError, json.JSONDecodeError, KeyError) as e:
+        except (OSError, json.JSONDecodeError, KeyError):
             return False
 
     def scan_for_suid_binaries(self) -> List[FileChange]:

@@ -37,11 +37,11 @@ try:
     ERROR_HANDLING_AVAILABLE = True
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub
         logger.error(f"{op}: {e}")
-    def log_auth_error(e, op, **ctx):
+    def log_auth_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub
         logger.error(f"AUTH: {op}: {e}")
-    def log_filesystem_error(e, op, **ctx):
+    def log_filesystem_error(e, op, **ctx):  # type: ignore[misc]  # fallback stub
         logger.error(f"FILESYSTEM: {op}: {e}")
 
 # Import persistent rate limiter (SECURITY: survives restarts)
@@ -50,7 +50,7 @@ try:
     PERSISTENT_RATE_LIMIT_AVAILABLE = True
 except ImportError:
     PERSISTENT_RATE_LIMIT_AVAILABLE = False
-    PersistentRateLimiter = None
+    PersistentRateLimiter = None  # type: ignore[assignment,misc]
 
 
 class APICapability(Enum):
@@ -373,7 +373,7 @@ class TokenManager:
             if not et:
                 return
 
-            data = {}
+            data: Dict[str, Any] = {}
             if token_id:
                 data['token_id'] = token_id
             if token_name:
@@ -398,7 +398,6 @@ class TokenManager:
 
     def _generate_token(self) -> str:
         """Generate a secure random token."""
-        random_bytes = secrets.token_bytes(self.TOKEN_LENGTH)
         token_body = secrets.token_urlsafe(self.TOKEN_LENGTH)
         return f"{self.TOKEN_PREFIX}{token_body}"
 
@@ -668,11 +667,11 @@ class TokenManager:
             return False, token, f"Unknown command: {command}"
 
         # Check capability
-        if not token.has_capability(required_cap):
+        if not token.has_capability(required_cap):  # type: ignore[union-attr]  # non-None when is_valid
             return False, token, f"Token lacks capability: {required_cap.name}"
 
         # Check per-command rate limit
-        is_cmd_allowed, cmd_reason = self._check_command_rate_limit(token.token_id, command)
+        is_cmd_allowed, cmd_reason = self._check_command_rate_limit(token.token_id, command)  # type: ignore[union-attr]
         if not is_cmd_allowed:
             return False, token, cmd_reason
 
@@ -981,7 +980,7 @@ class TokenManager:
             current_requests = len([t for t in entry.request_times if t > window_start])
 
             is_blocked = entry.blocked_until is not None and now < entry.blocked_until
-            blocked_remaining = max(0, int(entry.blocked_until - now)) if is_blocked else 0
+            blocked_remaining = max(0, int(entry.blocked_until - now)) if is_blocked else 0  # type: ignore[operator]  # non-None when is_blocked
 
             return {
                 'requests_in_window': current_requests,
@@ -1005,7 +1004,7 @@ class TokenManager:
             current_requests = len([t for t in state.request_times if t > window_start])
 
             is_blocked = state.blocked_until is not None and now < state.blocked_until
-            blocked_remaining = max(0, int(state.blocked_until - now)) if is_blocked else 0
+            blocked_remaining = max(0, int(state.blocked_until - now)) if is_blocked else 0  # type: ignore[operator]  # non-None when is_blocked
 
             return {
                 'requests_in_window': current_requests,
@@ -1061,7 +1060,7 @@ class TokenManager:
                 current_requests = len([t for t in entry.request_times if t > window_start])
 
                 is_blocked = entry.blocked_until is not None and now < entry.blocked_until
-                blocked_remaining = max(0, int(entry.blocked_until - now)) if is_blocked else 0
+                blocked_remaining = max(0, int(entry.blocked_until - now)) if is_blocked else 0  # type: ignore[operator]  # non-None when is_blocked
 
                 result[command] = {
                     'requests_in_window': current_requests,
@@ -1100,7 +1099,7 @@ class TokenManager:
         Returns:
             Dict with rate limit header values
         """
-        headers = {}
+        headers: Dict[str, Any] = {}
         now = time.monotonic()
 
         with self._lock:
@@ -1255,7 +1254,7 @@ if __name__ == '__main__':
 
     # Check capability
     print("\n3. Checking capabilities...")
-    can_status, _, _ = manager.check_capability(token, 'status')
+    can_status, _, _ = manager.check_capability(token, 'status')  # type: ignore[assignment]  # demo: two throwaway '_' targets
     can_set_mode, _, msg = manager.check_capability(token, 'set_mode')
     print(f"   Can get status: {can_status}")
     print(f"   Can set mode: {can_set_mode} ({msg})")
@@ -1270,7 +1269,7 @@ if __name__ == '__main__':
 
     # Admin can do everything
     print("\n5. Admin capability check...")
-    can_manage, _, _ = manager.check_capability(admin_token, 'create_token')
+    can_manage, _, _ = manager.check_capability(admin_token, 'create_token')  # type: ignore[assignment]  # demo: two throwaway '_' targets
     print(f"   Admin can manage tokens: {can_manage}")
 
     # List tokens

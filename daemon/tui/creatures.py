@@ -14,7 +14,7 @@ try:
     import curses
     CURSES_AVAILABLE = True
 except ImportError:
-    curses = None
+    curses = None  # type: ignore[assignment]
     CURSES_AVAILABLE = False
 
 from .colors import Colors

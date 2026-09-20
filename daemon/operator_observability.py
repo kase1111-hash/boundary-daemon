@@ -29,7 +29,6 @@ import hashlib
 import json
 import logging
 import os
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
@@ -145,8 +144,7 @@ def trace_policy_decision(
     This wraps the policy engine's evaluate_policy() with instrumentation
     that captures the reasoning at each step.
     """
-    from .policy_engine import BoundaryMode, PolicyDecision, MemoryClass
-    from .state_monitor import NetworkState
+    from .policy_engine import BoundaryMode, PolicyDecision
 
     mode = policy_engine.get_current_mode()
     steps = []
@@ -218,7 +216,7 @@ def trace_policy_decision(
     if actual.value != trace.decision:
         # Custom policy changed the result
         steps.append({
-            "check": f"Custom policy overrode base decision",
+            "check": "Custom policy overrode base decision",
             "result": f"{trace.decision} -> {actual.value}",
         })
         trace.decision = actual.value
@@ -268,7 +266,6 @@ def _trace_recall(trace, steps, request, mode, env_state):
 def _trace_tool(trace, steps, request, mode, env_state):
     """Trace a tool policy decision."""
     from .policy_engine import BoundaryMode, PolicyDecision
-    from .state_monitor import NetworkState
 
     if mode == BoundaryMode.COLDROOM:
         needs = []
@@ -325,7 +322,7 @@ def _trace_tool(trace, steps, request, mode, env_state):
                 trace.verdict = TraceVerdict.TOOL_MODE_RESTRICTION.name
                 return
         steps.append({
-            "check": f"TRUSTED: tool allowed",
+            "check": "TRUSTED: tool allowed",
             "result": "allow",
         })
         trace.decision = PolicyDecision.ALLOW.value
@@ -361,7 +358,6 @@ def _trace_tool(trace, steps, request, mode, env_state):
 def _trace_model(trace, steps, request, mode, env_state):
     """Trace a model policy decision."""
     from .policy_engine import BoundaryMode, PolicyDecision
-    from .state_monitor import NetworkState
 
     if mode >= BoundaryMode.AIRGAP:
         steps.append({
@@ -704,8 +700,8 @@ class OperatorConsole:
 
         # Summary stats
         total = len(self._decision_log)
-        by_decision = {}
-        by_type = {}
+        by_decision: Dict[str, int] = {}
+        by_type: Dict[str, int] = {}
         for d in self._decision_log:
             by_decision[d.decision] = by_decision.get(d.decision, 0) + 1
             by_type[d.request_type] = by_type.get(d.request_type, 0) + 1

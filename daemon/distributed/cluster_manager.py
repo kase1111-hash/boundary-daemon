@@ -21,11 +21,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, List, Callable
 
-logger = logging.getLogger(__name__)
-
 from ..policy_engine import BoundaryMode
 from ..tripwires import TripwireViolation
 from .coordinators import Coordinator, FileCoordinator
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -490,7 +490,7 @@ class ClusterManager:
             return min(modes).name
         elif self.sync_policy == ClusterSyncPolicy.MAJORITY:
             # Return the mode used by majority
-            mode_counts = {}
+            mode_counts: Dict[BoundaryMode, int] = {}
             for mode in modes:
                 mode_counts[mode] = mode_counts.get(mode, 0) + 1
             majority_mode = max(mode_counts.items(), key=lambda x: x[1])[0]
@@ -541,15 +541,13 @@ class ClusterManager:
 
         return violations
 
-    def on_mode_change(self, callback: Callable):
-        """Register a callback for cluster mode changes"""
-        # FIXME: on_mode_change uses .append() but _mode_change_callbacks is a dict — this will raise AttributeError
-        self._mode_change_callbacks.append(callback)
+    def on_mode_change(self, callback: Callable) -> int:
+        """Register a callback for cluster mode changes (returns the callback id)."""
+        return self.register_mode_change_callback(callback)
 
-    def on_violation(self, callback: Callable):
-        """Register a callback for cluster violations"""
-        # FIXME: on_violation uses .append() but _violation_callbacks is a dict — this will raise AttributeError
-        self._violation_callbacks.append(callback)
+    def on_violation(self, callback: Callable) -> int:
+        """Register a callback for cluster violations (returns the callback id)."""
+        return self.register_violation_callback(callback)
 
     def get_cluster_summary(self) -> str:
         """
@@ -561,13 +559,13 @@ class ClusterManager:
         state = self.get_cluster_state()
 
         summary = []
-        summary.append(f"Cluster Summary")
-        summary.append(f"===============")
+        summary.append("Cluster Summary")
+        summary.append("===============")
         summary.append(f"Total Nodes: {len(state.nodes)}")
         summary.append(f"Healthy Nodes: {len(self.get_healthy_nodes())}")
         summary.append(f"Cluster Mode: {state.cluster_mode}")
         summary.append(f"Total Violations: {state.total_violations}")
-        summary.append(f"\nNodes:")
+        summary.append("\nNodes:")
 
         for node in state.nodes.values():
             status = "✓" if node.is_healthy() else "✗"

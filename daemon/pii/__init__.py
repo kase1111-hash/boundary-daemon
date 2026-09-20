@@ -31,12 +31,12 @@ try:
     BYPASS_RESISTANT_AVAILABLE = True
 except ImportError:
     BYPASS_RESISTANT_AVAILABLE = False
-    BypassResistantPIIDetector = None
-    BypassDetector = None
-    TextNormalizer = None
-    BypassTechnique = None
-    BypassAttempt = None
-    EntropyAnalyzer = None
+    BypassResistantPIIDetector = None  # type: ignore[assignment,misc]
+    BypassDetector = None  # type: ignore[assignment,misc]
+    TextNormalizer = None  # type: ignore[assignment,misc]
+    BypassTechnique = None  # type: ignore[assignment,misc]
+    BypassAttempt = None  # type: ignore[assignment,misc]
+    EntropyAnalyzer = None  # type: ignore[assignment,misc]
 
 __all__ = [
     # Standard PII detection

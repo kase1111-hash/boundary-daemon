@@ -54,7 +54,7 @@ class SecureTempFile:
         import stat
 
         # Try to use /dev/shm (RAM-backed) for sensitive data, fall back to tempdir
-        secure_dirs = ['/dev/shm', tempfile.gettempdir()]
+        secure_dirs = ['/dev/shm', tempfile.gettempdir()]  # nosec B108 - candidate dirs; files are created O_EXCL|0600 below
         temp_dir = None
         for d in secure_dirs:
             if os.path.isdir(d) and os.access(d, os.W_OK):
@@ -305,7 +305,7 @@ class TPMManager:
         self.is_available = self.backend != TPMBackend.NONE
 
         # TPM context (for pytss)
-        self._tpm_ctx = None
+        self._tpm_ctx: Any = None
 
         # Cached PCR values
         self._pcr_cache: Dict[int, str] = {}
@@ -735,7 +735,7 @@ class TPMManager:
 
             # Verify PCR hasn't changed unexpectedly
             if last_attestation.pcr_value != current_pcr:
-                return (False, f"PCR mismatch: possible tampering detected")
+                return (False, "PCR mismatch: possible tampering detected")
 
             return (True, None)
 
@@ -778,7 +778,7 @@ class TPMManager:
         Returns:
             List of verified attestation records
         """
-        attestations = []
+        attestations: List[ModeAttestation] = []
         unsigned_count = 0
         invalid_count = 0
 
@@ -988,10 +988,6 @@ class TPMManager:
             temp_files.append(secret_tf)
             secret_path = secret_tf.__enter__()
             secret_tf.write(secret)
-
-            sealed_tf = SecureTempFile(suffix='.sealed')
-            temp_files.append(sealed_tf)
-            sealed_path = sealed_tf.__enter__()
 
             policy_tf = SecureTempFile(suffix='.policy')
             temp_files.append(policy_tf)
@@ -1300,7 +1296,7 @@ class TPMManager:
 
     def list_sealed_secrets(self) -> List[str]:
         """List all sealed secret IDs"""
-        secrets = []
+        secrets: List[str] = []
 
         if not os.path.exists(self.SEALED_SECRETS_DIR):
             return secrets
@@ -1390,7 +1386,6 @@ if __name__ == '__main__':
             print(f"PCR read error: {e}")
 
         # Test mode attestation
-        from policy_engine import BoundaryMode
         try:
             attestation = manager.bind_mode_to_tpm(BoundaryMode.AIRGAP, "test")
             print(f"Mode attestation: {attestation.mode_name} at {attestation.timestamp}")

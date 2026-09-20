@@ -28,17 +28,17 @@ try:
         CRYPTO_AVAILABLE,
     )
     SECURE_CONFIG_AVAILABLE = True
-except ImportError as e:
+except ImportError:
     SECURE_CONFIG_AVAILABLE = False
-    SecureConfigStorage = None
-    SecureConfigOptions = None
-    ConfigFormat = None
-    EncryptionMode = None
-    load_secure_config = None
-    save_secure_config = None
-    CryptographyRequiredError = None
-    check_crypto_requirements = None
-    require_crypto_or_exit = None
+    SecureConfigStorage = None  # type: ignore[assignment,misc]
+    SecureConfigOptions = None  # type: ignore[assignment,misc]
+    ConfigFormat = None  # type: ignore[assignment,misc]
+    EncryptionMode = None  # type: ignore[assignment,misc]
+    load_secure_config = None  # type: ignore[assignment]
+    save_secure_config = None  # type: ignore[assignment]
+    CryptographyRequiredError = None  # type: ignore[assignment,misc]
+    check_crypto_requirements = None  # type: ignore[assignment]
+    require_crypto_or_exit = None  # type: ignore[assignment]
     CRYPTO_AVAILABLE = False
 
 __all__ = [

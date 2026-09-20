@@ -12,7 +12,7 @@ import threading
 import time
 import logging
 from dataclasses import dataclass, asdict, field
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Callable, Any
 from enum import Enum
 from datetime import datetime
 from collections import deque
@@ -215,7 +215,7 @@ class StateMonitor:
         self._current_state: Optional[EnvironmentState] = None
         self._state_lock = threading.Lock()
         self._state_seq = 0  # Monotonic sequence number for state snapshots
-        self._callbacks: Dict[int, callable] = {}  # Use dict for O(1) unregister
+        self._callbacks: Dict[int, Callable[..., Any]] = {}  # Use dict for O(1) unregister
         self._next_callback_id = 0
         self._callback_lock = threading.Lock()  # Protect callback modifications
 
@@ -397,7 +397,7 @@ class StateMonitor:
                 return None
         return self._process_security_monitor
 
-    def register_callback(self, callback: callable) -> int:
+    def register_callback(self, callback: Callable[..., Any]) -> int:
         """
         Register a callback to be notified of state changes.
 
@@ -862,8 +862,9 @@ class StateMonitor:
             if wifi_monitor is None:
                 return []
 
-            # Check for suspicious processes (attack tools)
-            alerts = wifi_monitor.check_suspicious_processes()
+            # Check for suspicious processes (attack tools); any findings are
+            # appended to the monitor's active_alerts, collected below
+            wifi_monitor.check_suspicious_processes()
 
             # Get current status alerts
             status = wifi_monitor.get_status()
@@ -1038,7 +1039,7 @@ class StateMonitor:
                         pass
 
             # Check for OpenThread daemon socket
-            otbr_sockets = ['/var/run/openthread.sock', '/tmp/openthread.sock']
+            otbr_sockets = ['/var/run/openthread.sock', '/tmp/openthread.sock']  # nosec B108 - existence probe only
             for sock in otbr_sockets:
                 if os.path.exists(sock):
                     devices.append(f"OpenThread: {sock}")
@@ -1317,7 +1318,7 @@ class StateMonitor:
         if IS_WINDOWS:
             return None
 
-        info = {}
+        info: Dict[str, Any] = {}
 
         try:
             # Try sysfs for WWAN devices (Linux only)
@@ -1410,7 +1411,7 @@ class StateMonitor:
 
     def _check_hardware(self) -> Dict:
         """Check hardware state"""
-        usb_devices = set()
+        usb_devices: Set[str] = set()
         block_devices = set()
         camera = False
         mic = False
@@ -1622,7 +1623,7 @@ if __name__ == '__main__':
     monitor = StateMonitor(poll_interval=2.0, monitoring_config=config)
 
     def on_state_change(old_state, new_state):
-        print(f"\n=== State Change Detected ===")
+        print("\n=== State Change Detected ===")
         if old_state:
             print(f"Old network: {old_state.network.value}")
         print(f"New network: {new_state.network.value}")
@@ -1634,7 +1635,7 @@ if __name__ == '__main__':
 
         # Display specialty network status
         specialty = new_state.specialty_networks
-        print(f"\n--- Specialty Networks ---")
+        print("\n--- Specialty Networks ---")
         print(f"LoRa devices: {specialty.lora_devices}")
         print(f"Thread/Matter devices: {specialty.thread_devices}")
         print(f"WiMAX interfaces: {specialty.wimax_interfaces}")
@@ -1646,7 +1647,7 @@ if __name__ == '__main__':
     monitor.register_callback(on_state_change)
 
     # Show monitoring config
-    print(f"\nMonitoring Configuration:")
+    print("\nMonitoring Configuration:")
     print(f"  LoRa: {config.monitor_lora}")
     print(f"  Thread/Matter: {config.monitor_thread}")
     print(f"  Cellular Security: {config.monitor_cellular_security}")

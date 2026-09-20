@@ -35,6 +35,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
+# The exporter is pure Python (no prometheus_client dependency), so it is always available.
+PROMETHEUS_AVAILABLE = True
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,13 +61,13 @@ class Counter:
 
     def inc(self, value: float = 1.0, **labels) -> None:
         """Increment the counter."""
-        label_values = tuple(labels.get(l, "") for l in self.label_names)
+        label_values = tuple(labels.get(name, "") for name in self.label_names)
         with self._lock:
             self._values[label_values] += value
 
     def get(self, **labels) -> float:
         """Get current value."""
-        label_values = tuple(labels.get(l, "") for l in self.label_names)
+        label_values = tuple(labels.get(name, "") for name in self.label_names)
         with self._lock:
             return self._values[label_values]
 
@@ -92,13 +95,13 @@ class Gauge:
 
     def set(self, value: float, **labels) -> None:
         """Set the gauge value."""
-        label_values = tuple(labels.get(l, "") for l in self.label_names)
+        label_values = tuple(labels.get(name, "") for name in self.label_names)
         with self._lock:
             self._values[label_values] = value
 
     def inc(self, value: float = 1.0, **labels) -> None:
         """Increment the gauge."""
-        label_values = tuple(labels.get(l, "") for l in self.label_names)
+        label_values = tuple(labels.get(name, "") for name in self.label_names)
         with self._lock:
             self._values[label_values] = self._values.get(label_values, 0) + value
 
@@ -108,7 +111,7 @@ class Gauge:
 
     def get(self, **labels) -> float:
         """Get current value."""
-        label_values = tuple(labels.get(l, "") for l in self.label_names)
+        label_values = tuple(labels.get(name, "") for name in self.label_names)
         with self._lock:
             return self._values.get(label_values, 0)
 
@@ -147,7 +150,7 @@ class Histogram:
 
     def observe(self, value: float, **labels) -> None:
         """Observe a value."""
-        label_values = tuple(labels.get(l, "") for l in self.label_names)
+        label_values = tuple(labels.get(name, "") for name in self.label_names)
         with self._lock:
             self._sums[label_values] += value
             self._totals[label_values] += 1
@@ -601,7 +604,7 @@ if __name__ == '__main__':
     exporter = MetricsExporter(port=9090)
 
     if exporter.start():
-        print(f"\nMetrics available at http://localhost:9090/metrics")
+        print("\nMetrics available at http://localhost:9090/metrics")
         print("Health check at http://localhost:9090/health")
 
         # Simulate some activity

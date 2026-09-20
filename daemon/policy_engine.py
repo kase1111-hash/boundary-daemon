@@ -7,10 +7,10 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, IntEnum
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Callable, Any
 import threading
 
-from .state_monitor import NetworkState, HardwareTrust, EnvironmentState
+from .state_monitor import NetworkState, HardwareTrust, EnvironmentState, SpecialtyNetworkStatus
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +104,13 @@ class PolicyEngine:
             last_transition=datetime.utcnow().isoformat() + "Z",
             operator=Operator.SYSTEM
         )
-        self._transition_callbacks: Dict[int, callable] = {}  # Use dict for O(1) unregister
+        self._transition_callbacks: Dict[int, Callable[..., Any]] = {}  # Use dict for O(1) unregister
         self._next_callback_id = 0
         self._callback_lock = threading.Lock()  # Protect callback modifications
         self._custom_policies = None  # Optional PolicySet for custom rules
-        self._baseline_usb_devices = None  # Baseline USB device set for change detection
+        self._baseline_usb_devices: Optional[set] = None  # Baseline USB device set for change detection
 
-    def register_transition_callback(self, callback: callable) -> int:
+    def register_transition_callback(self, callback: Callable[..., Any]) -> int:
         """
         Register callback for mode transitions.
 
@@ -250,7 +250,7 @@ class PolicyEngine:
             self._boundary_state.external_models = len(env_state.external_model_endpoints) > 0
 
     def evaluate_policy(self, request: PolicyRequest, env_state: EnvironmentState,
-                        agent: str = None) -> PolicyDecision:
+                        agent: Optional[str] = None) -> PolicyDecision:
         """
         Evaluate a policy request against current mode and environment.
 
@@ -515,7 +515,6 @@ if __name__ == '__main__':
             )
 
             # Create a mock environment state
-            from state_monitor import EnvironmentState
             env = EnvironmentState(
                 timestamp=datetime.utcnow().isoformat() + "Z",
                 network=NetworkState.OFFLINE,
@@ -524,6 +523,18 @@ if __name__ == '__main__':
                 has_internet=False,
                 vpn_active=False,
                 dns_available=False,
+                interface_types={},
+                specialty_networks=SpecialtyNetworkStatus(
+                    lora_devices=[], thread_devices=[], wimax_interfaces=[],
+                    irda_devices=[], ant_plus_devices=[], cellular_alerts=[],
+                ),
+                dns_security_alerts=[],
+                arp_security_alerts=[],
+                wifi_security_alerts=[],
+                threat_intel_alerts=[],
+                file_integrity_alerts=[],
+                traffic_anomaly_alerts=[],
+                process_security_alerts=[],
                 usb_devices=set(),
                 block_devices=set(),
                 camera_available=False,

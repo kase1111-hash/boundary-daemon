@@ -282,10 +282,10 @@ class ResponseGuardrails:
             ]
 
         self._hallucination_patterns: Dict[HallucinationIndicator, List[Tuple[re.Pattern, str]]] = {}
-        for indicator, patterns in self.HALLUCINATION_PATTERNS.items():
+        for indicator, h_patterns in self.HALLUCINATION_PATTERNS.items():
             self._hallucination_patterns[indicator] = [
                 (re.compile(p, re.IGNORECASE), desc)
-                for p, desc in patterns
+                for p, desc in h_patterns
             ]
 
         # Callbacks
@@ -648,8 +648,6 @@ class ResponseGuardrails:
         detections = []
 
         # Simple heuristic: look for negation patterns near similar phrases
-        sentences = re.split(r'[.!?]+', response)
-
         # Check for direct contradictions
         contradiction_pairs = [
             (r'\bis\s+true\b', r'\bis\s+(?:not\s+true|false)\b'),
@@ -827,7 +825,8 @@ class ResponseGuardrails:
 
     def subscribe(self, callback: Callable[[GuardrailResult], None]) -> None:
         """Subscribe to guardrail events"""
-        self._callbacks.append(callback)
+        with self._callback_lock:
+            self._callbacks[id(callback)] = callback
 
     def set_mode_policy(self, mode: str, policy: GuardrailPolicy) -> None:
         """Set policy for a specific boundary mode"""

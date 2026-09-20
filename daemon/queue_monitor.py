@@ -798,7 +798,7 @@ class QueueMonitor:
                    queue_name: Optional[str] = None) -> List[QueueAlert]:
         """Get recent alerts"""
         with self._lock:
-            alerts = self._alerts
+            alerts = list(self._alerts)
             if queue_name:
                 alerts = [a for a in alerts if a.queue_name == queue_name]
             if limit:
@@ -893,7 +893,7 @@ if __name__ == '__main__':
             items_to_add = random.randint(0, 4)
             for _ in range(items_to_add):
                 try:
-                    test_queue.put(f"item_{i}", block=False)
+                    test_queue.put(f"item_{i}", block=False)  # type: ignore[union-attr]  # demo code
                 except (OSError, ValueError):
                     pass
 
@@ -901,7 +901,7 @@ if __name__ == '__main__':
             items_to_remove = random.randint(0, 2)
             for _ in range(items_to_remove):
                 try:
-                    test_queue.get_nowait()
+                    test_queue.get_nowait()  # type: ignore[union-attr]  # demo code
                 except (OSError, ValueError):
                     pass
 

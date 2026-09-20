@@ -209,7 +209,7 @@ class CodeSigner:
             self._signing_key = None
 
         if self._signing_key and NACL_AVAILABLE:
-            self._verify_key = self._signing_key.verify_key
+            self._verify_key: Optional['VerifyKey'] = self._signing_key.verify_key
             self.public_key = bytes(self._verify_key).hex()
         else:
             self._verify_key = None

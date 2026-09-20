@@ -12,7 +12,7 @@ import socket
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import DashboardEvent, DashboardAlert, SandboxStatus
 
@@ -30,7 +30,7 @@ class DashboardClient:
         self._connected = False
         self._use_tcp = False  # Flag for Windows TCP mode
         self._log_file_path = None  # Path to daemon log file for offline mode
-        self._connection_debug_log = []  # Store debug messages
+        self._connection_debug_log: List[str] = []  # Store debug messages
 
         # Set up debug log file
         self._debug_log_path = self._setup_debug_log()
@@ -238,7 +238,7 @@ class DashboardClient:
 
     def _read_events_from_log(self, limit: int = 20) -> List[DashboardEvent]:
         """Read real events from daemon log file."""
-        events = []
+        events: List[DashboardEvent] = []
 
         if not self._log_file_path or not os.path.exists(self._log_file_path):
             return events
@@ -640,7 +640,7 @@ class DashboardClient:
                 try:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     with open(path, 'w') as f:
-                        f.write(f"# TUI Dashboard Token - Auto-generated\n")
+                        f.write("# TUI Dashboard Token - Auto-generated\n")
                         f.write(f"# Created: {datetime.now().isoformat()}\n")
                         f.write(f"{token}\n")
                     self._log_debug(f"Saved TUI token to {path}")
@@ -730,7 +730,7 @@ class DashboardClient:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(5.0)
         try:
-            sock.connect(self.socket_path)
+            sock.connect(self.socket_path)  # type: ignore[arg-type]  # socket_path may be None; TypeError is caught by _send_request
             sock.sendall(json.dumps(request).encode('utf-8'))
             data = sock.recv(65536)
             return json.loads(data.decode('utf-8'))
@@ -803,7 +803,12 @@ class DashboardClient:
                 # Uptime can come from health monitor, clock monitor, or environment
                 health = status.get('health', {})
                 clock = status.get('clock', {})
-                uptime = health.get('uptime_seconds') or clock.get('uptime_seconds') or 0
+                uptime = (
+                    health.get('uptime_seconds')
+                    or clock.get('uptime_seconds')
+                    or environment.get('uptime_seconds')
+                    or 0
+                )
                 return {
                     'mode': boundary_state.get('mode', 'unknown').upper(),
                     'mode_since': boundary_state.get('last_transition', datetime.utcnow().isoformat()),
@@ -940,7 +945,7 @@ class DashboardClient:
             events = self._read_events_from_log(100)
             return [e.__dict__ for e in events]
 
-        params = {}
+        params: Dict[str, Any] = {}
         if start_time:
             params['start_time'] = start_time
         if end_time:

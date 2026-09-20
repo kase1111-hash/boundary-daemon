@@ -932,7 +932,7 @@ class AgentAttestationSystem:
     def _get_chain_depth(self, token_id: str) -> int:
         """Get the depth of a token's delegation chain."""
         depth = 0
-        current_id = token_id
+        current_id: Optional[str] = token_id
 
         while current_id:
             token = self._tokens.get(current_id)

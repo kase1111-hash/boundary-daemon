@@ -39,12 +39,13 @@ IS_WINDOWS = sys.platform == 'win32'
 
 # Import error handling utilities
 try:
-    from daemon.utils.error_handling import handle_error
+    from daemon.utils.error_handling import handle_error, ErrorCategory
     ERROR_HANDLING_AVAILABLE = True
 except ImportError:
     ERROR_HANDLING_AVAILABLE = False
+    ErrorCategory = None  # type: ignore[assignment,misc]
     # Fallback logging function
-    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):
+    def handle_error(e, op, category=None, severity=None, additional_context=None, reraise=False, log_level=None):  # type: ignore[misc]  # fallback stub, deliberately untyped
         logger.error(f"Error in {op}: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         if reraise:
             raise e
@@ -253,7 +254,7 @@ class ProtectionPersistenceManager:
         if IS_WINDOWS:
             try:
                 import ctypes
-                return ctypes.windll.shell32.IsUserAnAdmin() != 0
+                return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]  # ctypes.windll is win32-only
             except (AttributeError, OSError):
                 return False
         else:

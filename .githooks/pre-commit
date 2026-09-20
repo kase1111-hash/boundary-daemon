@@ -84,7 +84,7 @@ check_pattern "AccountKey=[A-Za-z0-9+/=]{88}" "Azure Storage Account Key detecte
 
 # Generic Private Keys
 check_pattern "-----BEGIN (RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----" "Private key detected" "ERROR"
-check_pattern "-----BEGIN PRIVATE KEY-----" "Private key detected" "ERROR"
+check_pattern "-----BEGIN PRIVATE KEY-----" "Private key detected" "ERROR"  # pragma: allowlist secret
 check_pattern "-----BEGIN ENCRYPTED PRIVATE KEY-----" "Encrypted private key detected" "WARNING"
 
 # GitHub/GitLab Tokens

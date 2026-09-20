@@ -375,7 +375,7 @@ class NofMCeremonyManager:
             )
 
             print(f"\n{'='*70}")
-            print(f"N-OF-M CEREMONY INITIATED")
+            print("N-OF-M CEREMONY INITIATED")
             print(f"{'='*70}")
             print(f"Ceremony ID: {ceremony_id}")
             print(f"Action: {action}")
@@ -432,7 +432,7 @@ class NofMCeremonyManager:
             if not verified:
                 self.daemon.event_logger.log_event(
                     EventType.OVERRIDE,
-                    f"N-of-M approval FAILED: verification failed",
+                    "N-of-M approval FAILED: verification failed",
                     metadata={
                         'ceremony_id': ceremony_id,
                         'approver_id': approver_id,
@@ -523,7 +523,7 @@ class NofMCeremonyManager:
             del self._pending_ceremonies[ceremony_id]
 
             print(f"\n{'='*70}")
-            print(f"N-OF-M CEREMONY COMPLETED")
+            print("N-OF-M CEREMONY COMPLETED")
             print(f"{'='*70}")
             print(f"Action: {state.action}")
             print(f"Approvals: {len([a for a in state.approvals if a.verified])}/{state.n_required}")
@@ -680,11 +680,11 @@ class TimeLockedCeremony:
                 }
             )
 
-            print(f"\n⚠ TIME LOCK ACTIVE")
+            print("\n⚠ TIME LOCK ACTIVE")
             print(f"  {message}")
 
             if override_allowed:
-                print(f"\n  Emergency override available.")
+                print("\n  Emergency override available.")
                 response = input("  Request emergency override? (yes/no): ")
                 if response.lower() == 'yes':
                     # Log override request - actual override requires separate ceremony
@@ -885,7 +885,7 @@ class DeadManCeremony:
         """Get status of all triggers."""
         with self._lock:
             return [
-                self.get_trigger_status(tid)
+                self.get_trigger_status(tid)  # type: ignore[misc]  # tid always in _triggers under lock, so never None
                 for tid in self._triggers
             ]
 
@@ -948,7 +948,7 @@ class DeadManCeremony:
         )
 
         print(f"\n{'!'*70}")
-        print(f"DEAD-MAN TRIGGER FIRED")
+        print("DEAD-MAN TRIGGER FIRED")
         print(f"{'!'*70}")
         print(f"Trigger: {trigger.trigger_id}")
         print(f"Action: {trigger.action}")
@@ -1209,7 +1209,7 @@ class HardwareTokenCeremony:
                 }
             )
 
-            print(f"\n✓ Token registered successfully")
+            print("\n✓ Token registered successfully")
             print(f"  Token ID: {token_id}")
 
             return (True, f"Token registered with ID: {token_id}")
@@ -1224,9 +1224,7 @@ class HardwareTokenCeremony:
         print("\n  Configure your YubiKey with ykpersonalize first:")
         print("  $ ykpersonalize -2 -ochal-resp -ochal-hmac -ohmac-lt64")
 
-        # Generate a test challenge
-        challenge = os.urandom(32)
-        print(f"\n  Press your YubiKey button now...")
+        print("\n  Press your YubiKey button now...")
 
         try:
             # Try to use yubico library if available
@@ -1372,10 +1370,10 @@ class HardwareTokenCeremony:
             client = Fido2Client(devices[0], "https://boundary-daemon.local", user_interaction=CliInteraction())
 
             # Perform authentication
-            result = client.get_assertion(request_options["publicKey"])
+            client.get_assertion(request_options["publicKey"])
 
             # Verify (would need stored public key for full verification)
-            print(f"\n✓ Token verification successful")
+            print("\n✓ Token verification successful")
             return (True, "FIDO2 verification successful")
 
         except Exception as e:

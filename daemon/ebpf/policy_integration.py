@@ -318,9 +318,9 @@ class eBPFPolicyProvider:
         if not conditions:
             return True
 
-        for field, expected in conditions.items():
+        for cond_name, expected in conditions.items():
             # Handle special conditions
-            if field == "path_contains" and isinstance(event, FileEvent):
+            if cond_name == "path_contains" and isinstance(event, FileEvent):
                 if isinstance(expected, list):
                     if not any(p in event.path for p in expected):
                         return False
@@ -328,7 +328,7 @@ class eBPFPolicyProvider:
                     return False
                 continue
 
-            if field == "external" and isinstance(event, NetworkEvent):
+            if cond_name == "external" and isinstance(event, NetworkEvent):
                 # Check if connection is external (not loopback/private)
                 addr = event.dst_addr
                 is_external = not (
@@ -344,7 +344,7 @@ class eBPFPolicyProvider:
                 continue
 
             # Get event attribute
-            event_value = getattr(event, field, None)
+            event_value = getattr(event, cond_name, None)
             if event_value is None:
                 return False
 

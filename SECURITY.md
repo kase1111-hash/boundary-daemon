@@ -266,8 +266,8 @@ All dependencies MUST be audited before addition and monitored continuously.
 # Weekly dependency audit
 pip-audit --strict --vulnerability-service osv
 
-# Check for outdated packages with known vulnerabilities
-safety check
+# Same check CI runs against the pinned requirements
+pip-audit -r requirements.txt
 ```
 
 ### Core Dependencies

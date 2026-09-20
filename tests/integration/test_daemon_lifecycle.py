@@ -28,6 +28,23 @@ def daemon_log_dir():
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+# Daemons started by _start_daemon(); stopped unconditionally after each test so
+# an assertion failure cannot leak the daemon's non-daemon threads and hang the
+# pytest process at interpreter shutdown.
+_STARTED_DAEMONS = []
+
+
+@pytest.fixture(autouse=True)
+def _stop_started_daemons():
+    yield
+    while _STARTED_DAEMONS:
+        daemon = _STARTED_DAEMONS.pop()
+        try:
+            daemon.stop()
+        except Exception:
+            pass
+
+
 def _start_daemon(log_dir, mode=BoundaryMode.OPEN):
     """Create, start, and return a BoundaryDaemon instance."""
     daemon = BoundaryDaemon(
@@ -37,6 +54,7 @@ def _start_daemon(log_dir, mode=BoundaryMode.OPEN):
         dev_mode=True,
     )
     daemon.start()
+    _STARTED_DAEMONS.append(daemon)
     return daemon
 
 

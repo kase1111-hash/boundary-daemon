@@ -14,10 +14,10 @@ from enum import Enum
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from ..policy_engine import PolicyRequest, PolicyDecision, BoundaryMode, MemoryClass
 from ..state_monitor import EnvironmentState
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyAction(Enum):
@@ -34,7 +34,7 @@ class PolicyRule:
     action: PolicyAction
     priority: int = 100  # Lower = higher priority
     enabled: bool = True
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.metadata is None:

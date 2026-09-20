@@ -291,7 +291,7 @@ class BundleExporter:
 
     def _collect_integrity_checks(self) -> Optional[EvidenceItem]:
         """Collect integrity verification results."""
-        results = {
+        results: Dict[str, Any] = {
             'verification_time': datetime.utcnow().isoformat() + 'Z',
             'checks': [],
         }
@@ -442,7 +442,7 @@ class BundleExporter:
         if self._signing_key and NACL_AVAILABLE:
             signed = self._signing_key.sign(manifest_json)
             bundle.signature = signed.signature.hex()
-            bundle.public_key = self._verify_key.encode(
+            bundle.public_key = self._verify_key.encode(  # type: ignore[union-attr]  # set alongside _signing_key
                 encoder=nacl.encoding.HexEncoder
             ).decode()
 
@@ -630,7 +630,7 @@ if __name__ == '__main__':
         created_at=datetime.utcnow(),
     ))
 
-    print(f"\nBundle created:")
+    print("\nBundle created:")
     print(f"  ID: {bundle.bundle_id}")
     print(f"  Purpose: {bundle.purpose}")
     print(f"  Items: {len(bundle.items)}")

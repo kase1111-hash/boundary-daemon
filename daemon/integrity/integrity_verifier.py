@@ -146,7 +146,7 @@ class IntegrityVerifier:
 
         # Load public key
         if public_key:
-            self._public_key = public_key
+            self._public_key: Optional[bytes] = public_key
         elif public_key_hex:
             self._public_key = bytes.fromhex(public_key_hex)
         else:
@@ -207,8 +207,8 @@ class IntegrityVerifier:
             return False
 
         return CodeSigner.verify_signature(
-            self._manifest,
-            self._signature,
+            self._manifest,  # type: ignore[arg-type]  # populated by load_manifest() above
+            self._signature,  # type: ignore[arg-type]
             public_key,
         )
 
@@ -258,7 +258,7 @@ class IntegrityVerifier:
             self.load_manifest()
 
         # Get set of expected files
-        expected_files = {m.path for m in self._manifest.modules}
+        expected_files = {m.path for m in self._manifest.modules}  # type: ignore[union-attr]  # populated by load_manifest()
 
         # Scan directory
         unauthorized = []
@@ -267,7 +267,7 @@ class IntegrityVerifier:
 
             # Check exclusions
             skip = False
-            for pattern in self._manifest.excluded_patterns:
+            for pattern in self._manifest.excluded_patterns:  # type: ignore[union-attr]
                 if pattern in rel_path:
                     skip = True
                     break
@@ -313,7 +313,7 @@ class IntegrityVerifier:
             modules_passed = 0
             modules_failed = 0
 
-            for module_hash in self._manifest.modules:
+            for module_hash in self._manifest.modules:  # type: ignore[union-attr]  # populated by load_manifest()
                 is_valid, error = self.verify_module(module_hash)
                 if is_valid:
                     modules_passed += 1
@@ -349,13 +349,13 @@ class IntegrityVerifier:
             result = VerificationResult(
                 status=status,
                 verified_at=datetime.now(),
-                modules_checked=len(self._manifest.modules),
+                modules_checked=len(self._manifest.modules),  # type: ignore[union-attr]
                 modules_passed=modules_passed,
                 modules_failed=modules_failed,
                 failures=failures,
                 duration_ms=(time.time() - start_time) * 1000,
-                manifest_version=self._manifest.version,
-                daemon_version=self._manifest.daemon_version,
+                manifest_version=self._manifest.version,  # type: ignore[union-attr]
+                daemon_version=self._manifest.daemon_version,  # type: ignore[union-attr]
             )
 
             self._last_verification = result
@@ -492,7 +492,7 @@ class IntegrityMonitor:
             'check_interval': self.check_interval,
             'tampering_detected': self._tampering_detected,
             'last_verification': (
-                self.verifier.get_last_verification().to_dict()
+                self.verifier.get_last_verification().to_dict()  # type: ignore[union-attr]  # guarded by the check below
                 if self.verifier.get_last_verification()
                 else None
             ),

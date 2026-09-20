@@ -10,7 +10,7 @@ import time
 import logging
 from dataclasses import dataclass, asdict
 from enum import Enum
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -164,7 +164,7 @@ class CodeVulnerabilityAdvisor:
                 logger.warning(f"Ollama client error: {e}")
                 self.ollama_available = False
 
-        logger.info(f"CodeVulnerabilityAdvisor initialized:")
+        logger.info("CodeVulnerabilityAdvisor initialized:")
         logger.info(f"  Model: {self.model}")
         logger.info(f"  Ollama available: {self.ollama_available}")
         logger.info(f"  Storage: {self.storage_dir}")
@@ -563,7 +563,7 @@ If no issues found, respond with: []
         """Get summary statistics of all advisories"""
         advisories = self.load_advisories()
 
-        stats = {
+        stats: Dict[str, Any] = {
             'total': len(advisories),
             'by_severity': {s.value: 0 for s in AdvisorySeverity},
             'by_status': {s.value: 0 for s in AdvisoryStatus}

@@ -441,9 +441,10 @@ class SeccompFilter:
         # with different syscall numbers that wouldn't match our x86_64 rules.
         if self._arch == AUDIT_ARCH_X86_64:
             # Check if arch is x86_64 - jump over i386 check to syscall rules
-            # BPF jumps: jt=2 skips i386 check + 2 kill stmts to reach syscall load
-            # jf=0 falls through to i386 check
-            instructions.append(bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_X86_64, 2, 0))
+            # BPF jumps: jt=3 skips the i386 check and BOTH kill stmts to reach the
+            # syscall load (jt=2 landed on the "unknown arch" kill, so every x86_64
+            # process was killed on its first syscall). jf=0 falls through to i386 check.
+            instructions.append(bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_X86_64, 3, 0))
             # Check if arch is i386 - if so, KILL (block all 32-bit syscalls)
             instructions.append(bpf_jump(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_I386, 0, 1))
             instructions.append(bpf_stmt(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS))

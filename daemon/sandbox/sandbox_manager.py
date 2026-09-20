@@ -291,6 +291,7 @@ class Sandbox:
 
         self._state = SandboxState.CREATED
         self._process: Optional[IsolatedProcess] = None
+        self._command: Optional[List[str]] = None
         self._cgroup_path: Optional[Path] = None
         self._firewall_applied = False
         self._created_at = datetime.utcnow()
@@ -309,6 +310,82 @@ class Sandbox:
     def profile(self) -> SandboxProfile:
         """Get sandbox profile."""
         return self._profile
+
+    @property
+    def pid(self) -> Optional[int]:
+        """PID of the sandboxed process, or None if it has not been started."""
+        if self._process is None:
+            return None
+        try:
+            return self._process.pid
+        except (AttributeError, OSError):
+            return None
+
+    @property
+    def started_at(self) -> Optional[datetime]:
+        """When the sandboxed command was started (UTC), if it was."""
+        return self._started_at
+
+    def get_info(self) -> Dict[str, Any]:
+        """
+        Return a JSON-serialisable description of this sandbox.
+
+        Used by SandboxManager.list_sandboxes() and the sandboxctl CLI.
+        """
+        uptime: Optional[float] = None
+        if self._started_at is not None:
+            end = self._ended_at or datetime.utcnow()
+            uptime = (end - self._started_at).total_seconds()
+
+        usage: Optional[Dict[str, Any]] = None
+        try:
+            current = self.get_usage()
+            if current is not None:
+                usage = current.to_dict()
+        except OSError:
+            usage = None
+
+        limits = self._profile.cgroup_limits
+        resource_limits: Optional[Dict[str, Any]] = None
+        if limits is not None:
+            resource_limits = {
+                'memory_max_bytes': limits.memory_max_bytes,
+                'memory_high_bytes': limits.memory_high_bytes,
+                'cpu_quota_us': limits.cpu_quota_us,
+                'cpu_period_us': limits.cpu_period_us,
+                'cpu_max_cores': limits.cpu_max_cores,
+                'pids_max': limits.pids_max,
+            }
+
+        policy = self._profile.network_policy
+        network_policy: Optional[Dict[str, Any]] = None
+        if policy is not None:
+            network_policy = {
+                'allow_all': policy.allow_all,
+                'deny_all': policy.deny_all,
+                'allowed_hosts': list(policy.allowed_hosts),
+                'allowed_ports': list(policy.allowed_ports),
+                'blocked_hosts': list(policy.blocked_hosts),
+            }
+
+        return {
+            'id': self.sandbox_id,
+            'profile': self._profile.name,
+            'state': self._state.name,
+            'pid': self.pid,
+            'command': list(self._command) if self._command else None,
+            'created_at': self._created_at.isoformat() + 'Z',
+            'started_at': self._started_at.isoformat() + 'Z' if self._started_at else None,
+            'uptime_seconds': uptime,
+            'cgroup_path': str(self._cgroup_path) if self._cgroup_path else None,
+            'namespace_flags': str(self._profile.namespace_flags),
+            'seccomp_enabled': self._profile.seccomp_enabled,
+            'network_disabled': self._profile.network_disabled,
+            'readonly_filesystem': self._profile.readonly_filesystem,
+            'network_policy': network_policy,
+            'resource_limits': resource_limits,
+            'resource_usage': usage,
+        }
 
     def _emit_event(self, event_type: str, data: Dict) -> None:
         """Emit a sandbox event."""
@@ -456,6 +533,7 @@ class Sandbox:
 
         self._state = SandboxState.RUNNING
         self._started_at = datetime.utcnow()
+        self._command = list(command)
 
         self._emit_event('sandbox_start', {
             'command': command,
@@ -772,6 +850,10 @@ class SandboxManager:
         """Set the enforcement bridge for automatic profile tightening."""
         self._enforcement_bridge = bridge
 
+    def set_ceremony_manager(self, ceremony_manager: Any) -> None:
+        """Attach the break-glass ceremony manager used for ceremony-gated profiles."""
+        self._ceremony_manager = ceremony_manager
+
     def set_telemetry(self, telemetry: Any) -> None:
         """Set the telemetry collector for violation tracking."""
         self._telemetry = telemetry
@@ -898,6 +980,7 @@ class SandboxManager:
         stdin: Optional[bytes] = None,
         profile: Optional[SandboxProfile] = None,
         timeout: Optional[float] = None,
+        capture_output: bool = True,
     ) -> SandboxResult:
         """
         Run a command in a temporary sandbox.
@@ -911,6 +994,7 @@ class SandboxManager:
             stdin: Input to send to process
             profile: Sandbox profile (defaults to current boundary mode)
             timeout: Execution timeout
+            capture_output: Capture stdout/stderr (False inherits the caller's)
 
         Returns:
             SandboxResult
@@ -922,6 +1006,7 @@ class SandboxManager:
                 command=command,
                 env=env,
                 stdin=stdin,
+                capture_output=capture_output,
                 timeout=timeout,
             )
 
@@ -930,7 +1015,7 @@ class SandboxManager:
 
             return result
 
-        except SandboxError as e:
+        except SandboxError:
             with self._lock:
                 self._total_failed += 1
             raise
@@ -951,16 +1036,10 @@ class SandboxManager:
             return self._sandboxes.get(sandbox_id)
 
     def list_sandboxes(self) -> List[Dict]:
-        """List all active sandboxes."""
+        """List all active sandboxes (one Sandbox.get_info() dict each)."""
         with self._lock:
-            return [
-                {
-                    'id': s.sandbox_id,
-                    'state': s.state.name,
-                    'profile': s.profile.name,
-                }
-                for s in self._sandboxes.values()
-            ]
+            sandboxes = list(self._sandboxes.values())
+        return [s.get_info() for s in sandboxes]
 
     def terminate_sandbox(self, sandbox_id: str, reason: str = "manager request") -> bool:
         """Terminate a sandbox by ID."""
@@ -994,7 +1073,7 @@ class SandboxManager:
     def get_stats(self) -> Dict[str, Any]:
         """Get sandbox manager statistics."""
         with self._lock:
-            active_by_state = {}
+            active_by_state: Dict[str, int] = {}
             for sandbox in self._sandboxes.values():
                 state = sandbox.state.name
                 active_by_state[state] = active_by_state.get(state, 0) + 1
@@ -1049,7 +1128,7 @@ if __name__ == '__main__':
             timeout=10,
         )
 
-        print(f"\nResult:")
+        print("\nResult:")
         print(f"  Exit code: {result.exit_code}")
         print(f"  Stdout: {result.stdout.strip()}")
         print(f"  Runtime: {result.runtime_seconds:.3f}s")

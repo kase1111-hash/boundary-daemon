@@ -298,8 +298,6 @@ class HealthMonitor:
         now = time.time()
         self._last_check = now
 
-        all_healthy = True
-
         # Check each component
         for name, check_func in self._health_checks.items():
             try:
@@ -318,9 +316,6 @@ class HealthMonitor:
                     metadata=metadata,
                 )
 
-                if status != ComponentStatus.OK:
-                    all_healthy = False
-
                 # Alert on status change
                 if status != previous_status and self.config.alert_on_degraded:
                     if status in (ComponentStatus.ERROR, ComponentStatus.UNRESPONSIVE):
@@ -330,7 +325,6 @@ class HealthMonitor:
                         self._raise_alert(name, previous_status, status, f"Component recovered: {message}")
 
             except Exception as e:
-                all_healthy = False
                 self._components[name] = ComponentHealth(
                     name=name,
                     status=ComponentStatus.ERROR,
@@ -370,13 +364,13 @@ class HealthMonitor:
         if overall != previous_overall and previous_overall != HealthStatus.UNKNOWN:
             if overall == HealthStatus.UNHEALTHY:
                 self._raise_alert('daemon', ComponentStatus.OK, ComponentStatus.ERROR,
-                                  f"Daemon health degraded to UNHEALTHY")
+                                  "Daemon health degraded to UNHEALTHY")
             elif overall == HealthStatus.DEGRADED:
                 self._raise_alert('daemon', ComponentStatus.OK, ComponentStatus.WARNING,
-                                  f"Daemon health degraded to DEGRADED")
+                                  "Daemon health degraded to DEGRADED")
             elif previous_overall in (HealthStatus.UNHEALTHY, HealthStatus.DEGRADED):
                 self._raise_alert('daemon', ComponentStatus.WARNING, ComponentStatus.OK,
-                                  f"Daemon health recovered to HEALTHY")
+                                  "Daemon health recovered to HEALTHY")
 
     def _calculate_overall_status(self) -> HealthStatus:
         """Calculate overall health status from components"""
@@ -388,7 +382,6 @@ class HealthMonitor:
         # Count by status
         error_count = sum(1 for s in statuses if s in (ComponentStatus.ERROR, ComponentStatus.UNRESPONSIVE))
         warning_count = sum(1 for s in statuses if s == ComponentStatus.WARNING)
-        ok_count = sum(1 for s in statuses if s == ComponentStatus.OK)
         total_available = len([s for s in statuses if s != ComponentStatus.NOT_AVAILABLE])
 
         if total_available == 0:

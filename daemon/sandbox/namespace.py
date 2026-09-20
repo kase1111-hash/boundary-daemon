@@ -22,7 +22,7 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import IntFlag
 from pathlib import Path
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ class NamespaceManager:
             if config.private_tmp:
                 tmp_dir = tempfile.mkdtemp(prefix='sandbox_tmp_')
                 subprocess.run(
-                    ['mount', '--bind', tmp_dir, '/tmp'],
+                    ['mount', '--bind', tmp_dir, '/tmp'],  # nosec B108 - private tmp inside the sandbox mount namespace
                     check=True,
                     capture_output=True,
                 )
@@ -370,7 +370,7 @@ class NamespaceManager:
         # Build unshare command
         unshare_cmd = ['unshare']
 
-        flag_map = [
+        flag_map: List[Tuple[Any, ...]] = [
             (CLONE_NEWNS, '--mount'),
             (CLONE_NEWPID, '--pid', '--fork'),
             (CLONE_NEWIPC, '--ipc'),

@@ -24,7 +24,7 @@ import sys
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, FrozenSet, Tuple, Optional, TypeVar, Callable
+from typing import Any, Dict, FrozenSet, Tuple, Optional, TypeVar, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ T = TypeVar('T')
 def _env_override(
     env_var: str,
     default: T,
-    converter: Callable[[str], T] = str,
+    converter: Callable[[str], Any] = str,
     validator: Optional[Callable[[T], bool]] = None,
     min_value: Optional[T] = None,
     max_value: Optional[T] = None,
@@ -340,12 +340,12 @@ class Paths:
         if IS_WINDOWS:
             try:
                 import winreg
-                key = winreg.OpenKey(
-                    winreg.HKEY_LOCAL_MACHINE,
+                key = winreg.OpenKey(  # type: ignore[attr-defined]  # Windows only
+                    winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]  # Windows only
                     r"SOFTWARE\Microsoft\Cryptography"
                 )
-                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-                winreg.CloseKey(key)
+                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]  # Windows only
+                winreg.CloseKey(key)  # type: ignore[attr-defined]  # Windows only
                 return machine_guid
             except OSError:
                 return os.environ.get('COMPUTERNAME', 'unknown')
@@ -376,7 +376,7 @@ class Paths:
         """
         if getattr(sys, 'frozen', False):
             # Running as PyInstaller frozen executable
-            return sys._MEIPASS
+            return sys._MEIPASS  # type: ignore[attr-defined]  # PyInstaller only
         else:
             # Running as normal Python script
             # Return the parent of the daemon package directory
@@ -401,7 +401,7 @@ class Paths:
         if getattr(sys, 'frozen', False):
             # Running as PyInstaller frozen executable
             # Check bundled config first
-            meipass_config = os.path.join(sys._MEIPASS, 'config')
+            meipass_config = os.path.join(sys._MEIPASS, 'config')  # type: ignore[attr-defined]  # PyInstaller only
             if os.path.isdir(meipass_config):
                 return meipass_config
 
@@ -539,7 +539,7 @@ class RateLimits:
     BLOCK_LONG: int = 3600              # 1 hour
 
     # Per-command rate limits: (max_requests, window_seconds)
-    COMMAND_LIMITS: Dict[str, Tuple[int, int]] = None
+    COMMAND_LIMITS: Optional[Dict[str, Tuple[int, int]]] = None
 
     @classmethod
     def get_command_limits(cls) -> Dict[str, Tuple[int, int]]:

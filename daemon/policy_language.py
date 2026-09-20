@@ -34,13 +34,12 @@ Vocabulary (every legal field/operator/value is enumerated here):
 
 import json
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from .policy_engine import BoundaryMode, MemoryClass, PolicyDecision, PolicyRequest
-from .state_monitor import NetworkState, HardwareTrust, EnvironmentState
+from .state_monitor import EnvironmentState
 
 logger = logging.getLogger(__name__)
 

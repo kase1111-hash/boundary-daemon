@@ -219,7 +219,7 @@ class EncryptionChecker:
 
     def _check_windows_volumes(self) -> List[VolumeInfo]:
         """Check Windows volumes for BitLocker."""
-        volumes = []
+        volumes: List[VolumeInfo] = []
 
         if not shutil.which("manage-bde"):
             return volumes
@@ -301,7 +301,7 @@ class EncryptionChecker:
 
         try:
             # Check FileVault status
-            result = subprocess.run(
+            result: subprocess.CompletedProcess[Any] = subprocess.run(
                 ["fdesetup", "status"],
                 capture_output=True,
                 text=True,
@@ -347,7 +347,7 @@ class EncryptionChecker:
         Returns:
             True if path is on encrypted volume
         """
-        path = Path(path).resolve()
+        path_obj = Path(path).resolve()
 
         # Find the mount point for this path
         volumes = self.check_all_volumes()
@@ -358,7 +358,7 @@ class EncryptionChecker:
 
             mount = Path(volume.mount_point)
             try:
-                if path == mount or mount in path.parents:
+                if path_obj == mount or mount in path_obj.parents:
                     return volume.status == EncryptionStatus.ENCRYPTED
             except (ValueError, TypeError):
                 continue
