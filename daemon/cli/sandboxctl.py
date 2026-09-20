@@ -506,9 +506,14 @@ class SandboxCLI:
         # 'cgroups': {'cgroups_v2': bool, 'can_create': bool, ...},
         # 'firewall': {'available': bool, ...}, 'can_sandbox': bool}
         caps = manager.get_capabilities()
-        ns_caps = caps.get('namespaces') if isinstance(caps.get('namespaces'), dict) else {}
-        cg_caps = caps.get('cgroups') if isinstance(caps.get('cgroups'), dict) else {}
-        fw_caps = caps.get('firewall') if isinstance(caps.get('firewall'), dict) else {}
+
+        def _section(name: str) -> Dict[str, Any]:
+            value = caps.get(name)
+            return value if isinstance(value, dict) else {}
+
+        ns_caps = _section('namespaces')
+        cg_caps = _section('cgroups')
+        fw_caps = _section('firewall')
 
         cap_items = [
             ('Namespace support', any(bool(v) for k, v in ns_caps.items() if k.endswith('_ns'))),

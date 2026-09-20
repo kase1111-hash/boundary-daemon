@@ -505,6 +505,37 @@ class ProcessEnforcer:
 
         return profile
 
+    @staticmethod
+    def _to_seccomp_profile(profile: Dict[str, Any]) -> Any:
+        """
+        Convert a docker-style seccomp JSON profile into the SeccompProfile model
+        that SeccompFilter.load_profile() expects.
+
+        Argument-level rules (e.g. the PROT_EXEC mask on mmap/mprotect) cannot be
+        expressed by SeccompFilter's BPF builder; they are logged and skipped rather
+        than turned into whole-syscall denials that would break every process.
+        """
+        from ..sandbox.seccomp_filter import SeccompProfile, SeccompAction
+
+        allow_default = str(profile.get('defaultAction', '')).upper() == 'SCMP_ACT_ALLOW'
+        converted = SeccompProfile(
+            name=str(profile.get('name', 'boundary')),
+            description='converted from docker-style profile',
+            default_action=SeccompAction.ALLOW if allow_default else SeccompAction.DENY,
+        )
+        for entry in profile.get('syscalls', []):
+            names = list(entry.get('names') or ([entry['name']] if entry.get('name') else []))
+            if entry.get('args'):
+                logger.warning(
+                    f"seccomp: argument filter on {names} is not supported by SeccompFilter; skipped"
+                )
+                continue
+            if str(entry.get('action', '')).upper() == 'SCMP_ACT_ALLOW':
+                converted.allowed_syscalls.update(names)
+            else:  # SCMP_ACT_ERRNO / KILL / TRAP -> deny (EPERM)
+                converted.denied_syscalls.update(names)
+        return converted
+
     def _install_seccomp_profile(self, profile: Dict):
         """
         Install and APPLY seccomp profile.
@@ -544,7 +575,7 @@ class ProcessEnforcer:
         try:
             from ..sandbox.seccomp_filter import SeccompFilter
             seccomp = SeccompFilter()
-            seccomp.load_profile(profile)
+            seccomp.load_profile(self._to_seccomp_profile(profile))
             seccomp.apply()
             logger.info(f"Seccomp filter applied: {profile_name}")
         except ImportError:

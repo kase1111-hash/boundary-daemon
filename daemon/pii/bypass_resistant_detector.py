@@ -726,6 +726,10 @@ class BypassResistantPIIDetector:
 
         return result
 
+    def reset_stats(self) -> None:
+        """Reset the underlying detector's statistics (PIIDetector interface)."""
+        self.base_detector.reset_stats()
+
     def get_stats(self) -> Dict:
         """Get detection statistics."""
         base_stats = self.base_detector.get_stats()
@@ -751,14 +755,18 @@ class BypassResistantPIIDetector:
 
         return True
 
-    def redact(self, text: str, method=None, types=None) -> Tuple[str, Dict]:
+    def redact(self, text: str, entities=None, method=None, types=None) -> Tuple[str, Dict]:
         """
         Redact PII with bypass resistance.
 
-        First normalizes, then detects, then redacts.
+        Signature-compatible with PIIDetector.redact(text, entities, method, types)
+        so PIIFilter can use either detector. When ``entities`` is omitted the text
+        is detected first (detect() applies normalization internally).
         """
-        # detect() applies normalization internally before matching
-        detection = self.detect(text, types)
+        if entities is None:
+            detection = self.detect(text, types)
+        else:
+            detection = {'entities': list(entities)}
 
         # Redact using base detector
         from .detector import RedactionMethod

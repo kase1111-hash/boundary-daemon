@@ -628,7 +628,7 @@ class MessageGate:
             except Exception as e:
                 # Don't let monitoring crash silently
                 try:
-                    from . import logging as _logging  # type: ignore[attr-defined]  # no daemon.logging module; ImportError swallowed below
+                    import logging as _logging
                     _logging.getLogger(__name__).error(
                         f"Channel lifecycle monitor error: {e}"
                     )

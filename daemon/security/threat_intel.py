@@ -684,7 +684,7 @@ class ThreatIntelMonitor:
         }
 
         if port in suspicious_ports:
-            alert = {  # type: ignore[no-redef]  # same Dict[str, Any] shape as above  # type: ignore[no-redef]  # same Dict[str, Any] shape as above  # type: ignore[no-redef]  # same Dict[str, Any] shape as above
+            alert = {
                 "type": ThreatIntelAlert.SUSPICIOUS_CONNECTION.value,
                 "message": f"Connection to suspicious port {ip}:{port} ({suspicious_ports[port]})",
                 "severity": ThreatSeverity.MEDIUM.value,

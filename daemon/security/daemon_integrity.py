@@ -643,7 +643,7 @@ class DaemonIntegrityProtector:
                     return result
 
             # Verify manifest signature
-            if not self._verify_signature(self._manifest):  # type: ignore[arg-type]  # _manifest set by load_manifest() above  # type: ignore[arg-type]  # _manifest set by load_manifest() above  # type: ignore[arg-type]  # _manifest set by load_manifest() above
+            if not self._verify_signature(self._manifest):  # type: ignore[arg-type]  # _manifest set by load_manifest() above
                 result = IntegrityCheckResult(
                     status=IntegrityStatus.SIGNATURE_INVALID,
                     error_message="Manifest signature is invalid - possible tampering!",
@@ -658,7 +658,7 @@ class DaemonIntegrityProtector:
 
             # Compare against manifest
             result = IntegrityCheckResult(status=IntegrityStatus.VERIFIED)
-            manifest_paths = set(self._manifest.files.keys())  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above
+            manifest_paths = set(self._manifest.files.keys())  # type: ignore[union-attr]  # _manifest loaded above
             current_paths = set(current_files.keys())
 
             # Check for missing files
@@ -673,7 +673,7 @@ class DaemonIntegrityProtector:
 
             # Check for modified files
             for path in manifest_paths & current_paths:
-                manifest_info = self._manifest.files[path]  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above  # type: ignore[union-attr]  # _manifest loaded above
+                manifest_info = self._manifest.files[path]  # type: ignore[union-attr]  # _manifest loaded above
                 current_info = current_files[path]
 
                 if manifest_info.hash != current_info.hash:

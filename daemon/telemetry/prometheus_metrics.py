@@ -35,6 +35,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
+# The exporter is pure Python (no prometheus_client dependency), so it is always available.
+PROMETHEUS_AVAILABLE = True
+
 logger = logging.getLogger(__name__)
 
 

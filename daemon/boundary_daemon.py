@@ -1028,7 +1028,7 @@ class BoundaryDaemon:
 
         # Wire ceremony_manager to sandbox_manager now that biometric auth is initialized
         if self.sandbox_manager is not None and self.ceremony_manager is not None:
-            self.sandbox_manager.ceremony_manager = self.ceremony_manager
+            self.sandbox_manager.set_ceremony_manager(self.ceremony_manager)
 
         # Initialize code vulnerability advisor (Plan 7: LLM-Powered Security)
         self.security_advisor = None
@@ -3608,8 +3608,7 @@ class BoundaryDaemon:
             import os
             if os.path.isfile(path):
                 # Scan single file
-                result = self.security_advisor.scan_file(path)
-                advisories = result.advisories if result else []
+                advisories = list(self.security_advisor.scan_file(path) or [])
                 msg = f"Scanned {path}: {len(advisories)} advisory(ies) found"
             elif os.path.isdir(path):
                 # Scan directory/repository
@@ -3633,14 +3632,14 @@ class BoundaryDaemon:
             # Convert advisories to dicts for serialization
             advisory_dicts = [
                 {
-                    'id': a.id,
+                    'id': a.advisory_id,
                     'file_path': a.file_path,
                     'line_start': a.line_start,
                     'line_end': a.line_end,
                     'severity': a.severity.value if hasattr(a.severity, 'value') else str(a.severity),
-                    'title': a.title,
-                    'description': a.description,
-                    'recommendation': a.recommendation,
+                    'title': a.issue_type,
+                    'description': a.explanation,
+                    'recommendation': a.recommended_action,
                     'status': a.status.value if hasattr(a.status, 'value') else str(a.status),
                     'created_at': a.created_at
                 }
@@ -3679,14 +3678,14 @@ class BoundaryDaemon:
             # Convert to dicts
             return [
                 {
-                    'id': a.id,
+                    'id': a.advisory_id,
                     'file_path': a.file_path,
                     'line_start': a.line_start,
                     'line_end': a.line_end,
                     'severity': a.severity.value if hasattr(a.severity, 'value') else str(a.severity),
-                    'title': a.title,
-                    'description': a.description,
-                    'recommendation': a.recommendation,
+                    'title': a.issue_type,
+                    'description': a.explanation,
+                    'recommendation': a.recommended_action,
                     'status': a.status.value if hasattr(a.status, 'value') else str(a.status),
                     'created_at': a.created_at
                 }

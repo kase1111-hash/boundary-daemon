@@ -798,7 +798,7 @@ class QueueMonitor:
                    queue_name: Optional[str] = None) -> List[QueueAlert]:
         """Get recent alerts"""
         with self._lock:
-            alerts = self._alerts
+            alerts = list(self._alerts)
             if queue_name:
                 alerts = [a for a in alerts if a.queue_name == queue_name]
             if limit:

@@ -219,12 +219,6 @@ class TestSubscribeStoresCallbackInDict:
         # The .append-on-dict bug is gone: the store is a dict keyed by id().
         assert isinstance(ResponseGuardrails()._callbacks, dict)
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AttributeError,
-        reason="ResponseGuardrails.__init__ never sets self._lock (only _callback_lock), "
-               "so subscribe() still raises AttributeError; remove this marker once fixed",
-    )
     def test_response_guardrails_subscribe_registers_callback(self):
         obj = ResponseGuardrails()
         obj.subscribe(_noop_callback)
@@ -323,7 +317,7 @@ class TestSIEMLogSecurityError:
 
 def _threat_monitor_with_keys() -> ThreatIntelMonitor:
     return ThreatIntelMonitor(
-        ThreatIntelConfig(abuseipdb_api_key="test-key", virustotal_api_key="test-key")
+        ThreatIntelConfig(abuseipdb_api_key="test-key", virustotal_api_key="test-key")  # pragma: allowlist secret
     )
 
 

@@ -541,15 +541,13 @@ class ClusterManager:
 
         return violations
 
-    def on_mode_change(self, callback: Callable):
-        """Register a callback for cluster mode changes"""
-        # FIXME: on_mode_change uses .append() but _mode_change_callbacks is a dict — this will raise AttributeError
-        self._mode_change_callbacks.append(callback)
+    def on_mode_change(self, callback: Callable) -> int:
+        """Register a callback for cluster mode changes (returns the callback id)."""
+        return self.register_mode_change_callback(callback)
 
-    def on_violation(self, callback: Callable):
-        """Register a callback for cluster violations"""
-        # FIXME: on_violation uses .append() but _violation_callbacks is a dict — this will raise AttributeError
-        self._violation_callbacks.append(callback)
+    def on_violation(self, callback: Callable) -> int:
+        """Register a callback for cluster violations (returns the callback id)."""
+        return self.register_violation_callback(callback)
 
     def get_cluster_summary(self) -> str:
         """

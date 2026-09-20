@@ -232,7 +232,7 @@ class MonitoringReportGenerator:
         try:
             return {
                 'enabled': True,
-                'stats': self.daemon.memory_monitor.get_stats(),
+                'stats': self.daemon.memory_monitor.get_summary_stats(),
             }
         except Exception as e:
             return {'enabled': True, 'error': str(e)}
@@ -263,7 +263,10 @@ class MonitoringReportGenerator:
                     data['current'] = {
                         'fd_count': snapshot.fd_count,
                         'thread_count': snapshot.thread_count,
-                        'disk_used_percent': snapshot.disk_used_percent,
+                        'disk_used_percent': max(
+                            (float(d.get('percent', 0)) for d in snapshot.disk_usage.values()),
+                            default=0.0,
+                        ),
                         'cpu_percent': snapshot.cpu_percent,
                         'connection_count': snapshot.connection_count,
                     }

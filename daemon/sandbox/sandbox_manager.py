@@ -850,6 +850,10 @@ class SandboxManager:
         """Set the enforcement bridge for automatic profile tightening."""
         self._enforcement_bridge = bridge
 
+    def set_ceremony_manager(self, ceremony_manager: Any) -> None:
+        """Attach the break-glass ceremony manager used for ceremony-gated profiles."""
+        self._ceremony_manager = ceremony_manager
+
     def set_telemetry(self, telemetry: Any) -> None:
         """Set the telemetry collector for violation tracking."""
         self._telemetry = telemetry

@@ -524,6 +524,10 @@ class EventLogger:
                     'is_immutable': is_immutable,
                 }
 
+                # A previous seal leaves the checkpoint read-only (0o400); a
+                # re-seal must be able to replace it without root privileges.
+                if os.path.exists(checkpoint_path):
+                    os.chmod(checkpoint_path, 0o600)
                 with open(checkpoint_path, 'w') as f:
                     json.dump(checkpoint, f, indent=2)
                 os.chmod(checkpoint_path, 0o400)

@@ -36,8 +36,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SignedEventLogger.log_event()` rejected the `reasoning_chain` argument its base class accepts,
     and `verify_signatures()` dropped the reasoning chain when re-serialising events, so signed
     events carrying one failed verification.
+  - `daemon.telemetry` imported a `PROMETHEUS_AVAILABLE` name that was never defined, so the package
+    failed to import and telemetry was silently unavailable everywhere.
+  - The daemon assigned its ceremony manager to a `SandboxManager` attribute that does not exist; it
+    now uses a `set_ceremony_manager()` setter, so ceremony-gated sandbox profiles are enforced.
+  - The daemon's clock-manipulation and network-trust handlers read `policy_engine.current_mode`,
+    which does not exist (`get_current_mode()` does), so those tripwire paths raised instead of
+    escalating to LOCKDOWN.
+  - `ProcessEnforcer` passed a docker-style JSON dict to `SeccompFilter.load_profile()`, which expects
+    a `SeccompProfile`; the filter was never applied. The dict is now converted (argument-level rules,
+    which the BPF builder cannot express, are logged and skipped).
+  - `ClusterManager.on_mode_change()`/`on_violation()` called `.append` on dict registries; they now
+    delegate to the existing `register_*` methods.
+  - `PIIFilter` called `redact()`/`reset_stats()` on the default bypass-resistant detector with the
+    base detector's signature, mis-assigning arguments; the detector now implements the same interface.
+  - Code-scan results used non-existent advisory fields and treated `scan_file()`'s list as a
+    `ScanResult`; the monitoring report called non-existent memory/resource monitor APIs;
+    `QueueMonitor.get_alerts(limit=...)` sliced a deque; the dashboard read `Colors.STATUS_WARNING`,
+    `DashboardAlert.time_str`/`acknowledged`, `SandboxStatus.id`/`name`/`uptime_str` and
+    `DashboardEvent.time_str`, none of which existed; `AlleyScene._tts_manager` was never initialised.
   - `daemon/utils/error_handling.py` defined `handle_error` twice; the base implementation is now
     `_handle_error_base` and the SIEM-forwarding wrapper is the single public `handle_error`.
+- **Seccomp filter killed its own process.** The classic-BPF program built by
+  `daemon/sandbox/seccomp_filter.py` jumped over two instructions after the x86_64 architecture
+  check when it needed to skip three, so every native syscall fell through to the
+  "unknown architecture" `SECCOMP_RET_KILL_PROCESS` and any process that applied a filter died with
+  SIGSYS on its first syscall. This was latent only because the process enforcer never reached
+  `apply()` (see above). `tests/test_seccomp_bpf.py` now interprets the generated program and applies
+  a real filter in a throwaway child.
 - **Silent fail-open in sandbox resource limits.** `CgroupLimitsConfig.to_cgroup_limits()` assigned
   `memory_max`, `memory_high`, `cpu_max`, `cpu_period`, `io_rbps_max` and `io_wbps_max`, none of
   which are `CgroupLimits` fields, so profile-configured limits were accepted and never applied.
@@ -56,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `BOUNDARY_METRICS_URL`).
 - DNS blocking appended a duplicate firewall rule on every daemon restart; rules are now checked
   with `-C` before being added.
+- `EventLogger.seal_log()` could not re-seal a log without root: the first seal left the `.sealed`
+  checkpoint read-only and the second seal failed to rewrite it (only visible when tests run
+  unprivileged, as CI does).
 - `NetworkAttestor.is_vpn_connected()` and `MACPolicyManager.mac_system` could return `None`.
 - `SELinuxPolicyGenerator` defaulted to the fixed, predictable `/tmp/boundary-selinux` directory;
   it now uses a private `mkdtemp()` directory. The default hardening config no longer lists
@@ -79,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `tests/test_regression_ci_fixes.py`: regression tests for every fix above.
+- `tests/test_seccomp_bpf.py`: BPF-program interpreter tests plus a live apply() test for the seccomp filter.
 - `tests/test_sandboxctl.py`: tests for the rewritten CLI, including a check that its calls bind to
   the real `SandboxManager` signatures.
 
